@@ -30,6 +30,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -39,6 +40,10 @@ setup(
     license="MIT",
     cmdclass={"test": PyTestCommand},
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            "holoocean_obstacle_oracle_node=rov_obstacle_sim_bridge.holoocean_obstacle_oracle_node:main",
+            "simulated_rover_pose_publisher_node=rov_obstacle_sim_bridge.simulated_rover_pose_publisher_node:main",
+            "cmd_vel_safe_logger_node=rov_obstacle_sim_bridge.cmd_vel_safe_logger_node:main",
+        ],
     },
 )

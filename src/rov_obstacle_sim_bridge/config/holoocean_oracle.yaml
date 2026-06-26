@@ -1,0 +1,36 @@
+# Default parameters for the HoloOcean oracle demo nodes.
+# Loaded by holoocean_oracle_demo.launch.py via --params-file.
+
+simulated_rover_pose_publisher:
+  ros__parameters:
+    output_topic: /sim/rov_pose
+    publish_rate_hz: 20.0
+    frame_id: world
+    start_x: 0.0
+    start_y: 0.0
+    start_z: 0.0
+    velocity_x: 0.2
+    velocity_y: 0.0
+    velocity_z: 0.0
+    yaw_deg: 0.0
+    motion_mode: forward
+
+holoocean_obstacle_oracle:
+  ros__parameters:
+    rover_pose_topic: /sim/rov_pose
+    output_topic: /perception/obstacles
+    obstacle_config_file: ""  # overridden at launch via launch argument
+    publish_rate_hz: 10.0
+    frame_id: front_camera
+    camera_horizontal_fov_deg: 90.0
+    camera_vertical_fov_deg: 60.0
+    min_detection_range_m: 0.2
+    max_detection_range_m: 10.0
+    confidence: 1.0
+    risk_area_gain: 4.0
+
+cmd_vel_safe_logger:
+  ros__parameters:
+    input_topic: /cmd_vel_safe
+    log_file: ""              # set to a path like logs/cmd_vel_safe.csv to enable
+    flush_interval_s: 1.0

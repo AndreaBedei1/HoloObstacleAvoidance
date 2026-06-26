@@ -43,16 +43,50 @@ src/
 
 - Uses deterministic geometric projection (no neural network, no real camera images).
 - Does not require HoloOcean to be installed.
-- Does not create ROS 2 nodes yet (those come in a future step).
-- Does not change the planner or existing demo behavior.
 - Provides reusable dataclasses (`ObstacleConfig`, `RoverPose2D`, `CameraConfig`, `ProjectedObstacle`) and helper functions for world-to-camera transforms, FOV clipping, apparent size estimation, and oracle risk scoring.
 
-A future step will wrap this geometry module in a ROS 2 node that publishes `Obstacle2DArray` on `/perception/obstacles`.
+### Oracle ROS 2 Nodes
+
+Three nodes wrap the oracle geometry so it can replace the fake detector in a full demo pipeline:
+
+| Node | Package | Input | Output |
+| --- | --- | --- | --- |
+| `simulated_rover_pose_publisher_node` | `rov_obstacle_sim_bridge` | — | `/sim/rov_pose` (`PoseStamped`) |
+| `holoocean_obstacle_oracle_node` | `rov_obstacle_sim_bridge` | `/sim/rov_pose` | `/perception/obstacles` (`Obstacle2DArray`) |
+| `cmd_vel_safe_logger_node` | `rov_obstacle_sim_bridge` | `/cmd_vel_safe` | CSV log file (optional) |
+
+The simulated pose publisher supports four motion modes: `static`, `forward`, `lateral`, and `yaw_scan`. All parameters are configurable via YAML or launch arguments.
+
+### Run The Oracle Demo
+
+```bat
+cd /d C:\Users\andrea.bedei3\Desktop\HoloObstacleAvoidance
+call scripts\source_ros2_windows.bat
+call install\setup.bat
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py
+```
+
+Choose a motion mode:
+
+```bat
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py motion_mode:=static
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py motion_mode:=forward
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py motion_mode:=lateral
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py motion_mode:=yaw_scan
+```
+
+Enable CSV logging of `/cmd_vel_safe`:
+
+```bat
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py ^
+  log_file:=C:/Users/andrea.bedei3/Desktop/HoloObstacleAvoidance/logs/cmd_vel_safe.csv
+```
 
 ## Topics
 
 | Topic | Type | Notes |
 | --- | --- | --- |
+| `/sim/rov_pose` | `geometry_msgs/msg/PoseStamped` | Simulated rover pose (oracle demo only). |
 | `/perception/obstacles` | `rov_obstacle_msgs/msg/Obstacle2DArray` | Fake detector output for now. |
 | `/cmd_vel_nominal` | `geometry_msgs/msg/Twist` | Desired operator/autonomy velocity before avoidance. |
 | `/cmd_vel_safe` | `geometry_msgs/msg/Twist` | Planner output only; no thrusters or MAVLink commands. |
@@ -149,5 +183,4 @@ colcon test-result --verbose
 ## TODO
 
 - Replace the fake detector with a camera neural detector that publishes `Obstacle2DArray`.
-- Add a HoloOcean bridge that converts simulated camera detections into the same perception topic.
 - Integrate `/cmd_vel_safe` into the real ROV command manager only after simulation validation and explicit safety review.
