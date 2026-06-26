@@ -1,0 +1,143 @@
+import unittest
+
+from rov_obstacle_avoidance.planner import (
+    AvoidanceSide,
+    LocalAvoidancePlanner,
+    ObstacleObservation,
+    PlannerConfig,
+    PlannerState,
+    VelocityCommand,
+    compute_obstacle_risk,
+)
+
+
+class PlannerRiskTest(unittest.TestCase):
+    def test_uses_detector_risk_when_positive(self):
+        obstacle = ObstacleObservation(confidence=0.1, center_x=0.0, width=0.1, height=0.1, risk=0.73)
+
+        self.assertAlmostEqual(compute_obstacle_risk(obstacle), 0.73)
+
+    def test_fallback_risk_uses_confidence_centrality_and_area(self):
+        central = ObstacleObservation(confidence=0.9, center_x=0.5, width=0.4, height=0.4, risk=0.0)
+        edge = ObstacleObservation(confidence=0.9, center_x=0.0, width=0.4, height=0.4, risk=0.0)
+
+        self.assertGreater(compute_obstacle_risk(central), compute_obstacle_risk(edge))
+        self.assertGreater(compute_obstacle_risk(central), 0.5)
+
+
+class PlannerBehaviorTest(unittest.TestCase):
+    def setUp(self):
+        self.config = PlannerConfig(
+            risk_enter_threshold=0.55,
+            risk_exit_threshold=0.30,
+            min_avoidance_hold_s=1.0,
+            recovery_time_s=2.0,
+            command_timeout_s=1.0,
+        )
+        self.nominal = VelocityCommand(surge=0.3, sway=0.0, heave=0.1, yaw_rate=0.0)
+
+    def test_no_obstacle_passes_through_nominal_command(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([], now_s=0.0)
+
+        output = planner.compute(now_s=0.1)
+
+        self.assertEqual(output.state, PlannerState.NORMAL)
+        self.assertEqual(output.command, self.nominal)
+
+    def test_central_obstacle_triggers_avoidance(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.5)], now_s=0.0)
+
+        first = planner.compute(now_s=0.1)
+        second = planner.compute(now_s=0.2)
+
+        self.assertEqual(first.state, PlannerState.APPROACH_OBSTACLE)
+        self.assertIn(second.state, {PlannerState.AVOIDING_LEFT, PlannerState.AVOIDING_RIGHT})
+        self.assertLess(second.command.surge, self.nominal.surge)
+
+    def test_left_obstacle_causes_right_avoidance(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.2)], now_s=0.0)
+
+        output = planner.compute(now_s=0.1)
+
+        self.assertEqual(output.selected_side, AvoidanceSide.RIGHT)
+        self.assertLess(output.command.sway, 0.0)
+        self.assertLess(output.command.yaw_rate, 0.0)
+
+    def test_right_obstacle_causes_left_avoidance(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.8)], now_s=0.0)
+
+        output = planner.compute(now_s=0.1)
+
+        self.assertEqual(output.selected_side, AvoidanceSide.LEFT)
+        self.assertGreater(output.command.sway, 0.0)
+        self.assertGreater(output.command.yaw_rate, 0.0)
+
+    def test_state_transitions_through_recovery_to_normal(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.5)], now_s=0.0)
+
+        planner.compute(now_s=0.1)
+        avoiding = planner.compute(now_s=0.2)
+        self.assertIn(avoiding.state, {PlannerState.AVOIDING_LEFT, PlannerState.AVOIDING_RIGHT})
+
+        planner.update_obstacles([], now_s=1.3)
+        recovering = planner.compute(now_s=1.3)
+        self.assertEqual(recovering.state, PlannerState.RECOVERING)
+
+        planner.update_nominal_command(self.nominal, now_s=3.4)
+        normal = planner.compute(now_s=3.4)
+        self.assertEqual(normal.state, PlannerState.NORMAL)
+        self.assertEqual(normal.selected_side, AvoidanceSide.NONE)
+        self.assertEqual(normal.command, self.nominal)
+
+    def test_stale_obstacle_detections_cause_recovery_and_pass_through(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.5)], now_s=0.0)
+
+        planner.compute(now_s=0.1)
+        planner.compute(now_s=0.2)
+        planner.compute(now_s=1.2)
+        planner.update_nominal_command(self.nominal, now_s=3.4)
+        output = planner.compute(now_s=3.4)
+
+        self.assertEqual(output.state, PlannerState.NORMAL)
+        self.assertEqual(output.command, self.nominal)
+
+    def test_selected_avoidance_side_does_not_flip_every_frame(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_obstacles([_obstacle(center_x=0.2)], now_s=0.0)
+        first = planner.compute(now_s=0.1)
+
+        planner.update_obstacles([_obstacle(center_x=0.8)], now_s=0.2)
+        second = planner.compute(now_s=0.2)
+
+        self.assertEqual(first.selected_side, AvoidanceSide.RIGHT)
+        self.assertEqual(second.selected_side, AvoidanceSide.RIGHT)
+
+
+def _obstacle(center_x: float) -> ObstacleObservation:
+    return ObstacleObservation(
+        confidence=0.9,
+        center_x=center_x,
+        center_y=0.5,
+        width=0.25,
+        height=0.35,
+        apparent_area=0.25 * 0.35,
+        risk=0.8,
+        is_tracking_valid=True,
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()
