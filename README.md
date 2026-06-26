@@ -82,6 +82,47 @@ ros2 launch rov_obstacle_sim_bridge holoocean_oracle_demo.launch.py ^
   log_file:=C:/Users/andrea.bedei3/Desktop/HoloObstacleAvoidance/logs/cmd_vel_safe.csv
 ```
 
+## Oracle Demo Recording
+
+The `oracle_demo_recorder` node passively records the full oracle demo pipeline to a CSV file for quantitative validation. It subscribes to all five topics and writes one row per sample interval without publishing any commands.
+
+### CSV Columns
+
+| Column | Description |
+| --- | --- |
+| `timestamp_s` | Elapsed seconds since recorder start |
+| `rov_x`, `rov_y`, `rov_z` | Simulated rover position |
+| `obstacle_count` | Number of detected obstacles |
+| `max_obstacle_risk` | Highest risk among current obstacles |
+| `most_dangerous_center_x` | Normalized image x of the highest-risk obstacle |
+| `most_dangerous_bearing_rad` | Bearing in radians of the highest-risk obstacle |
+| `nominal_surge`, `nominal_sway`, `nominal_yaw_rate` | Nominal command components |
+| `safe_surge`, `safe_sway`, `safe_yaw_rate` | Safe (planner output) command components |
+| `planner_state` | Current planner state string (`NORMAL`, `AVOIDING`, `RECOVERING`) |
+| `selected_side` | Selected avoidance side (`LEFT`, `RIGHT`, or empty) |
+| `debug_risk` | Current debug risk value |
+
+### Run With Recording
+
+```bat
+cd /d C:\Users\andrea.bedei3\Desktop\HoloObstacleAvoidance
+call scripts\source_ros2_windows.bat
+call install\setup.bat
+ros2 launch rov_obstacle_sim_bridge oracle_recording_demo.launch.py
+```
+
+Configure recording parameters via launch arguments:
+
+```bat
+ros2 launch rov_obstacle_sim_bridge oracle_recording_demo.launch.py ^
+  motion_mode:=forward ^
+  output_csv:=logs/oracle_demo_record.csv ^
+  duration_s:=30.0 ^
+  auto_shutdown:=true
+```
+
+With `auto_shutdown:=true`, the recorder and all pipeline nodes shut down automatically after `duration_s` seconds. The CSV file is written to the specified path (default: `logs/oracle_demo_record.csv`).
+
 ## Topics
 
 | Topic | Type | Notes |
