@@ -1,5 +1,10 @@
 /local_avoidance_planner:
   ros__parameters:
+    obstacle_topic: "/perception/obstacles"
+    nominal_cmd_topic: "/cmd_vel_nominal"
+    safe_cmd_topic: "/cmd_vel_safe"
+    debug_topic: "/avoidance/debug"
+    debug_frame_id: "front_camera"
     risk_enter_threshold: 0.55
     risk_exit_threshold: 0.30
     central_zone_min_x: 0.35
@@ -12,4 +17,3 @@
     avoidance_yaw_rate: 0.35
     command_timeout_s: 1.0
     planner_rate_hz: 20.0
-

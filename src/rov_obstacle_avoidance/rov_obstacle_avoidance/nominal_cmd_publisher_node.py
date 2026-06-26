@@ -12,16 +12,18 @@ class NominalCmdPublisherNode(Node):
 
     def __init__(self) -> None:
         super().__init__("nominal_cmd_publisher")
+        self.declare_parameter("output_topic", "/cmd_vel_nominal")
         self.declare_parameter("publish_rate_hz", 10.0)
         self.declare_parameter("surge", 0.3)
         self.declare_parameter("sway", 0.0)
         self.declare_parameter("heave", 0.0)
         self.declare_parameter("yaw_rate", 0.0)
 
-        self._publisher = self.create_publisher(Twist, "/cmd_vel_nominal", 10)
+        output_topic = str(self.get_parameter("output_topic").value)
+        self._publisher = self.create_publisher(Twist, output_topic, 10)
         publish_rate_hz = max(0.1, float(self.get_parameter("publish_rate_hz").value))
         self._timer = self.create_timer(1.0 / publish_rate_hz, self._publish)
-        self.get_logger().info("Nominal command publisher sending /cmd_vel_nominal.")
+        self.get_logger().info(f"Nominal command publisher sending {output_topic}.")
 
     def _publish(self) -> None:
         msg = Twist()
@@ -44,4 +46,3 @@ def main(args: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -20,6 +20,12 @@ The real rover currently has a front camera and no front-facing sonar, so the fi
 
 The neural detector is intentionally not implemented yet. The fake detector gives deterministic obstacle messages so the planner, topics, launch files, and tests can stabilize first.
 
+## Stabilization Patch
+
+The ROS topic names are configurable through node parameters, while the default demo topics remain unchanged. The fake detector now computes `bearing_rad` from normalized image `center_x` and a configurable horizontal field of view, so left/right/crossing scenarios are geometrically consistent.
+
+HoloOcean integration and the camera neural detector are still future work. This patch keeps `/cmd_vel_safe` as an abstract safe velocity command and does not add simulator, real ROV, MAVLink, thruster, or actuator control.
+
 ## Packages
 
 ```text
@@ -46,6 +52,17 @@ src/
 - `linear.z`: heave, preserved from nominal command
 - `angular.z`: yaw rate
 - `angular.x` and `angular.y` are preserved from nominal command
+
+## Abstract Command Sign Convention
+
+The current planner uses image-space obstacle position to select an abstract avoidance side:
+
+- obstacle on the left side of the image -> avoid right
+- obstacle on the right side of the image -> avoid left
+- `AvoidanceSide.LEFT` produces positive `linear.y` sway and positive `angular.z` yaw rate
+- `AvoidanceSide.RIGHT` produces negative `linear.y` sway and negative `angular.z` yaw rate
+
+This sign convention must be verified against HoloOcean body-frame conventions and against the real BlueROV command convention before connecting `/cmd_vel_safe` to any simulator or real vehicle controller.
 
 ## Messages
 

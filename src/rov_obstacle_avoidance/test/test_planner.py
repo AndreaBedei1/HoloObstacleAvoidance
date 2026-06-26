@@ -1,3 +1,4 @@
+from pathlib import Path
 import unittest
 
 from rov_obstacle_avoidance.planner import (
@@ -124,6 +125,26 @@ class PlannerBehaviorTest(unittest.TestCase):
 
         self.assertEqual(first.selected_side, AvoidanceSide.RIGHT)
         self.assertEqual(second.selected_side, AvoidanceSide.RIGHT)
+
+
+class PlannerConfigTest(unittest.TestCase):
+    def test_planner_config_contains_topic_parameters(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        text = (package_dir / "config" / "avoidance_planner.yaml").read_text(encoding="utf-8")
+
+        self.assertIn('obstacle_topic: "/perception/obstacles"', text)
+        self.assertIn('nominal_cmd_topic: "/cmd_vel_nominal"', text)
+        self.assertIn('safe_cmd_topic: "/cmd_vel_safe"', text)
+        self.assertIn('debug_topic: "/avoidance/debug"', text)
+        self.assertIn('debug_frame_id: "front_camera"', text)
+
+    def test_nominal_publisher_config_contains_output_topic(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        text = (package_dir / "config" / "nominal_cmd_publisher.yaml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('output_topic: "/cmd_vel_nominal"', text)
 
 
 def _obstacle(center_x: float) -> ObstacleObservation:

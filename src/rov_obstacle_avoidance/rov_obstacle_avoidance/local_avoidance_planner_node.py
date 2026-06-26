@@ -22,15 +22,25 @@ class LocalAvoidancePlannerNode(Node):
         super().__init__("local_avoidance_planner")
         self._declare_parameters()
         self._planner = LocalAvoidancePlanner(self._planner_config())
-        self._safe_publisher = self.create_publisher(Twist, "/cmd_vel_safe", 10)
-        self._debug_publisher = self.create_publisher(AvoidanceDebug, "/avoidance/debug", 10)
-        self.create_subscription(Obstacle2DArray, "/perception/obstacles", self._on_obstacles, 10)
-        self.create_subscription(Twist, "/cmd_vel_nominal", self._on_nominal_command, 10)
+        obstacle_topic = str(self.get_parameter("obstacle_topic").value)
+        nominal_cmd_topic = str(self.get_parameter("nominal_cmd_topic").value)
+        safe_cmd_topic = str(self.get_parameter("safe_cmd_topic").value)
+        debug_topic = str(self.get_parameter("debug_topic").value)
+        self._debug_frame_id = str(self.get_parameter("debug_frame_id").value)
+        self._safe_publisher = self.create_publisher(Twist, safe_cmd_topic, 10)
+        self._debug_publisher = self.create_publisher(AvoidanceDebug, debug_topic, 10)
+        self.create_subscription(Obstacle2DArray, obstacle_topic, self._on_obstacles, 10)
+        self.create_subscription(Twist, nominal_cmd_topic, self._on_nominal_command, 10)
         planner_rate_hz = max(1.0, float(self.get_parameter("planner_rate_hz").value))
         self._timer = self.create_timer(1.0 / planner_rate_hz, self._publish_safe_command)
-        self.get_logger().info("Local avoidance planner publishing /cmd_vel_safe.")
+        self.get_logger().info(f"Local avoidance planner publishing {safe_cmd_topic}.")
 
     def _declare_parameters(self) -> None:
+        self.declare_parameter("obstacle_topic", "/perception/obstacles")
+        self.declare_parameter("nominal_cmd_topic", "/cmd_vel_nominal")
+        self.declare_parameter("safe_cmd_topic", "/cmd_vel_safe")
+        self.declare_parameter("debug_topic", "/avoidance/debug")
+        self.declare_parameter("debug_frame_id", "front_camera")
         self.declare_parameter("risk_enter_threshold", 0.55)
         self.declare_parameter("risk_exit_threshold", 0.30)
         self.declare_parameter("central_zone_min_x", 0.35)
@@ -89,7 +99,7 @@ class LocalAvoidancePlannerNode(Node):
 
         debug = AvoidanceDebug()
         debug.header.stamp = self.get_clock().now().to_msg()
-        debug.header.frame_id = "front_camera"
+        debug.header.frame_id = self._debug_frame_id
         debug.current_state = output.state.value
         debug.selected_side = output.selected_side.value
         debug.risk = float(output.risk)
@@ -136,4 +146,3 @@ def main(args: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-
