@@ -34,7 +34,20 @@ src/
   rov_obstacle_perception/
   rov_obstacle_avoidance/
   rov_obstacle_bringup/
+  rov_obstacle_sim_bridge/
 ```
+
+## Simulation Oracle Geometry
+
+`rov_obstacle_sim_bridge` contains pure-Python geometry logic for converting known simulated obstacle world positions and a simulated rover pose into camera-space detections compatible with the existing `Obstacle2DArray` perception interface.
+
+- Uses deterministic geometric projection (no neural network, no real camera images).
+- Does not require HoloOcean to be installed.
+- Does not create ROS 2 nodes yet (those come in a future step).
+- Does not change the planner or existing demo behavior.
+- Provides reusable dataclasses (`ObstacleConfig`, `RoverPose2D`, `CameraConfig`, `ProjectedObstacle`) and helper functions for world-to-camera transforms, FOV clipping, apparent size estimation, and oracle risk scoring.
+
+A future step will wrap this geometry module in a ROS 2 node that publishes `Obstacle2DArray` on `/perception/obstacles`.
 
 ## Topics
 
