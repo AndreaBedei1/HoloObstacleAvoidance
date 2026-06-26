@@ -42,6 +42,7 @@ setup(
     entry_points={
         "console_scripts": [
             "holoocean_obstacle_oracle_node=rov_obstacle_sim_bridge.holoocean_obstacle_oracle_node:main",
+            "holoocean_pose_bridge_node=rov_obstacle_sim_bridge.holoocean_pose_bridge_node:main",
             "simulated_rover_pose_publisher_node=rov_obstacle_sim_bridge.simulated_rover_pose_publisher_node:main",
             "cmd_vel_safe_logger_node=rov_obstacle_sim_bridge.cmd_vel_safe_logger_node:main",
             "oracle_demo_recorder_node=rov_obstacle_sim_bridge.oracle_demo_recorder_node:main",

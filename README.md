@@ -47,15 +47,18 @@ src/
 
 ### Oracle ROS 2 Nodes
 
-Three nodes wrap the oracle geometry so it can replace the fake detector in a full demo pipeline:
+Four nodes wrap the oracle geometry so it can replace the fake detector in a full demo pipeline:
 
 | Node | Package | Input | Output |
 | --- | --- | --- | --- |
 | `simulated_rover_pose_publisher_node` | `rov_obstacle_sim_bridge` | — | `/sim/rov_pose` (`PoseStamped`) |
+| `holoocean_pose_bridge_node` | `rov_obstacle_sim_bridge` | HoloOcean env (optional) | `/sim/rov_pose` (`PoseStamped`) |
 | `holoocean_obstacle_oracle_node` | `rov_obstacle_sim_bridge` | `/sim/rov_pose` | `/perception/obstacles` (`Obstacle2DArray`) |
 | `cmd_vel_safe_logger_node` | `rov_obstacle_sim_bridge` | `/cmd_vel_safe` | CSV log file (optional) |
 
 The simulated pose publisher supports four motion modes: `static`, `forward`, `lateral`, and `yaw_scan`. All parameters are configurable via YAML or launch arguments.
+
+The HoloOcean pose bridge attempts to import HoloOcean at startup; when unavailable it falls back to a deterministic fake pose so the entire pipeline still runs for smoke testing. It does not send `/cmd_vel_safe`, does not control thrusters, and does not connect to MAVLink or the real ROV.
 
 ### Run The Oracle Demo
 
@@ -122,6 +125,76 @@ ros2 launch rov_obstacle_sim_bridge oracle_recording_demo.launch.py ^
 ```
 
 With `auto_shutdown:=true`, the recorder and all pipeline nodes shut down automatically after `duration_s` seconds. The CSV file is written to the specified path (default: `logs/oracle_demo_record.csv`).
+
+### Analyze a Recording
+
+After a recording completes, run the standalone analysis script to validate the avoidance behavior:
+
+```bat
+python scripts\analyze_oracle_recording.py logs/oracle_demo_record.csv
+```
+
+The report prints:
+
+- Total samples and recording duration
+- Maximum obstacle risk observed
+- Number of samples with obstacles, non-NORMAL planner states, and command differences
+- Timestamps of the first high-risk event, first avoidance activation, and first command difference
+- Peak safe sway and yaw rate magnitudes
+
+If `matplotlib` is installed, the script also saves a plot to `logs/oracle_demo_record_plot.png` showing risk, safe sway, and safe yaw over time. Matplotlib is optional—analysis runs without it.
+
+## HoloOcean Pose Smoke Bridge
+
+The `holoocean_pose_bridge_node` reads or simulates ROV pose and publishes `/sim/rov_pose`. When HoloOcean is installed the node opens a scenario, steps each timer tick, reads agent pose and publishes a `PoseStamped`. When HoloOcean is unavailable (or `use_holoocean=False`) the node falls back to a deterministic fake pose so the rest of the pipeline can run.
+
+This bridge does **not** send `/cmd_vel_safe`, does **not** control thrusters, and does **not** connect to MAVLink or the real ROV. It only reads/simulates pose.
+
+### Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `output_topic` | `/sim/rov_pose` | Output topic name. |
+| `publish_rate_hz` | `20.0` | Timer frequency. |
+| `frame_id` | `world` | Header frame ID. |
+| `scenario_name` | `OpenWater-Hovering` | HoloOcean scenario name. |
+| `agent_name` | `auv0` | Agent key in the HoloOcean state dict. |
+| `use_holoocean` | `true` | Attempt to use HoloOcean for pose reading. |
+| `fallback_to_fake_pose` | `true` | Fall back to fake pose when HoloOcean fails. |
+| `fake_velocity_x` | `0.2` | Fake pose drift velocity along X (m/s). |
+
+### Run The HoloOcean Smoke Bridge
+
+```bat
+cd /d C:\Users\andrea.bedei3\Desktop\HoloObstacleAvoidance
+call scripts\source_ros2_windows.bat
+call install\setup.bat
+ros2 launch rov_obstacle_sim_bridge holoocean_pose_smoke.launch.py
+```
+
+Run with fake-pose fallback (no HoloOcean required):
+
+```bat
+ros2 launch rov_obstacle_sim_bridge holoocean_pose_smoke.launch.py ^
+  use_holoocean:=false ^
+  output_csv:=logs/holoocean_fake_smoke.csv ^
+  duration_s:=10.0 ^
+  auto_shutdown:=true
+```
+
+Analyze the resulting CSV:
+
+```bat
+python scripts\analyze_oracle_recording.py logs/holoocean_fake_smoke.csv
+```
+
+### Helper Functions
+
+Three pure-Python helpers are testable without HoloOcean or ROS 2:
+
+- `quaternion_from_yaw(yaw_rad)` — returns a yaw-only `Quaternion`.
+- `pose_from_holoocean_state(state, agent_name)` — robustly extracts `(x, y, z, yaw_rad)` from multiple HoloOcean state dict layouts.
+- `fake_pose_at_time(t, ...)` — returns a deterministic linear-drift pose for smoke testing.
 
 ## Topics
 
