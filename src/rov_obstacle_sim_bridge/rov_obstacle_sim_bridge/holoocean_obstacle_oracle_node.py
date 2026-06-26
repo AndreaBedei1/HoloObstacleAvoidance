@@ -59,8 +59,17 @@ def _projected_to_obstacle_2d(
 class HolooceanObstacleOracleNode(Node):
     """Subscribe to simulated rover pose, publish Obstacle2DArray via oracle geometry."""
 
-    def __init__(self) -> None:
-        super().__init__("holoocean_obstacle_oracle")
+    def __init__(
+        self,
+        *,
+        context: rclpy.context.Context | None = None,
+        parameter_overrides: list[rclpy.parameter.Parameter] | None = None,
+    ) -> None:
+        super().__init__(
+            "holoocean_obstacle_oracle",
+            context=context,
+            parameter_overrides=parameter_overrides,
+        )
 
         self._declare_parameters()
 

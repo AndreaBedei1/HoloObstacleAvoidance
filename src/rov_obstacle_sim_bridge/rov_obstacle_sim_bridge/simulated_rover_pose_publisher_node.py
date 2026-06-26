@@ -20,8 +20,17 @@ def quaternion_from_yaw(yaw_rad: float) -> Quaternion:
 class SimulatedRoverPosePublisherNode(Node):
     """Publish a simple /sim/rov_pose PoseStamped for oracle demos."""
 
-    def __init__(self) -> None:
-        super().__init__("simulated_rover_pose_publisher")
+    def __init__(
+        self,
+        *,
+        context: rclpy.context.Context | None = None,
+        parameter_overrides: list[rclpy.parameter.Parameter] | None = None,
+    ) -> None:
+        super().__init__(
+            "simulated_rover_pose_publisher",
+            context=context,
+            parameter_overrides=parameter_overrides,
+        )
 
         self._declare_parameters()
 

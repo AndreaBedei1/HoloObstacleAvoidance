@@ -13,8 +13,17 @@ from rclpy.node import Node
 class CmdVelSafeLoggerNode(Node):
     """Subscribe to /cmd_vel_safe and append every command to a CSV file."""
 
-    def __init__(self) -> None:
-        super().__init__("cmd_vel_safe_logger")
+    def __init__(
+        self,
+        *,
+        context: rclpy.context.Context | None = None,
+        parameter_overrides: list[rclpy.parameter.Parameter] | None = None,
+    ) -> None:
+        super().__init__(
+            "cmd_vel_safe_logger",
+            context=context,
+            parameter_overrides=parameter_overrides,
+        )
 
         self._declare_parameters()
 

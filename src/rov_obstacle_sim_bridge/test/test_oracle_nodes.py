@@ -19,6 +19,27 @@ from rov_obstacle_sim_bridge.simulated_rover_pose_publisher_node import (
 )
 
 
+def _get_parameter():
+    """Lazy import for rclpy.parameter.Parameter."""
+    from rclpy.parameter import Parameter
+    return Parameter
+
+
+# ---------------------------------------------------------------------------
+# Warm-up rclpy so the (flaky) logging-DLL load happens once at import time
+# rather than inside the first test's setUp.  On Windows Humble the first
+# rclpy.init() may fail when loading rcl_logging_spdlog.dll; after that
+# failure the global ref-count prevents re-trying, so subsequent inits succeed.
+# ---------------------------------------------------------------------------
+try:
+    import rclpy as _rclpy
+    _warm_ctx = _rclpy.context.Context()
+    _rclpy.init(context=_warm_ctx)
+    _rclpy.shutdown(context=_warm_ctx)
+except Exception:  # noqa: BLE001 – any failure is acceptable here
+    pass
+
+
 class TestQuaternionHelpers(unittest.TestCase):
     """Test the quaternion conversion helpers in both nodes."""
 
@@ -67,7 +88,7 @@ class TestNodeParameters(unittest.TestCase):
         rclpy.shutdown(context=self._ctx)
 
     def test_simulated_pose_publisher_defaults(self):
-        node = SimulatedRoverPosePublisherNode()
+        node = SimulatedRoverPosePublisherNode(context=self._ctx)
         self.assertEqual(
             str(node.get_parameter("output_topic").value), "/sim/rov_pose"
         )
@@ -77,30 +98,35 @@ class TestNodeParameters(unittest.TestCase):
         node.destroy_node()
 
     def test_oracle_node_defaults(self):
-        with tempfile.NamedTemporaryFile(
+        Parameter = _get_parameter()
+        fh = tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
-        ) as fh:
+        )
+        try:
             fh.write("obstacles:\n")
             fh.write("  - name: test\n    class_name: rock\n")
             fh.write("    position: [3.0, 0.0, 0.0]\n    radius_m: 0.4\n")
             fh.flush()
-            try:
-                node = HolooceanObstacleOracleNode(
-                    parameters=[{"obstacle_config_file": fh.name}]
-                )
-            finally:
-                os.unlink(fh.name)
-        self.assertEqual(
-            str(node.get_parameter("rover_pose_topic").value), "/sim/rov_pose"
-        )
-        self.assertEqual(
-            str(node.get_parameter("output_topic").value), "/perception/obstacles"
-        )
-        self.assertAlmostEqual(node.get_parameter("confidence").value, 1.0)
-        node.destroy_node()
+            fh.close()
+            node = HolooceanObstacleOracleNode(
+                context=self._ctx,
+                parameter_overrides=[
+                    Parameter("obstacle_config_file", Parameter.Type.STRING, fh.name)
+                ],
+            )
+            self.assertEqual(
+                str(node.get_parameter("rover_pose_topic").value), "/sim/rov_pose"
+            )
+            self.assertEqual(
+                str(node.get_parameter("output_topic").value), "/perception/obstacles"
+            )
+            self.assertAlmostEqual(node.get_parameter("confidence").value, 1.0)
+            node.destroy_node()
+        finally:
+            os.unlink(fh.name)
 
     def test_cmd_vel_logger_defaults(self):
-        node = CmdVelSafeLoggerNode()
+        node = CmdVelSafeLoggerNode(context=self._ctx)
         self.assertEqual(
             str(node.get_parameter("input_topic").value), "/cmd_vel_safe"
         )
@@ -122,6 +148,7 @@ class TestCmdVelLoggerCsv(unittest.TestCase):
         rclpy.shutdown(context=self._ctx)
 
     def test_csv_header_and_content(self):
+        Parameter = _get_parameter()
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".csv", delete=False
         ) as tmp:
@@ -129,7 +156,10 @@ class TestCmdVelLoggerCsv(unittest.TestCase):
 
         try:
             node = CmdVelSafeLoggerNode(
-                parameters=[{"log_file": tmp_path}]
+                context=self._ctx,
+                parameter_overrides=[
+                    Parameter("log_file", Parameter.Type.STRING, tmp_path)
+                ],
             )
 
             from geometry_msgs.msg import Twist
