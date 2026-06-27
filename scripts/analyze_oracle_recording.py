@@ -203,7 +203,7 @@ def print_report(stats: dict) -> None:
         ),
         (
             stats["cmd_diff_samples"] > 0,
-            f"/cmd_vel_safe differs from /cmd_vel_nominal at least once "
+            f"/planner/cmd_vel_safe differs from /cmd_vel_nominal at least once "
             f"(got {stats['cmd_diff_samples']} samples)",
         ),
     ]

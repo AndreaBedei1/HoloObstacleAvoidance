@@ -128,7 +128,7 @@ class TestNodeParameters(unittest.TestCase):
     def test_cmd_vel_logger_defaults(self):
         node = CmdVelSafeLoggerNode(context=self._ctx)
         self.assertEqual(
-            str(node.get_parameter("input_topic").value), "/cmd_vel_safe"
+            str(node.get_parameter("input_topic").value), "/planner/cmd_vel_safe"
         )
         self.assertEqual(str(node.get_parameter("log_file").value), "")
         self.assertAlmostEqual(node.get_parameter("flush_interval_s").value, 1.0)

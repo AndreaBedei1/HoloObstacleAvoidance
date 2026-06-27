@@ -163,7 +163,7 @@ class OracleDemoRecorderNode(Node):
             Twist, "/cmd_vel_nominal", self._on_nominal, 10
         )
         self.create_subscription(
-            Twist, "/cmd_vel_safe", self._on_safe, 10
+            Twist, "/planner/cmd_vel_safe", self._on_safe, 10
         )
         self.create_subscription(
             AvoidanceDebug, "/avoidance/debug", self._on_debug, 10

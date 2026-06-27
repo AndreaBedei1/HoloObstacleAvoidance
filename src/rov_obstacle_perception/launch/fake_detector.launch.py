@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     scenario_mode = LaunchConfiguration("scenario_mode")
     config_file = PathJoinSubstitution(
-        [FindPackageShare("rov_obstacle_perception"), "config", "fake_detector_scenarios.yaml"]
+        [FindPackageShare("rov_obstacle_perception"), "config", "fake_detector.yaml"]
     )
 
     return LaunchDescription(
@@ -27,4 +27,3 @@ def generate_launch_description():
             ),
         ]
     )
-

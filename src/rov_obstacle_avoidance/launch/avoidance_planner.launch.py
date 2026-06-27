@@ -6,7 +6,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     config_file = PathJoinSubstitution(
-        [FindPackageShare("rov_obstacle_avoidance"), "config", "avoidance_planner.yaml"]
+        [FindPackageShare("rov_obstacle_avoidance"), "config", "local_avoidance_planner.yaml"]
     )
 
     return LaunchDescription(
@@ -20,4 +20,3 @@ def generate_launch_description():
             ),
         ]
     )
-

@@ -18,6 +18,8 @@ SCENARIO_RIGHT_STATIC = "right_static"
 SCENARIO_CROSSING_LEFT_TO_RIGHT = "crossing_left_to_right"
 SCENARIO_CROSSING_RIGHT_TO_LEFT = "crossing_right_to_left"
 SCENARIO_APPROACHING = "approaching"
+SCENARIO_DISAPPEARING = "disappearing"
+SCENARIO_INTERMITTENT = "intermittent"
 
 SUPPORTED_SCENARIOS = {
     SCENARIO_NONE,
@@ -27,6 +29,8 @@ SUPPORTED_SCENARIOS = {
     SCENARIO_CROSSING_LEFT_TO_RIGHT,
     SCENARIO_CROSSING_RIGHT_TO_LEFT,
     SCENARIO_APPROACHING,
+    SCENARIO_DISAPPEARING,
+    SCENARIO_INTERMITTENT,
 }
 
 
@@ -67,6 +71,9 @@ class FakeObstacleDetectorNode(Node):
         self.declare_parameter("horizontal_fov_deg", 90.0)
         self.declare_parameter("risk", 0.8)
         self.declare_parameter("scenario_mode", SCENARIO_CENTRAL_STATIC)
+        self.declare_parameter("disappearing_after_s", 5.0)
+        self.declare_parameter("intermittent_period_s", 2.0)
+        self.declare_parameter("intermittent_visible_fraction", 0.5)
 
     def _publish(self) -> None:
         scenario = str(self.get_parameter("scenario_mode").value)
@@ -82,12 +89,13 @@ class FakeObstacleDetectorNode(Node):
 
         if scenario != SCENARIO_NONE:
             obstacle = self._build_obstacle(scenario)
-            obstacle.header = message.header
-            message.obstacles.append(obstacle)
+            if obstacle is not None:
+                obstacle.header = message.header
+                message.obstacles.append(obstacle)
 
         self._publisher.publish(message)
 
-    def _build_obstacle(self, scenario: str) -> Obstacle2D:
+    def _build_obstacle(self, scenario: str) -> Obstacle2D | None:
         elapsed_s = time.monotonic() - self._start_time
         class_name = str(self.get_parameter("obstacle_class").value)
         confidence = float(self.get_parameter("confidence").value)
@@ -111,7 +119,14 @@ class FakeObstacleDetectorNode(Node):
             risk=risk,
             horizontal_fov_deg=horizontal_fov_deg,
             bearing_override_rad=bearing_override,
+            disappearing_after_s=float(self.get_parameter("disappearing_after_s").value),
+            intermittent_period_s=float(self.get_parameter("intermittent_period_s").value),
+            intermittent_visible_fraction=float(
+                self.get_parameter("intermittent_visible_fraction").value
+            ),
         )
+        if fields is None:
+            return None
 
         obstacle = Obstacle2D()
         obstacle.class_name = class_name
@@ -138,7 +153,19 @@ def build_fake_obstacle_fields(
     risk: float,
     horizontal_fov_deg: float,
     bearing_override_rad: float | None = None,
-) -> FakeObstacleFields:
+    disappearing_after_s: float = 5.0,
+    intermittent_period_s: float = 2.0,
+    intermittent_visible_fraction: float = 0.5,
+) -> FakeObstacleFields | None:
+    if scenario == SCENARIO_DISAPPEARING and elapsed_s >= max(0.0, disappearing_after_s):
+        return None
+    if scenario == SCENARIO_INTERMITTENT:
+        period_s = max(0.1, intermittent_period_s)
+        visible_fraction = _clamp(intermittent_visible_fraction, 0.0, 1.0)
+        phase = (elapsed_s % period_s) / period_s
+        if phase >= visible_fraction:
+            return None
+
     if scenario == SCENARIO_LEFT_STATIC:
         center_x = 0.25
     elif scenario == SCENARIO_RIGHT_STATIC:

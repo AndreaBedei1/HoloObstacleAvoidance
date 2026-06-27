@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 import unittest
 
@@ -114,6 +115,14 @@ class PlannerBehaviorTest(unittest.TestCase):
         self.assertEqual(output.state, PlannerState.NORMAL)
         self.assertEqual(output.command, self.nominal)
 
+    def test_stale_nominal_command_triggers_safe_stop(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(self.nominal, now_s=0.0)
+
+        output = planner.compute(now_s=2.0)
+
+        self.assertEqual(output.command, VelocityCommand())
+
     def test_selected_avoidance_side_does_not_flip_every_frame(self):
         planner = LocalAvoidancePlanner(self.config)
         planner.update_nominal_command(self.nominal, now_s=0.0)
@@ -126,6 +135,34 @@ class PlannerBehaviorTest(unittest.TestCase):
         self.assertEqual(first.selected_side, AvoidanceSide.RIGHT)
         self.assertEqual(second.selected_side, AvoidanceSide.RIGHT)
 
+    def test_generated_twist_commands_are_finite_and_surge_clamped(self):
+        planner = LocalAvoidancePlanner(self.config)
+        planner.update_nominal_command(
+            VelocityCommand(
+                surge=2.0,
+                sway=float("nan"),
+                heave=float("inf"),
+                roll_rate=0.0,
+                pitch_rate=0.0,
+                yaw_rate=float("-inf"),
+            ),
+            now_s=0.0,
+        )
+        planner.update_obstacles([], now_s=0.0)
+
+        output = planner.compute(now_s=0.1)
+
+        values = (
+            output.command.surge,
+            output.command.sway,
+            output.command.heave,
+            output.command.roll_rate,
+            output.command.pitch_rate,
+            output.command.yaw_rate,
+        )
+        self.assertTrue(all(math.isfinite(value) for value in values))
+        self.assertLessEqual(abs(output.command.surge), self.config.max_surge)
+
 
 class PlannerConfigTest(unittest.TestCase):
     def test_planner_config_contains_topic_parameters(self):
@@ -134,9 +171,10 @@ class PlannerConfigTest(unittest.TestCase):
 
         self.assertIn('obstacle_topic: "/perception/obstacles"', text)
         self.assertIn('nominal_cmd_topic: "/cmd_vel_nominal"', text)
-        self.assertIn('safe_cmd_topic: "/cmd_vel_safe"', text)
+        self.assertIn('safe_cmd_topic: "/planner/cmd_vel_safe"', text)
         self.assertIn('debug_topic: "/avoidance/debug"', text)
         self.assertIn('debug_frame_id: "front_camera"', text)
+        self.assertIn('nominal_timeout_behavior: "stop"', text)
 
     def test_nominal_publisher_config_contains_output_topic(self):
         package_dir = Path(__file__).resolve().parents[1]

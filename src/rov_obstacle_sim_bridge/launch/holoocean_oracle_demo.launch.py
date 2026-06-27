@@ -18,10 +18,10 @@ def generate_launch_description():
         [FindPackageShare("rov_obstacle_sim_bridge"), "config", "obstacles_simple.yaml"]
     )
     planner_config = PathJoinSubstitution(
-        [FindPackageShare("rov_obstacle_avoidance"), "config", "avoidance_planner.yaml"]
+        [FindPackageShare("rov_obstacle_avoidance"), "config", "local_avoidance_planner.yaml"]
     )
     nominal_config = PathJoinSubstitution(
-        [FindPackageShare("rov_obstacle_avoidance"), "config", "nominal_cmd_publisher.yaml"]
+        [FindPackageShare("rov_obstacle_bringup"), "config", "demo.yaml"]
     )
 
     return LaunchDescription(
@@ -54,7 +54,7 @@ def generate_launch_description():
             ),
             # Nominal command publisher (same as fake demo)
             Node(
-                package="rov_obstacle_avoidance",
+                package="rov_obstacle_bringup",
                 executable="nominal_cmd_publisher_node",
                 name="nominal_cmd_publisher",
                 output="screen",

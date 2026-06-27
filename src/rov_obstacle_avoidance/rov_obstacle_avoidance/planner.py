@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import math
 
 
 class PlannerState(str, Enum):
@@ -57,6 +58,7 @@ class PlannerConfig:
     avoidance_sway: float = 0.20
     avoidance_yaw_rate: float = 0.35
     command_timeout_s: float = 1.0
+    nominal_timeout_behavior: str = "stop"
 
 
 @dataclass(frozen=True)
@@ -150,8 +152,10 @@ class LocalAvoidancePlanner:
         if self._last_nominal_time_s is None:
             return VelocityCommand()
         if now_s - self._last_nominal_time_s > self.config.command_timeout_s:
+            if self.config.nominal_timeout_behavior.strip().lower() in {"hold", "hold_last"}:
+                return _sanitize_command(self._nominal_command, self.config.max_surge)
             return VelocityCommand()
-        return self._nominal_command
+        return _sanitize_command(self._nominal_command, self.config.max_surge)
 
     def _most_dangerous_obstacle(
         self,
@@ -199,16 +203,19 @@ class LocalAvoidancePlanner:
 
     def _avoidance_command(self, nominal: VelocityCommand) -> VelocityCommand:
         side_sign = 1.0 if self.selected_side == AvoidanceSide.LEFT else -1.0
-        surge = _clamp(nominal.surge, -self.config.max_surge, self.config.max_surge)
+        max_surge = abs(_finite_or_zero(self.config.max_surge))
+        surge = _clamp(nominal.surge, -max_surge, max_surge)
         if surge > self.config.min_surge_during_avoidance:
             surge = self.config.min_surge_during_avoidance
+        sway = side_sign * abs(_finite_or_zero(self.config.avoidance_sway))
+        yaw_rate = side_sign * abs(_finite_or_zero(self.config.avoidance_yaw_rate))
         return VelocityCommand(
             surge=surge,
-            sway=side_sign * abs(self.config.avoidance_sway),
+            sway=sway,
             heave=nominal.heave,
             roll_rate=nominal.roll_rate,
             pitch_rate=nominal.pitch_rate,
-            yaw_rate=side_sign * abs(self.config.avoidance_yaw_rate),
+            yaw_rate=yaw_rate,
         )
 
     def _recovery_blend(self, nominal: VelocityCommand, now_s: float) -> VelocityCommand | None:
@@ -266,6 +273,22 @@ def _blend(start: float, end: float, alpha: float) -> float:
     return start + (end - start) * alpha
 
 
+def _sanitize_command(command: VelocityCommand, max_surge: float) -> VelocityCommand:
+    max_surge = abs(_finite_or_zero(max_surge))
+    return VelocityCommand(
+        surge=_clamp(_finite_or_zero(command.surge), -max_surge, max_surge),
+        sway=_finite_or_zero(command.sway),
+        heave=_finite_or_zero(command.heave),
+        roll_rate=_finite_or_zero(command.roll_rate),
+        pitch_rate=_finite_or_zero(command.pitch_rate),
+        yaw_rate=_finite_or_zero(command.yaw_rate),
+    )
+
+
+def _finite_or_zero(value: float) -> float:
+    value = float(value)
+    return value if math.isfinite(value) else 0.0
+
+
 def _clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
-

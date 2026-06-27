@@ -29,6 +29,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
+        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
     ],
     install_requires=["setuptools"],
@@ -38,5 +39,9 @@ setup(
     description="Launch files for the underwater ROV obstacle avoidance prototype.",
     license="MIT",
     cmdclass={"test": PyTestCommand},
+    entry_points={
+        "console_scripts": [
+            "nominal_cmd_publisher_node = rov_obstacle_bringup.nominal_cmd_publisher_node:main",
+        ],
+    },
 )
-

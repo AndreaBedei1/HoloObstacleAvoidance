@@ -22,6 +22,7 @@ class LocalAvoidancePlannerNode(Node):
         super().__init__("local_avoidance_planner")
         self._declare_parameters()
         self._planner = LocalAvoidancePlanner(self._planner_config())
+        self._last_logged_state = self._planner.state
         obstacle_topic = str(self.get_parameter("obstacle_topic").value)
         nominal_cmd_topic = str(self.get_parameter("nominal_cmd_topic").value)
         safe_cmd_topic = str(self.get_parameter("safe_cmd_topic").value)
@@ -38,7 +39,7 @@ class LocalAvoidancePlannerNode(Node):
     def _declare_parameters(self) -> None:
         self.declare_parameter("obstacle_topic", "/perception/obstacles")
         self.declare_parameter("nominal_cmd_topic", "/cmd_vel_nominal")
-        self.declare_parameter("safe_cmd_topic", "/cmd_vel_safe")
+        self.declare_parameter("safe_cmd_topic", "/planner/cmd_vel_safe")
         self.declare_parameter("debug_topic", "/avoidance/debug")
         self.declare_parameter("debug_frame_id", "front_camera")
         self.declare_parameter("risk_enter_threshold", 0.55)
@@ -52,6 +53,7 @@ class LocalAvoidancePlannerNode(Node):
         self.declare_parameter("avoidance_sway", 0.20)
         self.declare_parameter("avoidance_yaw_rate", 0.35)
         self.declare_parameter("command_timeout_s", 1.0)
+        self.declare_parameter("nominal_timeout_behavior", "stop")
         self.declare_parameter("planner_rate_hz", 20.0)
 
     def _planner_config(self) -> PlannerConfig:
@@ -69,6 +71,7 @@ class LocalAvoidancePlannerNode(Node):
             avoidance_sway=float(self.get_parameter("avoidance_sway").value),
             avoidance_yaw_rate=float(self.get_parameter("avoidance_yaw_rate").value),
             command_timeout_s=float(self.get_parameter("command_timeout_s").value),
+            nominal_timeout_behavior=str(self.get_parameter("nominal_timeout_behavior").value),
         )
 
     def _on_nominal_command(self, msg: Twist) -> None:
@@ -94,6 +97,12 @@ class LocalAvoidancePlannerNode(Node):
 
     def _publish_safe_command(self) -> None:
         output = self._planner.compute(self._now_s())
+        if output.state != self._last_logged_state:
+            self.get_logger().info(
+                f"Avoidance state changed {self._last_logged_state.value} -> {output.state.value} "
+                f"(side={output.selected_side.value}, risk={output.risk:.3f})"
+            )
+            self._last_logged_state = output.state
         safe_command = _twist_from_velocity(output.command)
         self._safe_publisher.publish(safe_command)
 

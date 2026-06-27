@@ -1,4 +1,4 @@
-"""Log /cmd_vel_safe commands for offline review during oracle demos."""
+"""Log /planner/cmd_vel_safe commands for offline review during oracle demos."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from rclpy.node import Node
 
 
 class CmdVelSafeLoggerNode(Node):
-    """Subscribe to /cmd_vel_safe and append every command to a CSV file."""
+    """Subscribe to the abstract safe velocity topic and append every command to a CSV file."""
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class CmdVelSafeLoggerNode(Node):
                 "linear_x", "linear_y", "linear_z",
                 "angular_x", "angular_y", "angular_z",
             ])
-            self.get_logger().info(f"Logging /cmd_vel_safe to {self._path}")
+            self.get_logger().info(f"Logging safe velocity commands to {self._path}")
         else:
             self.get_logger().info("Logging disabled (empty log_file parameter).")
 
@@ -60,7 +60,7 @@ class CmdVelSafeLoggerNode(Node):
     # Parameters
     # ------------------------------------------------------------------
     def _declare_parameters(self) -> None:
-        self.declare_parameter("input_topic", "/cmd_vel_safe")
+        self.declare_parameter("input_topic", "/planner/cmd_vel_safe")
         self.declare_parameter("log_file", "")
         self.declare_parameter("flush_interval_s", 1.0)
 

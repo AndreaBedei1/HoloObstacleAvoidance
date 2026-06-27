@@ -5,7 +5,7 @@ steps each timer tick, reads agent pose and publishes a PoseStamped.
 When HoloOcean is unavailable (or use_holoocean=False) the node falls
 back to a deterministic fake pose so the rest of the pipeline can run.
 
-Does NOT send /cmd_vel_safe, does NOT control thrusters, does NOT
+Does NOT send /planner/cmd_vel_safe, does NOT control thrusters, does NOT
 connect to MAVLink or the real ROV.
 """
 
