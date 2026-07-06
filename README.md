@@ -44,15 +44,15 @@ a process**:
 - ROS 2 Lyrical -> pixi env at `C:\dev\lyrical` (Python 3.12).
 
 So the integration is a **two-process bridge** connected by a localhost TCP
-socket. This matches the design goal "HoloOcean is a simulator that *publishes*
+socket. This matches the design goal "HoloOcean is a simulator that publishes
 sensors and vehicle state into ROS 2":
 
 ```text
 [conda ocean / py3.9]                         [pixi ROS 2 / py3.12]
-holoocean_sim_server.py  ── TCP 127.0.0.1 ──>  holoocean_bridge_node
-  make(scenario) + spawn_prop spheres          /camera/front/image_raw (Image rgb8)
+holoocean_sim_server.py  -- TCP 127.0.0.1 -->  holoocean_bridge_node
+  make(scenario) + spawn primitive props       /camera/front/image_raw (Image rgb8)
   step sim, read camera/pose/vel/depth         /rov/pose /rov/velocity /rov/depth
-  apply incoming cmd_vel (kinematic)  <── TCP ─ /perception/obstacles_oracle  (SIM-ONLY)
+  apply incoming cmd_vel (kinematic)  <-- TCP -- /perception/obstacles_oracle  (SIM-ONLY)
                                                forwards /planner/cmd_vel_safe -> server
        shared: rov_obstacle_sim_bridge/sim_bridge_protocol.py  (stdlib only, both envs)
 ```
@@ -62,11 +62,46 @@ spawns obstacles with HoloOcean's native `spawn_prop` (`sphere`, `box`,
 `cylinder`, `cone`). Scenarios live in
 `config/holoocean_scenarios/*.yaml`; obstacle `relative_position` is
 `[forward_m, left_m, up_m]` in the rover's spawn body frame. Vehicle motion is a
-**kinematic teleport** convenience for simulation only — it never touches
+**kinematic teleport** convenience for simulation only; it never touches
 thrusters, MAVLink or a real ROV.
 
 `/perception/obstacles_oracle` is a **simulation-only** ground-truth projection
 (debugging / dataset labels / planner validation), never a real onboard sensor.
+
+### Primitive-composed semantic objects
+
+HoloOcean 2.3.0 is used here through `spawn_prop` primitives only. This setup
+has no confirmed custom mesh import API, so complex obstacles are approximated
+with grouped primitive parts instead of external meshes.
+
+Scenario YAML supports both simple `obstacles` and grouped `semantic_objects`.
+A simple obstacle spawns one primitive and publishes one oracle obstacle. A
+semantic object spawns every primitive in its `parts` list, then publishes one
+aggregated oracle obstacle by default:
+
+```yaml
+semantic_objects:
+  - name: anchor_center
+    class_name: anchor
+    relative_position: [10.0, 0.0, 0.0]  # [forward_m, left_m, up_m]
+    parts:
+      - name: stem
+        prop_type: box
+        relative_position: [0.0, 0.0, 0.0]
+        scale: [0.35, 0.35, 3.2]
+      - name: upper_crossbar
+        prop_type: box
+        relative_position: [0.0, 0.0, 1.15]
+        scale: [0.35, 3.2, 0.35]
+```
+
+The anchor scenarios build an approximate anchor from a central vertical bar,
+an upper crossbar, two angled lower arms, lateral sphere tips, and optional
+sphere details for the top ring. The oracle projects the aggregate bounds as a
+single `class_name: anchor` detection with one bounding box, bearing, apparent
+area, risk, confidence, and valid tracking flag. Primitive-level oracle
+detections are disabled by default and are available only through
+`oracle.debug_primitive_detections: true`.
 
 ### Coordinate convention (calibrated against real renders)
 
@@ -76,9 +111,10 @@ LEFT, and teleport yaw=+90 deg turns the camera toward +Y. The bridge negates
 y/yaw when projecting through `oracle_geometry` (which uses +y = right) so the
 oracle `center_x` matches where the obstacle actually appears.
 
-### Run the real HoloOcean avoidance demo
+### Run real HoloOcean closed loop
 
-Terminal 1 — sim server in the conda `ocean` env:
+Terminal 1: sim server in the conda `ocean` env. Use `sphere_front.yaml` for
+the baseline sphere scenario:
 
 ```bat
 conda run -n ocean python ^
@@ -87,13 +123,45 @@ conda run -n ocean python ^
   --serve
 ```
 
-Terminal 2 — ROS 2 closed-loop avoidance in the pixi env:
+Or run the centered primitive anchor:
+
+```bat
+conda run -n ocean python ^
+  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
+  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml ^
+  --serve
+```
+
+Terminal 2: ROS 2 closed-loop bridge and generic planner in the ROS 2 env:
 
 ```bat
 call scripts\source_ros2_windows.bat
 call install\setup.bat
 ros2 launch rov_obstacle_sim_bridge holoocean_oracle_avoidance.launch.py
 ```
+
+For anchor work, the equivalent convenience launch is:
+
+```bat
+ros2 launch rov_obstacle_sim_bridge holoocean_anchor_avoidance.launch.py ^
+  scenario_config:=src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml
+```
+
+The `scenario_config` launch argument is informational; the HoloOcean server is
+still started separately in Terminal 1 because it must run in the conda `ocean`
+Python 3.9 process.
+
+Available HoloOcean scenario YAMLs:
+
+- `sphere_front.yaml`
+- `sphere_left.yaml`
+- `sphere_right.yaml`
+- `multi_sphere.yaml`
+- `anchor_center_static.yaml`
+- `anchor_left_static.yaml`
+- `anchor_right_static.yaml`
+- `anchor_partially_visible.yaml`
+- `anchor_with_spheres.yaml`
 
 Smoke-test the sim server alone (no ROS 2, real HoloOcean) with a scripted
 forward run:
@@ -102,6 +170,15 @@ forward run:
 conda run -n ocean python ^
   src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
   --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\sphere_front.yaml ^
+  --selftest
+```
+
+Anchor self-test:
+
+```bat
+conda run -n ocean python ^
+  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
+  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml ^
   --selftest
 ```
 
@@ -114,7 +191,7 @@ the rover deviates and recovers.
 
 The ROS topic names are configurable through node parameters, while the default demo topics remain unchanged. The fake detector now computes `bearing_rad` from normalized image `center_x` and a configurable horizontal field of view, so left/right/crossing scenarios are geometrically consistent.
 
-HoloOcean integration and the camera neural detector are still future work. This patch keeps `/planner/cmd_vel_safe` as an abstract safe velocity command and does not add simulator, real ROV, MAVLink, thruster, or actuator control.
+The HoloOcean bridge is simulation-only and keeps `/planner/cmd_vel_safe` as an abstract safe velocity command. It does not connect to a real ROV, MAVLink, thrusters, or actuator control. The camera neural detector remains future work.
 
 ## Packages
 
@@ -141,7 +218,8 @@ The legacy YAML names are kept for compatibility, but new launches use the files
 
 - Uses deterministic geometric projection (no neural network, no real camera images).
 - Does not require HoloOcean to be installed.
-- Provides reusable dataclasses (`ObstacleConfig`, `RoverPose2D`, `CameraConfig`, `ProjectedObstacle`) and helper functions for world-to-camera transforms, FOV clipping, apparent size estimation, and oracle risk scoring.
+- Provides reusable dataclasses (`ObstacleConfig`, `RoverPose2D`, `CameraConfig`, `ProjectedObstacle`) and helper functions for world-to-camera transforms, FOV clipping, apparent size estimation, grouped-object bounds projection, and oracle risk scoring.
+- Risk scoring considers image centrality, apparent size, simulated range, class weight, confidence, and closing speed when a simulated velocity is available.
 
 ### Oracle ROS 2 Nodes
 
@@ -299,7 +377,7 @@ Three pure-Python helpers are testable without HoloOcean or ROS 2:
 | Topic | Type | Notes |
 | --- | --- | --- |
 | `/sim/rov_pose` | `geometry_msgs/msg/PoseStamped` | Simulated rover pose (oracle demo only). |
-| `/perception/obstacles` | `rov_obstacle_msgs/msg/Obstacle2DArray` | Fake detector output for now. |
+| `/perception/obstacles` | `rov_obstacle_msgs/msg/Obstacle2DArray` | Planner input from the fake detector or the simulation-only HoloOcean oracle remap. |
 | `/cmd_vel_nominal` | `geometry_msgs/msg/Twist` | Desired operator/autonomy velocity before avoidance. |
 | `/planner/cmd_vel_safe` | `geometry_msgs/msg/Twist` | Planner output only; no thrusters or MAVLink commands. |
 | `/avoidance/debug` | `rov_obstacle_msgs/msg/AvoidanceDebug` | Current planner state, side, risk, and selected command. |
@@ -424,19 +502,26 @@ Demo launch arguments:
 - `avoidance_yaw_rate`
 - `min_avoidance_hold_s`
 
-## HoloOcean Preparation
+## HoloOcean Status And Limits
 
-HoloOcean integration remains simulation-only preparation. The intended later connection is:
+Current HoloOcean integration is a simulation-only, two-process closed loop:
 
 ```text
 HoloOcean RGB camera -> /camera/front/image_raw
-HoloOcean ground-truth obstacles -> optional oracle detector for simulation only
-race gate navigator -> /cmd_vel_nominal
+HoloOcean pose/velocity/depth -> /rov/pose, /rov/velocity, /rov/depth
+HoloOcean ground truth -> /perception/obstacles_oracle or /perception/obstacles
+nominal command publisher -> /cmd_vel_nominal
 local avoidance planner -> /planner/cmd_vel_safe
-future controller/mixer -> low-level ROV commands
+bridge forwards abstract safe velocity -> sim server kinematic teleport
 ```
 
-The oracle path can support debugging and label generation. It must not become the main runtime sensor for the real ROV.
+Known limitations:
+
+- Custom mesh import is not confirmed in this HoloOcean 2.3.0 setup; complex objects are approximated from primitives.
+- The oracle is ground truth for simulation, debugging, and validation only. It is not a real onboard sensor.
+- Primitive aggregate bounds are approximate and conservative, especially for rotated parts.
+- Vehicle motion in the sim server is kinematic teleport, not hydrodynamic thruster control.
+- No neural detector, dataset export, MAVLink bridge, real thruster command path, or real rover integration is implemented here.
 
 ## Tests
 
@@ -449,6 +534,7 @@ colcon test-result --verbose
 
 ## TODO
 
+- Validate all anchor scenarios in real HoloOcean and record planner state transitions.
 - Replace the fake detector with a camera neural detector that publishes `Obstacle2DArray`.
 - Collect synthetic RGB images from HoloOcean and use oracle labels for obstacle training.
 - Compare no avoidance, oracle/fake avoidance, and RGB neural perception avoidance.

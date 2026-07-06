@@ -31,6 +31,7 @@ class ObstacleConfig:
     class_name: str
     position: tuple[float, float, float]
     radius_m: float
+    bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
 
 
 @dataclass
@@ -41,6 +42,9 @@ class RoverPose2D:
     y: float
     z: float
     yaw_rad: float
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
+    velocity_z: float = 0.0
 
 
 @dataclass
@@ -82,6 +86,22 @@ def clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(value, upper))
 
 
+CLASS_RISK_WEIGHTS = {
+    "anchor": 1.25,
+    "gate": 1.15,
+    "box_obstacle": 1.10,
+    "box": 1.05,
+    "sphere": 1.00,
+    "unknown_obstacle": 1.00,
+}
+
+
+def class_risk_weight(class_name: str) -> float:
+    """Return a generic class multiplier for oracle/planner risk scoring."""
+    key = class_name.strip().lower()
+    return CLASS_RISK_WEIGHTS.get(key, 1.0)
+
+
 def world_to_camera(
     obstacle_position: tuple[float, float, float],
     rover_pose: RoverPose2D,
@@ -111,10 +131,12 @@ def world_to_camera(
 # ---------------------------------------------------------------------------
 
 def _compute_risk(
+    class_name: str,
     center_x: float,
     range_m: float,
     apparent_area: float,
     camera: CameraConfig,
+    closing_speed_mps: float = 0.0,
 ) -> float:
     """Oracle risk score in [0, 1]."""
     centrality = 1.0 - min(abs(center_x - 0.5) * 2.0, 1.0)
@@ -127,13 +149,95 @@ def _compute_risk(
     )
 
     area_factor = clamp(apparent_area * camera.risk_area_gain, 0.0, 1.0)
+    closing_factor = clamp(closing_speed_mps, 0.0, 1.0)
 
-    risk = camera.confidence * clamp(
-        0.45 * centrality + 0.35 * distance_factor + 0.20 * area_factor,
+    risk = camera.confidence * class_risk_weight(class_name) * clamp(
+        0.45 * centrality
+        + 0.30 * distance_factor
+        + 0.20 * area_factor
+        + 0.05 * closing_factor,
         0.0,
         1.0,
     )
     return risk
+
+
+def _closing_speed_toward_obstacle(
+    obstacle_position: tuple[float, float, float],
+    rover_pose: RoverPose2D,
+    range_m: float,
+) -> float:
+    if range_m <= 1e-6:
+        return 0.0
+    rel = (
+        obstacle_position[0] - rover_pose.x,
+        obstacle_position[1] - rover_pose.y,
+        obstacle_position[2] - rover_pose.z,
+    )
+    return max(
+        0.0,
+        (
+            rover_pose.velocity_x * rel[0]
+            + rover_pose.velocity_y * rel[1]
+            + rover_pose.velocity_z * rel[2]
+        )
+        / range_m,
+    )
+
+
+def _bounds_corners(
+    bounds: tuple[tuple[float, float, float], tuple[float, float, float]],
+) -> list[tuple[float, float, float]]:
+    mn, mx = bounds
+    return [
+        (x, y, z)
+        for x in (mn[0], mx[0])
+        for y in (mn[1], mx[1])
+        for z in (mn[2], mx[2])
+    ]
+
+
+def _project_bounds(
+    bounds: tuple[tuple[float, float, float], tuple[float, float, float]],
+    rover_pose: RoverPose2D,
+    camera: CameraConfig,
+) -> tuple[float, float, float, float, float, float] | None:
+    h_fov_rad = math.radians(camera.horizontal_fov_deg)
+    v_fov_rad = math.radians(camera.vertical_fov_deg)
+    half_h = h_fov_rad * 0.5
+    half_v = v_fov_rad * 0.5
+
+    bearings: list[float] = []
+    elevations: list[float] = []
+    for corner in _bounds_corners(bounds):
+        x_cam, y_cam, z_cam = world_to_camera(corner, rover_pose)
+        if x_cam <= 1e-6:
+            continue
+        bearings.append(math.atan2(y_cam, x_cam))
+        elevations.append(math.atan2(z_cam, x_cam))
+
+    if not bearings:
+        return None
+
+    min_b, max_b = min(bearings), max(bearings)
+    min_e, max_e = min(elevations), max(elevations)
+    if max_b < -half_h or min_b > half_h:
+        return None
+    if max_e < -half_v or min_e > half_v:
+        return None
+
+    clipped_min_b = clamp(min_b, -half_h, half_h)
+    clipped_max_b = clamp(max_b, -half_h, half_h)
+    clipped_min_e = clamp(min_e, -half_v, half_v)
+    clipped_max_e = clamp(max_e, -half_v, half_v)
+
+    center_bearing = (clipped_min_b + clipped_max_b) * 0.5
+    center_elevation = (clipped_min_e + clipped_max_e) * 0.5
+    center_x = 0.5 + center_bearing / h_fov_rad
+    center_y = 0.5 - center_elevation / v_fov_rad
+    width = (clipped_max_b - clipped_min_b) / h_fov_rad
+    height = (clipped_max_e - clipped_min_e) / v_fov_rad
+    return center_x, center_y, width, height, center_bearing, center_elevation
 
 
 def project_obstacle(
@@ -164,24 +268,37 @@ def project_obstacle(
     h_fov_rad = math.radians(camera.horizontal_fov_deg)
     v_fov_rad = math.radians(camera.vertical_fov_deg)
 
-    # FOV bounds
-    if abs(bearing_rad) > h_fov_rad / 2:
-        return None
-    if abs(elevation_rad) > v_fov_rad / 2:
-        return None
+    if obstacle.bounds is not None:
+        projected_bounds = _project_bounds(obstacle.bounds, rover_pose, camera)
+        if projected_bounds is None:
+            return None
+        center_x, center_y, width, height, bearing_rad, elevation_rad = projected_bounds
+    else:
+        # FOV bounds
+        if abs(bearing_rad) > h_fov_rad / 2:
+            return None
+        if abs(elevation_rad) > v_fov_rad / 2:
+            return None
 
-    # Normalised image coordinates
-    center_x = 0.5 + bearing_rad / h_fov_rad
-    center_y = 0.5 - elevation_rad / v_fov_rad
+        # Normalised image coordinates
+        center_x = 0.5 + bearing_rad / h_fov_rad
+        center_y = 0.5 - elevation_rad / v_fov_rad
 
-    # Apparent size
-    angular_radius = math.atan2(obstacle.radius_m, range_m)
-    width = 2.0 * angular_radius / h_fov_rad
-    height = 2.0 * angular_radius / v_fov_rad
+        # Apparent size
+        angular_radius = math.atan2(obstacle.radius_m, range_m)
+        width = 2.0 * angular_radius / h_fov_rad
+        height = 2.0 * angular_radius / v_fov_rad
 
     apparent_area = width * height
 
-    risk = _compute_risk(center_x, range_m, apparent_area, camera)
+    risk = _compute_risk(
+        obstacle.class_name,
+        center_x,
+        range_m,
+        apparent_area,
+        camera,
+        _closing_speed_toward_obstacle(obstacle.position, rover_pose, range_m),
+    )
 
     return ProjectedObstacle(
         name=obstacle.name,
@@ -245,10 +362,26 @@ def load_obstacle_config_yaml(path: str | Path) -> list[ObstacleConfig]:
             pos = entry["position"]
             radius_m = float(entry["radius_m"])
             p = (float(pos[0]), float(pos[1]), float(pos[2]))
-            obstacles.append(ObstacleConfig(name, class_name, p, radius_m))
+            bounds = _parse_bounds(entry.get("bounds"))
+            obstacles.append(ObstacleConfig(name, class_name, p, radius_m, bounds))
         except Exception as exc:
             raise ValueError(
                 f"Invalid obstacle entry at index {idx}: {exc}"
             ) from exc
 
     return obstacles
+
+
+def _parse_bounds(raw) -> tuple[tuple[float, float, float], tuple[float, float, float]] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        mn = raw["min"]
+        mx = raw["max"]
+    else:
+        mn = raw[0]
+        mx = raw[1]
+    return (
+        (float(mn[0]), float(mn[1]), float(mn[2])),
+        (float(mx[0]), float(mx[1]), float(mx[2])),
+    )

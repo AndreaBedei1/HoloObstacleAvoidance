@@ -8,6 +8,7 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
 
         self.assertTrue((package_dir / "launch" / "holoocean_pose_smoke.launch.py").exists())
         self.assertTrue((package_dir / "launch" / "holoocean_oracle_demo.launch.py").exists())
+        self.assertTrue((package_dir / "launch" / "holoocean_anchor_avoidance.launch.py").exists())
 
     def test_oracle_demo_uses_simulation_only_nodes(self):
         package_dir = Path(__file__).resolve().parents[1]
@@ -28,6 +29,41 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
         )
 
         self.assertIn("input_topic: /planner/cmd_vel_safe", text)
+
+    def test_anchor_launch_uses_generic_planner_and_no_real_control(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        text = (package_dir / "launch" / "holoocean_anchor_avoidance.launch.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("holoocean_bridge_node", text)
+        self.assertIn("local_avoidance_planner_node", text)
+        self.assertIn("anchor_center_static.yaml", text)
+        self.assertIn('"relay_oracle_topic": "/perception/obstacles"', text)
+        self.assertNotIn("mavlink", text.lower())
+        self.assertNotIn("thruster", text.lower())
+
+    def test_oracle_avoidance_launch_relays_oracle_to_planner_input(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        text = (package_dir / "launch" / "holoocean_oracle_avoidance.launch.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("holoocean_bridge_node", text)
+        self.assertIn('"relay_oracle_topic": "/perception/obstacles"', text)
+
+    def test_anchor_scenario_files_exist(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        scenario_dir = package_dir / "config" / "holoocean_scenarios"
+
+        for name in [
+            "anchor_center_static.yaml",
+            "anchor_left_static.yaml",
+            "anchor_right_static.yaml",
+            "anchor_partially_visible.yaml",
+            "anchor_with_spheres.yaml",
+        ]:
+            self.assertTrue((scenario_dir / name).exists(), msg=name)
 
 
 if __name__ == "__main__":

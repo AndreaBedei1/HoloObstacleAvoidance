@@ -1,0 +1,79 @@
+# HoloOcean sim-server scenario: primitive-composed anchor right of center.
+# relative_position is [forward_m, left_m, up_m] in the rover body frame.
+
+holoocean:
+  scenario: OpenWater-HoveringCamera
+  agent_name: auv0
+  camera_sensor: LeftCamera
+  ticks_per_sec: 30
+  frames_per_sec: false
+  show_viewport: false
+
+sim:
+  motion_model: teleport
+  start_offset: [0.0, 0.0, 60.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+oracle:
+  debug_primitive_detections: false
+
+semantic_objects:
+  - name: anchor_right
+    class_name: anchor
+    relative_position: [10.0, -3.5, 0.0]
+    parts:
+      - name: stem
+        prop_type: box
+        relative_position: [0.0, 0.0, 0.0]
+        radius_m: 1.6
+        scale: [0.35, 0.35, 3.2]
+        material: steel
+        sim_physics: false
+      - name: upper_crossbar
+        prop_type: box
+        relative_position: [0.0, 0.0, 1.15]
+        radius_m: 1.6
+        scale: [0.35, 3.2, 0.35]
+        material: steel
+        sim_physics: false
+      - name: lower_left_arm
+        prop_type: box
+        relative_position: [0.0, 0.95, -1.15]
+        radius_m: 1.2
+        scale: [0.35, 2.1, 0.35]
+        rotation: [-35.0, 0.0, 0.0]
+        material: steel
+        sim_physics: false
+      - name: lower_right_arm
+        prop_type: box
+        relative_position: [0.0, -0.95, -1.15]
+        radius_m: 1.2
+        scale: [0.35, 2.1, 0.35]
+        rotation: [35.0, 0.0, 0.0]
+        material: steel
+        sim_physics: false
+      - name: left_tip
+        prop_type: sphere
+        relative_position: [0.0, 2.1, -1.75]
+        radius_m: 0.35
+        scale: 0.7
+        material: gold
+        sim_physics: false
+      - name: right_tip
+        prop_type: sphere
+        relative_position: [0.0, -2.1, -1.75]
+        radius_m: 0.35
+        scale: 0.7
+        material: gold
+        sim_physics: false

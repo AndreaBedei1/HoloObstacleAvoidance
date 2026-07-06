@@ -127,6 +127,68 @@ class TestBridgeNode(unittest.TestCase):
         node.destroy_node()
         sub_node.destroy_node()
 
+    def test_oracle_semantic_anchor_bounds_publish_one_detection(self):
+        import rclpy
+        from rclpy.node import Node
+
+        received = []
+
+        node = HolooceanBridgeNode(
+            context=self._ctx,
+            parameter_overrides=[
+                rclpy.parameter.Parameter(
+                    "oracle_topic", rclpy.parameter.Parameter.Type.STRING,
+                    "/test/anchor_oracle"),
+            ],
+        )
+        sub_node = Node("anchor_oracle_sub", context=self._ctx)
+        sub_node.create_subscription(
+            Obstacle2DArray, "/test/anchor_oracle", lambda m: received.append(m), 10)
+
+        header = {
+            "type": MSG_STATE,
+            "pose": {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0},
+            "velocity": {"x": 0.3, "y": 0.0, "z": 0.0},
+            "depth": 0.0,
+            "camera": {"horizontal_fov_deg": 90.0, "vertical_fov_deg": 90.0},
+            "image": None,
+            "obstacles": [
+                {
+                    "name": "anchor_center",
+                    "class_name": "anchor",
+                    "position": [8.0, 0.0, 0.0],
+                    "radius_m": 2.4,
+                    "bounds": {
+                        "min": [7.8, -1.8, -1.8],
+                        "max": [8.2, 1.8, 1.8],
+                    },
+                    "part_count": 6,
+                },
+            ],
+        }
+        node._publish_state(header, b"")
+
+        exe = rclpy.executors.SingleThreadedExecutor(context=self._ctx)
+        exe.add_node(node)
+        exe.add_node(sub_node)
+        for _ in range(50):
+            exe.spin_once(timeout_sec=0.02)
+            if received:
+                break
+
+        self.assertTrue(received, "no oracle message received")
+        arr = received[-1]
+        self.assertEqual(len(arr.obstacles), 1)
+        obstacle = arr.obstacles[0]
+        self.assertEqual(obstacle.class_name, "anchor")
+        self.assertGreater(obstacle.width, 0.0)
+        self.assertGreater(obstacle.height, 0.0)
+        self.assertGreater(obstacle.risk, 0.55)
+        self.assertTrue(obstacle.is_tracking_valid)
+
+        node.destroy_node()
+        sub_node.destroy_node()
+
     def test_quaternion_from_yaw(self):
         import math
         q = quaternion_from_yaw(math.pi / 2)

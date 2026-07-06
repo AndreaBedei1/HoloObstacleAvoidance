@@ -88,6 +88,12 @@ class HolooceanBridgeNode(Node):
         self._pub_depth = self.create_publisher(Float32, str(self.get_parameter("depth_topic").value), 10)
         self._pub_oracle = self.create_publisher(
             Obstacle2DArray, str(self.get_parameter("oracle_topic").value), 10)
+        relay_oracle_topic = str(self.get_parameter("relay_oracle_topic").value)
+        self._pub_oracle_relay = (
+            self.create_publisher(Obstacle2DArray, relay_oracle_topic, 10)
+            if relay_oracle_topic
+            else None
+        )
 
         # Subscriber: forward safe command to the sim
         self.create_subscription(
@@ -97,6 +103,7 @@ class HolooceanBridgeNode(Node):
         # Socket state
         self._stream: FrameStream | None = None
         self._publish_image = bool(self.get_parameter("publish_image").value)
+        self._logged_first_oracle_detection = False
 
         poll_hz = max(1.0, float(self.get_parameter("poll_rate_hz").value))
         self._timer = self.create_timer(1.0 / poll_hz, self._on_timer)
@@ -116,6 +123,7 @@ class HolooceanBridgeNode(Node):
         self.declare_parameter("velocity_topic", "/rov/velocity")
         self.declare_parameter("depth_topic", "/rov/depth")
         self.declare_parameter("oracle_topic", "/perception/obstacles_oracle")
+        self.declare_parameter("relay_oracle_topic", "")
         self.declare_parameter("cmd_vel_topic", "/planner/cmd_vel_safe")
         self.declare_parameter("publish_image", True)
         self.declare_parameter("min_detection_range_m", 0.2)
@@ -247,26 +255,70 @@ class HolooceanBridgeNode(Node):
         # the opposite lateral sign (+y = right).  Negate y and yaw so projected
         # center_x matches where the obstacle actually appears in the RGB image.
         pose = header.get("pose", {})
+        velocity = header.get("velocity", {})
         rover = RoverPose2D(
             x=float(pose.get("x", 0.0)),
             y=-float(pose.get("y", 0.0)),
             z=float(pose.get("z", 0.0)),
             yaw_rad=-yaw,
+            velocity_x=float(velocity.get("x", 0.0)),
+            velocity_y=-float(velocity.get("y", 0.0)),
+            velocity_z=float(velocity.get("z", 0.0)),
         )
 
         def _to_oracle_xyz(p) -> tuple[float, float, float]:
             return (float(p[0]), -float(p[1]), float(p[2]))
 
+        def _to_oracle_bounds(raw_bounds):
+            if not raw_bounds:
+                return None
+            mn = raw_bounds.get("min")
+            mx = raw_bounds.get("max")
+            if mn is None or mx is None:
+                return None
+            corners = [
+                _to_oracle_xyz((x, y, z))
+                for x in (float(mn[0]), float(mx[0]))
+                for y in (float(mn[1]), float(mx[1]))
+                for z in (float(mn[2]), float(mx[2]))
+            ]
+            return (
+                (
+                    min(p[0] for p in corners),
+                    min(p[1] for p in corners),
+                    min(p[2] for p in corners),
+                ),
+                (
+                    max(p[0] for p in corners),
+                    max(p[1] for p in corners),
+                    max(p[2] for p in corners),
+                ),
+            )
+
+        raw_obstacles = header.get("obstacles", [])
         obstacles = [
             ObstacleConfig(
                 name=str(o.get("name", "obstacle")),
                 class_name=str(o.get("class_name", "unknown_obstacle")),
                 position=_to_oracle_xyz(o.get("position", [0.0, 0.0, 0.0])),
                 radius_m=float(o.get("radius_m", 1.0)),
+                bounds=_to_oracle_bounds(o.get("bounds")),
             )
-            for o in header.get("obstacles", [])
+            for o in raw_obstacles
         ]
         projected = project_obstacles(obstacles, rover, camera)
+        if projected and not self._logged_first_oracle_detection:
+            self.get_logger().info(
+                f"oracle projected {len(projected)} obstacle(s); "
+                f"first class={projected[0].class_name} risk={projected[0].risk:.3f}"
+            )
+            self._logged_first_oracle_detection = True
+        elif raw_obstacles and not projected:
+            self.get_logger().warning(
+                "server sent obstacle metadata but oracle projection is empty; "
+                f"seq={header.get('seq')} pose={pose} first_obstacle={raw_obstacles[0]}",
+                throttle_duration_sec=5.0,
+            )
 
         arr = Obstacle2DArray()
         arr.header.stamp = stamp
@@ -286,6 +338,8 @@ class HolooceanBridgeNode(Node):
             m.is_tracking_valid = True
             arr.obstacles.append(m)
         self._pub_oracle.publish(arr)
+        if self._pub_oracle_relay is not None:
+            self._pub_oracle_relay.publish(arr)
 
     def destroy_node(self) -> bool:
         if self._stream is not None:

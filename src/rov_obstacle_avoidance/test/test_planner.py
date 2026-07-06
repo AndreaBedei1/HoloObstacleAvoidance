@@ -26,6 +26,35 @@ class PlannerRiskTest(unittest.TestCase):
         self.assertGreater(compute_obstacle_risk(central), compute_obstacle_risk(edge))
         self.assertGreater(compute_obstacle_risk(central), 0.5)
 
+    def test_anchor_class_has_higher_generic_risk_than_sphere(self):
+        anchor = ObstacleObservation(
+            class_name="anchor",
+            confidence=0.9,
+            center_x=0.5,
+            width=0.25,
+            height=0.35,
+            apparent_area=0.25 * 0.35,
+            risk=0.0,
+        )
+        sphere = ObstacleObservation(
+            class_name="sphere",
+            confidence=0.9,
+            center_x=0.5,
+            width=0.25,
+            height=0.35,
+            apparent_area=0.25 * 0.35,
+            risk=0.0,
+        )
+
+        self.assertGreater(compute_obstacle_risk(anchor), compute_obstacle_risk(sphere))
+
+    def test_detector_risk_is_class_weighted_and_clamped(self):
+        anchor = ObstacleObservation(class_name="anchor", confidence=1.0, risk=0.5)
+        very_high_anchor = ObstacleObservation(class_name="anchor", confidence=1.0, risk=0.95)
+
+        self.assertGreater(compute_obstacle_risk(anchor), 0.5)
+        self.assertLessEqual(compute_obstacle_risk(very_high_anchor), 1.0)
+
 
 class PlannerBehaviorTest(unittest.TestCase):
     def setUp(self):

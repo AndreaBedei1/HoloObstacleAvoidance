@@ -86,12 +86,50 @@ class ObstacleSpec:
     name: str
     class_name: str
     prop_type: str            # box | sphere | cylinder | cone
-    relative_position: tuple[float, float, float]  # forward, right, up (m)
+    relative_position: tuple[float, float, float]  # forward, left, up (m)
     radius_m: float
     scale: Any = 1.0          # float or [x, y, z]
     material: str = "gold"
     sim_physics: bool = False
     rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)  # roll, pitch, yaw deg
+
+
+@dataclass
+class PrimitivePartSpec:
+    name: str
+    prop_type: str            # box | sphere | cylinder | cone
+    relative_position: tuple[float, float, float]  # forward, left, up (m)
+    radius_m: float
+    scale: Any = 1.0          # float or [x, y, z]
+    material: str = "gold"
+    sim_physics: bool = False
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)  # roll, pitch, yaw deg
+    class_name: Optional[str] = None
+
+
+@dataclass
+class SemanticObjectSpec:
+    name: str
+    class_name: str
+    relative_position: tuple[float, float, float]  # forward, left, up (m)
+    parts: list[PrimitivePartSpec]
+    radius_m: Optional[float] = None
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)  # roll, pitch, yaw deg
+
+
+@dataclass
+class SpawnedPrimitive:
+    name: str
+    class_name: str
+    prop_type: str
+    position: tuple[float, float, float]
+    radius_m: float
+    scale: Any = 1.0
+    material: str = "gold"
+    sim_physics: bool = False
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    semantic_parent: Optional[str] = None
+    bounds: Optional[dict[str, list[float]]] = None
 
 
 @dataclass
@@ -113,6 +151,8 @@ class SimConfig:
     max_heave: float = 1.0
     max_yaw_rate: float = 0.8
     obstacles: list[ObstacleSpec] = field(default_factory=list)
+    semantic_objects: list[SemanticObjectSpec] = field(default_factory=list)
+    oracle_debug_primitive_detections: bool = False
 
 
 def load_config(path: str) -> SimConfig:
@@ -123,6 +163,7 @@ def load_config(path: str) -> SimConfig:
     sim = data.get("sim", {})
     cam = data.get("camera", {})
     limits = data.get("limits", {})
+    oracle = data.get("oracle", {})
 
     obstacles: list[ObstacleSpec] = []
     for entry in data.get("obstacles", []) or []:
@@ -137,6 +178,42 @@ def load_config(path: str) -> SimConfig:
                 material=str(entry.get("material", "gold")),
                 sim_physics=bool(entry.get("sim_physics", False)),
                 rotation=tuple(float(v) for v in entry.get("rotation", [0.0, 0.0, 0.0])),
+            )
+        )
+
+    semantic_objects: list[SemanticObjectSpec] = []
+    for entry in data.get("semantic_objects", []) or []:
+        name = str(entry["name"])
+        class_name = str(entry.get("class_name", "unknown_obstacle"))
+        raw_parts = entry.get("parts", []) or []
+        if not raw_parts:
+            raise ValueError(f"semantic object '{name}' must define at least one part")
+        parts = [
+            _load_part_spec(
+                raw_part,
+                default_name=f"part_{idx}",
+                default_class_name=f"{class_name}_part",
+            )
+            for idx, raw_part in enumerate(raw_parts)
+        ]
+        semantic_objects.append(
+            SemanticObjectSpec(
+                name=name,
+                class_name=class_name,
+                relative_position=_float3(
+                    entry.get("relative_position", [0.0, 0.0, 0.0]),
+                    f"semantic_objects.{name}.relative_position",
+                ),
+                radius_m=(
+                    float(entry["radius_m"])
+                    if entry.get("radius_m") is not None
+                    else None
+                ),
+                rotation=_float3(
+                    entry.get("rotation", [0.0, 0.0, 0.0]),
+                    f"semantic_objects.{name}.rotation",
+                ),
+                parts=parts,
             )
         )
 
@@ -158,7 +235,45 @@ def load_config(path: str) -> SimConfig:
         max_heave=float(limits.get("max_heave", 1.0)),
         max_yaw_rate=float(limits.get("max_yaw_rate", 0.8)),
         obstacles=obstacles,
+        semantic_objects=semantic_objects,
+        oracle_debug_primitive_detections=bool(
+            oracle.get("debug_primitive_detections", False)
+        ),
     )
+
+
+def _load_part_spec(
+    entry: dict,
+    *,
+    default_name: str,
+    default_class_name: str,
+) -> PrimitivePartSpec:
+    return PrimitivePartSpec(
+        name=str(entry.get("name", default_name)),
+        class_name=str(entry.get("class_name", default_class_name)),
+        prop_type=str(entry.get("prop_type", "box")),
+        relative_position=_float3(
+            entry.get("relative_position", [0.0, 0.0, 0.0]),
+            f"parts.{entry.get('name', default_name)}.relative_position",
+        ),
+        radius_m=float(entry.get("radius_m", 0.5)),
+        scale=entry.get("scale", 1.0),
+        material=str(entry.get("material", "gold")),
+        sim_physics=bool(entry.get("sim_physics", False)),
+        rotation=_float3(
+            entry.get("rotation", [0.0, 0.0, 0.0]),
+            f"parts.{entry.get('name', default_name)}.rotation",
+        ),
+    )
+
+
+def _float3(values: Any, field_name: str) -> tuple[float, float, float]:
+    try:
+        if len(values) != 3:
+            raise ValueError("expected exactly three values")
+        return (float(values[0]), float(values[1]), float(values[2]))
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be [forward_m, left_m, up_m]") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +300,291 @@ def body_to_world(forward: float, left: float, up: float,
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(v, hi))
+
+
+def _add3(
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+
+
+def _matvec3(
+    m: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
+    v: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+    )
+
+
+def _matmul3(
+    a: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
+    b: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
+) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+    return (
+        (
+            a[0][0] * b[0][0] + a[0][1] * b[1][0] + a[0][2] * b[2][0],
+            a[0][0] * b[0][1] + a[0][1] * b[1][1] + a[0][2] * b[2][1],
+            a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2] * b[2][2],
+        ),
+        (
+            a[1][0] * b[0][0] + a[1][1] * b[1][0] + a[1][2] * b[2][0],
+            a[1][0] * b[0][1] + a[1][1] * b[1][1] + a[1][2] * b[2][1],
+            a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2] * b[2][2],
+        ),
+        (
+            a[2][0] * b[0][0] + a[2][1] * b[1][0] + a[2][2] * b[2][0],
+            a[2][0] * b[0][1] + a[2][1] * b[1][1] + a[2][2] * b[2][1],
+            a[2][0] * b[0][2] + a[2][1] * b[1][2] + a[2][2] * b[2][2],
+        ),
+    )
+
+
+def _euler_matrix_deg(
+    rotation_deg: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+    roll, pitch, yaw = (math.radians(v) for v in rotation_deg)
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    rx = ((1.0, 0.0, 0.0), (0.0, cr, -sr), (0.0, sr, cr))
+    ry = ((cp, 0.0, sp), (0.0, 1.0, 0.0), (-sp, 0.0, cp))
+    rz = ((cy, -sy, 0.0), (sy, cy, 0.0), (0.0, 0.0, 1.0))
+    return _matmul3(rz, _matmul3(ry, rx))
+
+
+def _combined_rotation_deg(
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+
+
+def _spawn_rotation_deg(
+    local_rotation: tuple[float, float, float],
+    rover_yaw_rad: float,
+) -> tuple[float, float, float]:
+    return (
+        local_rotation[0],
+        local_rotation[1],
+        local_rotation[2] + math.degrees(rover_yaw_rad),
+    )
+
+
+def _scale_vector(scale: Any) -> tuple[float, float, float]:
+    if isinstance(scale, (list, tuple)):
+        if len(scale) == 3:
+            return (abs(float(scale[0])), abs(float(scale[1])), abs(float(scale[2])))
+        if len(scale) == 1:
+            value = abs(float(scale[0]))
+            return (value, value, value)
+    value = abs(float(scale))
+    return (value, value, value)
+
+
+def _half_extents(part: PrimitivePartSpec) -> tuple[float, float, float]:
+    if part.prop_type.strip().lower() == "sphere":
+        radius = max(0.01, float(part.radius_m))
+        return (radius, radius, radius)
+
+    sx, sy, sz = _scale_vector(part.scale)
+    half = (max(0.01, sx * 0.5), max(0.01, sy * 0.5), max(0.01, sz * 0.5))
+    if half == (0.01, 0.01, 0.01):
+        radius = max(0.01, float(part.radius_m))
+        return (radius, radius, radius)
+    return half
+
+
+def _relative_to_world(
+    origin: tuple[float, float, float],
+    yaw_rad: float,
+    relative: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    dx, dy, dz = body_to_world(relative[0], relative[1], relative[2], yaw_rad)
+    return (origin[0] + dx, origin[1] + dy, origin[2] + dz)
+
+
+def _bounds_from_points(points: list[tuple[float, float, float]]) -> dict[str, list[float]]:
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    zs = [p[2] for p in points]
+    return {
+        "min": [min(xs), min(ys), min(zs)],
+        "max": [max(xs), max(ys), max(zs)],
+    }
+
+
+def _center_from_bounds(bounds: dict[str, list[float]]) -> tuple[float, float, float]:
+    mn = bounds["min"]
+    mx = bounds["max"]
+    return (
+        (mn[0] + mx[0]) * 0.5,
+        (mn[1] + mx[1]) * 0.5,
+        (mn[2] + mx[2]) * 0.5,
+    )
+
+
+def _radius_from_bounds(bounds: dict[str, list[float]]) -> float:
+    mn = bounds["min"]
+    mx = bounds["max"]
+    return 0.5 * math.sqrt(
+        (mx[0] - mn[0]) ** 2
+        + (mx[1] - mn[1]) ** 2
+        + (mx[2] - mn[2]) ** 2
+    )
+
+
+def _part_body_corners(
+    object_spec: SemanticObjectSpec,
+    part: PrimitivePartSpec,
+) -> tuple[tuple[float, float, float], list[tuple[float, float, float]]]:
+    object_rotation = _euler_matrix_deg(object_spec.rotation)
+    part_offset = _matvec3(object_rotation, part.relative_position)
+    part_center = _add3(object_spec.relative_position, part_offset)
+    part_rotation = _euler_matrix_deg(
+        _combined_rotation_deg(object_spec.rotation, part.rotation)
+    )
+    hx, hy, hz = _half_extents(part)
+    corners: list[tuple[float, float, float]] = []
+    for x in (-hx, hx):
+        for y in (-hy, hy):
+            for z in (-hz, hz):
+                rotated_corner = _matvec3(part_rotation, (x, y, z))
+                corners.append(_add3(part_center, rotated_corner))
+    return part_center, corners
+
+
+def _oracle_entry(
+    *,
+    name: str,
+    class_name: str,
+    position: tuple[float, float, float],
+    radius_m: float,
+    bounds: Optional[dict[str, list[float]]] = None,
+    part_count: Optional[int] = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "name": name,
+        "class_name": class_name,
+        "position": [position[0], position[1], position[2]],
+        "radius_m": float(radius_m),
+    }
+    if bounds is not None:
+        entry["bounds"] = bounds
+    if part_count is not None:
+        entry["part_count"] = int(part_count)
+    return entry
+
+
+def build_spawn_plan(
+    config: SimConfig,
+    sx: float,
+    sy: float,
+    sz: float,
+    syaw: float,
+) -> tuple[list[SpawnedPrimitive], list[dict[str, Any]]]:
+    """Return primitive HoloOcean spawns and semantic oracle objects.
+
+    The helper is dependency-free except for stdlib math, so unit tests can
+    validate YAML semantics without importing HoloOcean.
+    """
+    origin = (sx, sy, sz)
+    spawns: list[SpawnedPrimitive] = []
+    oracle_obstacles: list[dict[str, Any]] = []
+
+    for spec in config.obstacles:
+        position = _relative_to_world(origin, syaw, spec.relative_position)
+        spawns.append(
+            SpawnedPrimitive(
+                name=spec.name,
+                class_name=spec.class_name,
+                prop_type=spec.prop_type,
+                position=position,
+                radius_m=spec.radius_m,
+                scale=spec.scale,
+                material=spec.material,
+                sim_physics=spec.sim_physics,
+                rotation=spec.rotation,
+            )
+        )
+        oracle_obstacles.append(
+            _oracle_entry(
+                name=spec.name,
+                class_name=spec.class_name,
+                position=position,
+                radius_m=spec.radius_m,
+            )
+        )
+
+    for semantic in config.semantic_objects:
+        semantic_spawns: list[SpawnedPrimitive] = []
+        all_corners_world: list[tuple[float, float, float]] = []
+
+        for part in semantic.parts:
+            part_center_body, part_corners_body = _part_body_corners(semantic, part)
+            part_position = _relative_to_world(origin, syaw, part_center_body)
+            part_corners_world = [
+                _relative_to_world(origin, syaw, corner)
+                for corner in part_corners_body
+            ]
+            bounds = _bounds_from_points(part_corners_world)
+            spawn_name = (
+                part.name
+                if part.name.startswith(f"{semantic.name}_")
+                else f"{semantic.name}_{part.name}"
+            )
+            local_rotation = _combined_rotation_deg(semantic.rotation, part.rotation)
+            spawn = SpawnedPrimitive(
+                name=spawn_name,
+                class_name=part.class_name or f"{semantic.class_name}_part",
+                prop_type=part.prop_type,
+                position=part_position,
+                radius_m=part.radius_m,
+                scale=part.scale,
+                material=part.material,
+                sim_physics=part.sim_physics,
+                rotation=_spawn_rotation_deg(local_rotation, syaw),
+                semantic_parent=semantic.name,
+                bounds=bounds,
+            )
+            spawns.append(spawn)
+            semantic_spawns.append(spawn)
+            all_corners_world.extend(part_corners_world)
+
+        aggregate_bounds = _bounds_from_points(all_corners_world)
+        aggregate_center = _center_from_bounds(aggregate_bounds)
+        aggregate_radius = (
+            semantic.radius_m
+            if semantic.radius_m is not None
+            else _radius_from_bounds(aggregate_bounds)
+        )
+        oracle_obstacles.append(
+            _oracle_entry(
+                name=semantic.name,
+                class_name=semantic.class_name,
+                position=aggregate_center,
+                radius_m=aggregate_radius,
+                bounds=aggregate_bounds,
+                part_count=len(semantic_spawns),
+            )
+        )
+
+        if config.oracle_debug_primitive_detections:
+            for spawn in semantic_spawns:
+                oracle_obstacles.append(
+                    _oracle_entry(
+                        name=spawn.name,
+                        class_name=spawn.class_name,
+                        position=spawn.position,
+                        radius_m=spawn.radius_m,
+                        bounds=spawn.bounds,
+                    )
+                )
+
+    return spawns, oracle_obstacles
 
 
 # ---------------------------------------------------------------------------
@@ -259,30 +659,31 @@ class HolooceanSimServer:
 
     def _spawn_obstacles(self, sx: float, sy: float, sz: float,
                          syaw: float) -> None:
-        for spec in self.cfg.obstacles:
-            fwd, left, up = spec.relative_position
-            dx, dy, dz = body_to_world(fwd, left, up, syaw)
-            wx, wy, wz = sx + dx, sy + dy, sz + dz
+        spawn_plan, oracle_obstacles = build_spawn_plan(self.cfg, sx, sy, sz, syaw)
+        for primitive in spawn_plan:
+            wx, wy, wz = primitive.position
             try:
                 self.env.spawn_prop(
-                    prop_type=spec.prop_type,
+                    prop_type=primitive.prop_type,
                     location=[wx, wy, wz],
-                    rotation=list(spec.rotation),
-                    scale=spec.scale,
-                    sim_physics=spec.sim_physics,
-                    material=spec.material,
-                    tag=spec.name,
+                    rotation=list(primitive.rotation),
+                    scale=primitive.scale,
+                    sim_physics=primitive.sim_physics,
+                    material=primitive.material,
+                    tag=primitive.name,
                 )
-                self.log(f"spawned {spec.prop_type} '{spec.name}' "
-                         f"({spec.class_name}) at world=({wx:.1f},{wy:.1f},{wz:.1f})")
+                parent = (
+                    f" parent={primitive.semantic_parent}"
+                    if primitive.semantic_parent
+                    else ""
+                )
+                self.log(f"spawned {primitive.prop_type} '{primitive.name}' "
+                         f"({primitive.class_name}) at world=({wx:.1f},{wy:.1f},{wz:.1f})"
+                         f"{parent}")
             except Exception as exc:  # pragma: no cover - depends on engine
-                self.log(f"WARNING: failed to spawn '{spec.name}': {exc!r}")
-            self.obstacle_world.append({
-                "name": spec.name,
-                "class_name": spec.class_name,
-                "position": [wx, wy, wz],
-                "radius_m": spec.radius_m,
-            })
+                self.log(f"WARNING: failed to spawn '{primitive.name}': {exc!r}")
+        self.obstacle_world = oracle_obstacles
+        self.log(f"oracle semantic obstacles: {len(self.obstacle_world)}")
 
     def close(self) -> None:
         if self.env is not None:
@@ -458,7 +859,11 @@ class HolooceanSimServer:
             self.log(f"final pose x={p['x']:.2f} y={p['y']:.2f} z={p['z']:.2f} "
                      f"yaw={math.degrees(p['yaw']):.1f}")
             self.log(f"obstacles tracked: {len(last_header['obstacles'])}")
-        ok = frames > 0 and last_header is not None and len(last_header["obstacles"]) == len(self.cfg.obstacles)
+        ok = (
+            frames > 0
+            and last_header is not None
+            and len(last_header["obstacles"]) == len(self.obstacle_world)
+        )
         self.log("SELFTEST PASS" if ok else "SELFTEST FAIL")
         return 0 if ok else 1
 

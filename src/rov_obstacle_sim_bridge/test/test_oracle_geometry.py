@@ -10,6 +10,7 @@ from rov_obstacle_sim_bridge.oracle_geometry import (
     ObstacleConfig,
     ProjectedObstacle,
     RoverPose2D,
+    class_risk_weight,
     clamp,
     load_obstacle_config_yaml,
     project_obstacle,
@@ -70,13 +71,21 @@ class TestProjection(unittest.TestCase):
 
     def test_1_central_obstacle_centers_at_0_5(self):
         obs = ObstacleConfig("central", "rock", (4.0, 0.0, 0.0), 0.5)
-        proj = project_obstacle(obs, self._rover(), self._camera())
+        proj = project_obstacle(
+            obs,
+            self._rover(),
+            CameraConfig(max_detection_range_m=20.0),
+        )
         self.assertIsNotNone(proj)
         self.assertAlmostEqual(proj.center_x, 0.5, places=4)
 
     def test_2_central_obstacle_bearing_near_zero(self):
         obs = ObstacleConfig("central", "rock", (4.0, 0.0, 0.0), 0.5)
-        proj = project_obstacle(obs, self._rover(), self._camera())
+        proj = project_obstacle(
+            obs,
+            self._rover(),
+            CameraConfig(max_detection_range_m=20.0),
+        )
         self.assertIsNotNone(proj)
         self.assertAlmostEqual(proj.bearing_rad, 0.0, places=4)
 
@@ -128,6 +137,53 @@ class TestProjection(unittest.TestCase):
         self.assertIsNotNone(close_proj)
         self.assertIsNotNone(far_proj)
         self.assertGreater(close_proj.risk, far_proj.risk)
+
+    def test_10_anchor_bounds_project_as_single_detection(self):
+        obs = ObstacleConfig(
+            "anchor_center",
+            "anchor",
+            (6.0, 0.0, 0.0),
+            2.0,
+            bounds=((5.8, -1.7, -1.8), (6.2, 1.7, 1.8)),
+        )
+        proj = project_obstacle(obs, self._rover(), self._camera())
+
+        self.assertIsNotNone(proj)
+        self.assertEqual(proj.class_name, "anchor")
+        self.assertAlmostEqual(proj.center_x, 0.5, places=2)
+        self.assertGreater(proj.width, 0.0)
+        self.assertGreater(proj.height, 0.0)
+        self.assertTrue(proj.confidence > 0.0)
+
+    def test_11_partially_visible_anchor_bounds_are_clipped(self):
+        obs = ObstacleConfig(
+            "anchor_edge",
+            "anchor",
+            (9.0, -7.6, 0.0),
+            2.5,
+            bounds=((8.8, -9.6, -1.5), (9.2, -5.9, 1.5)),
+        )
+        proj = project_obstacle(
+            obs,
+            self._rover(),
+            CameraConfig(max_detection_range_m=20.0),
+        )
+
+        self.assertIsNotNone(proj)
+        self.assertLess(proj.center_x, 0.5)
+        self.assertGreater(proj.width, 0.0)
+        self.assertLessEqual(proj.width, 1.0)
+
+    def test_12_anchor_class_weight_increases_oracle_risk(self):
+        anchor = ObstacleConfig("anchor", "anchor", (5.0, 0.0, 0.0), 0.7)
+        sphere = ObstacleConfig("sphere", "sphere", (5.0, 0.0, 0.0), 0.7)
+        anchor_proj = project_obstacle(anchor, self._rover(), self._camera())
+        sphere_proj = project_obstacle(sphere, self._rover(), self._camera())
+
+        self.assertIsNotNone(anchor_proj)
+        self.assertIsNotNone(sphere_proj)
+        self.assertGreater(class_risk_weight("anchor"), class_risk_weight("sphere"))
+        self.assertGreater(anchor_proj.risk, sphere_proj.risk)
 
 
 class TestProjectObstacles(unittest.TestCase):

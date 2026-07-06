@@ -72,6 +72,14 @@ class PlannerOutput:
 CENTRALITY_RISK_WEIGHT = 0.6
 AREA_RISK_WEIGHT = 0.4
 AREA_RISK_GAIN = 4.0
+CLASS_RISK_WEIGHTS = {
+    "anchor": 1.25,
+    "gate": 1.15,
+    "box_obstacle": 1.10,
+    "box": 1.05,
+    "sphere": 1.00,
+    "unknown_obstacle": 1.00,
+}
 
 
 class LocalAvoidancePlanner:
@@ -241,13 +249,19 @@ class LocalAvoidancePlanner:
 
 def compute_obstacle_risk(obstacle: ObstacleObservation) -> float:
     if obstacle.risk > 0.0:
-        return _clamp(obstacle.risk, 0.0, 1.0)
+        return _clamp(obstacle.risk * _class_risk_weight(obstacle.class_name), 0.0, 1.0)
 
     confidence = _clamp(obstacle.confidence, 0.0, 1.0)
     centrality = _clamp(1.0 - abs(_clamp(obstacle.center_x, 0.0, 1.0) - 0.5) * 2.0, 0.0, 1.0)
     apparent_area = obstacle.apparent_area if obstacle.apparent_area > 0.0 else obstacle.width * obstacle.height
     area_score = _clamp(apparent_area * AREA_RISK_GAIN, 0.0, 1.0)
-    return _clamp(confidence * (CENTRALITY_RISK_WEIGHT * centrality + AREA_RISK_WEIGHT * area_score), 0.0, 1.0)
+    return _clamp(
+        confidence
+        * _class_risk_weight(obstacle.class_name)
+        * (CENTRALITY_RISK_WEIGHT * centrality + AREA_RISK_WEIGHT * area_score),
+        0.0,
+        1.0,
+    )
 
 
 def choose_avoidance_side(
@@ -292,3 +306,7 @@ def _finite_or_zero(value: float) -> float:
 
 def _clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
+
+
+def _class_risk_weight(class_name: str) -> float:
+    return CLASS_RISK_WEIGHTS.get(class_name.strip().lower(), 1.0)

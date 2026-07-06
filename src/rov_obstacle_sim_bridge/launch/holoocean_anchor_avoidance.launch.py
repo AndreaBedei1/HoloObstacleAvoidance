@@ -1,25 +1,12 @@
-"""Closed-loop obstacle avoidance in real HoloOcean using the oracle detector.
+"""Closed-loop avoidance launch for primitive-composed HoloOcean anchor scenarios.
 
-Pipeline (the HoloOcean sim server runs separately in the conda ``ocean`` env)::
-
-    holoocean_sim_server (ocean) --TCP--> holoocean_bridge_node (this launch)
-        bridge -> /perception/obstacles_oracle (SIM-ONLY oracle projection)
-        bridge relay -> /perception/obstacles (planner input)
-        bridge -> /rov/pose /rov/velocity /rov/depth /camera/front/image_raw
-    nominal_cmd_publisher -> /cmd_vel_nominal
-    local_avoidance_planner: /perception/obstacles + /cmd_vel_nominal
-                              -> /planner/cmd_vel_safe -> bridge -> sim server
-
-Start the sim server first (in another terminal, conda ``ocean`` env)::
-
-    conda run -n ocean python \
-      src/rov_obstacle_sim_bridge/holoocean_server/holoocean_sim_server.py \
-      --config src/rov_obstacle_sim_bridge/config/holoocean_scenarios/sphere_front.yaml \
-      --serve
+The HoloOcean sim server still runs separately in the conda ``ocean`` env. This
+launch starts only the ROS 2 side: TCP bridge, nominal command publisher, and
+the generic local avoidance planner.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -35,11 +22,26 @@ def generate_launch_description():
     nominal_config = PathJoinSubstitution(
         [FindPackageShare("rov_obstacle_bringup"), "config", "demo.yaml"]
     )
+    default_scenario = PathJoinSubstitution(
+        [
+            FindPackageShare("rov_obstacle_sim_bridge"),
+            "config",
+            "holoocean_scenarios",
+            "anchor_center_static.yaml",
+        ]
+    )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
             DeclareLaunchArgument("port", default_value="47654"),
+            DeclareLaunchArgument("scenario_config", default_value=default_scenario),
+            LogInfo(
+                msg=[
+                    "Start holoocean_sim_server separately with scenario_config=",
+                    LaunchConfiguration("scenario_config"),
+                ]
+            ),
             Node(
                 package="rov_obstacle_sim_bridge",
                 executable="holoocean_bridge_node",
