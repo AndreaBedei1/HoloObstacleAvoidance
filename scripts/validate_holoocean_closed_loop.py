@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import time
+from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, Twist
@@ -22,7 +23,12 @@ def yaw_from_pose(msg: PoseStamped) -> float:
 
 
 class ClosedLoopCollector:
-    def __init__(self) -> None:
+    def __init__(self, save_images_dir: str = "", image_prefix: str = "closed_loop") -> None:
+        self.save_images_dir = save_images_dir
+        self.image_prefix = image_prefix
+        self.expect_class = "anchor"
+        self.saved_images: list[str] = []
+        self._save_at_frames = {1, 200}
         self.camera_frames = 0
         self.oracle_msgs = 0
         self.oracle_detections = 0
@@ -38,14 +44,31 @@ class ClosedLoopCollector:
         self.states: list[str] = []
         self.max_risk = 0.0
 
-    def on_image(self, _msg: Image) -> None:
+    def on_image(self, msg: Image) -> None:
         self.camera_frames += 1
+        if self.save_images_dir and self.camera_frames in self._save_at_frames:
+            self._save_image(msg)
+
+    def _save_image(self, msg: Image) -> None:
+        try:
+            import cv2
+            import numpy as np
+
+            data = np.frombuffer(bytes(msg.data), dtype=np.uint8)
+            rgb = data.reshape(int(msg.height), int(msg.width), -1)[:, :, :3]
+            out_dir = Path(self.save_images_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / f"{self.image_prefix}_frame{self.camera_frames:04d}.png"
+            cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+            self.saved_images.append(str(path))
+        except Exception as exc:  # keep validation running on encoder issues
+            print(f"[validator] image save failed: {exc!r}")
 
     def on_oracle(self, msg: Obstacle2DArray) -> None:
         self.oracle_msgs += 1
         self.oracle_detections += len(msg.obstacles)
         for obstacle in msg.obstacles:
-            if obstacle.class_name == "anchor":
+            if obstacle.class_name == self.expect_class:
                 self.oracle_anchor_detections += 1
             self.max_risk = max(self.max_risk, float(obstacle.risk))
 
@@ -94,6 +117,7 @@ class ClosedLoopCollector:
             recovery_idx = self.states.index("RECOVERING")
             recovered = "NORMAL" in self.states[recovery_idx + 1 :]
         return {
+            "saved_images": self.saved_images,
             "camera_frames": self.camera_frames,
             "oracle_msgs": self.oracle_msgs,
             "oracle_detections": self.oracle_detections,
@@ -113,11 +137,22 @@ class ClosedLoopCollector:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration-s", type=float, default=25.0)
+    parser.add_argument("--save-images-dir", default="",
+                        help="save first/mid camera frames as PNG here")
+    parser.add_argument("--image-prefix", default="closed_loop")
+    parser.add_argument("--report-json", default="",
+                        help="also write the summary JSON to this file")
+    parser.add_argument("--expect-class", default="anchor",
+                        help="oracle class counted as the target obstacle")
     args = parser.parse_args()
 
     rclpy.init()
     node = rclpy.create_node("holoocean_closed_loop_validator")
-    collector = ClosedLoopCollector()
+    collector = ClosedLoopCollector(
+        save_images_dir=args.save_images_dir,
+        image_prefix=args.image_prefix,
+    )
+    collector.expect_class = args.expect_class
 
     node.create_subscription(Image, "/camera/front/image_raw", collector.on_image, 10)
     node.create_subscription(
@@ -142,6 +177,13 @@ def main() -> int:
 
     result = collector.summary()
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.report_json:
+        report_path = Path(args.report_json)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        print(f"[validator] report written to {report_path}")
 
     node.destroy_node()
     rclpy.shutdown()

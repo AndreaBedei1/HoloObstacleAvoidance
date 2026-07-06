@@ -187,6 +187,132 @@ planner detects the central sphere, runs the full
 `NORMAL -> APPROACH_OBSTACLE -> AVOIDING_LEFT -> RECOVERING -> NORMAL` cycle, and
 the rover deviates and recovers.
 
+## Custom Real-Anchor Worlds (External Modified Engine)
+
+Besides the packaged stock worlds (primitive obstacles), the bridge can drive
+an EXTERNAL, locally modified HoloOcean engine that ships a custom underwater
+map (`ExampleLevel`) and real mesh assets: `/Game/ancora.ancora` (anchor),
+`/Game/mina.mina` (mine), `/Game/siluro.siluro` (torpedo). The external
+folder is treated as strictly READ-ONLY; everything needed to use it lives in
+this repository. Full inspection notes: `docs/external_holoocean_engine.md`.
+
+### Where to put the external folder and how to configure it
+
+The modified engine is a UE 5.3.2 editor project (`Holodeck.uproject`), not a
+packaged binary. All paths are configured in ONE file:
+
+`config/custom_holoocean_engine.yaml`
+
+- `external_engine.ue_editor_exe`: stock Unreal Editor 5.3 binary
+- `external_engine.uproject`: path to the external `Holodeck.uproject`
+- `external_engine.default_map`: custom world name (`ExampleLevel`)
+- `launch.*`: window size, ticks/frames per second (always VISIBLE, windowed)
+- `attach.*`: how long the client retries while the engine loads
+
+If you move the external folder, edit that YAML (or point the
+`HOLO_CUSTOM_ENGINE_CONFIG` environment variable at an alternative copy).
+Prerequisites: Unreal Editor 5.3 installed and the conda `ocean` env
+(Python 3.9 + holoocean 2.3.0 + numpy + opencv + pyyaml + pywin32).
+
+### One-shot visual verification (screenshot capture)
+
+```bat
+%USERPROFILE%\.conda\envs\ocean\python.exe scripts\capture_custom_anchor_frame.py --keep-engine
+```
+
+This launches the engine VISIBLY (windowed 1280x720), attaches, spawns the
+real anchor mesh via the engine's custom `SpawnAsset` world command at a
+seabed site validated against the external `world_population.json`, and
+saves camera frames + a JSON run description into `visualizations/`
+(`custom_anchor_probe_*.png`). `--keep-engine` leaves the window open for
+visual inspection; `--no-launch` attaches to an already-open FRESH window.
+Note: HoloOcean allows **one client attach per engine start** — a window a
+previous client already used cannot be re-attached (the launcher detects
+this and tells you to open a fresh one).
+
+### Start engine / sim server manually
+
+```bat
+:: engine window only (then attach whatever client you want):
+scripts\start_custom_holoocean_visible.bat
+
+:: engine + sim server (two-process bridge, TCP 47654):
+scripts\start_custom_anchor_world.bat
+:: ... or attach to a FRESH engine window you just opened (one attach
+:: per engine start -- a previously-used window cannot be re-attached):
+scripts\start_custom_anchor_world.bat ^
+  src\rov_obstacle_sim_bridge\config\holoocean_scenarios\custom_anchor_visible.yaml ^
+  --engine-running
+```
+
+Then start the ROS 2 side exactly like the packaged scenarios (terminal 2):
+
+```bat
+call scripts\source_ros2_windows.bat
+call install\setup.bat
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_avoidance.launch.py
+```
+
+### One command: full visible closed loop with the real anchor
+
+```bat
+scripts\run_custom_anchor_closed_loop.bat
+```
+
+Starts everything: visible engine window + sim server (conda `ocean`) +
+zenoh router + bridge/nominal/planner nodes + validator. Evidence lands in:
+
+- `visualizations/custom_anchor_frame*.png` (camera frames from
+  `/camera/front/image_raw`)
+- `logs/custom_anchor_validation.json` (metrics: camera frames, oracle
+  anchor detections, planner states, lateral deviation, recovery)
+- `logs/custom_anchor_{sim_server,ros2_launch,zenoh}.log` (terminal logs)
+
+Useful extra args: `--engine-running` (reuse open window), `--keep-engine`,
+`--duration-s 60`, or a different scenario YAML as first argument.
+
+### Custom scenario YAMLs (real assets)
+
+- `custom_anchor_visible.yaml`  - real anchor 12 m ahead (main scenario)
+- `custom_anchor_left.yaml`     - real anchor front-left
+- `custom_anchor_right.yaml`    - real anchor front-right
+- `custom_anchor_with_spheres.yaml` - real anchor + basic-shape distractor spheres
+
+These add two sections to the scenario schema (see
+`custom_anchor_visible.yaml` for the annotated reference):
+
+- `custom_engine:` external world + agent start pose + attach behaviour
+- `custom_assets:` real meshes to spawn (`mesh_asset`, position, rotation,
+  Unreal `scale`) plus the ORACLE ground truth (`radius_m`,
+  `half_extents_m`). Assets already baked into a world can be declared with
+  `spawned_at_runtime: false` + `absolute_position` (oracle-only, no spawn).
+
+The oracle never tries to visually detect the mesh: `/perception/obstacles_oracle`
+(and its relay to `/perception/obstacles`) is projected from the configured
+position/bounds, exactly like the primitive scenarios, so the planner is
+unchanged. The rendered RGB frames provide the visual realism.
+
+How to validate that the custom anchor is actually visible: look at the
+saved `visualizations/*.png` (the anchor must appear in the frame) and at
+the engine window itself; `logs/custom_anchor_validation.json` must show
+`camera_frames > 0` and `oracle_anchor_detections > 0`.
+
+Verified end-to-end with the REAL anchor mesh (2026-07-06): automatic engine
+start (visible window), anchor rendered dead-center in
+`/camera/front/image_raw`, 71 oracle anchor detections relayed to the
+planner, full `NORMAL -> APPROACH_OBSTACLE -> AVOIDING_LEFT -> RECOVERING ->
+NORMAL` cycle, 11 m max lateral deviation with recovery
+(`logs/custom_anchor_validation.json`, validator exit code 0).
+
+Engine-side notes (details in `docs/external_holoocean_engine.md`):
+
+- `SpawnAsset`/`ClearSpawned` are sent as DIRECT commands (CommandFactory);
+  `send_world_command` would crash this engine on unknown blueprint names.
+- The modified engine has no `SpawnProp`, so primitive-style distractors in
+  custom worlds use `SpawnAsset` with `/Engine/BasicShapes/*` meshes.
+- Everything here remains simulation-only: no MAVLink, no thrusters, no
+  real rover control, no neural detector, never headless.
+
 ## Stabilization Patch
 
 The ROS topic names are configurable through node parameters, while the default demo topics remain unchanged. The fake detector now computes `bearing_rad` from normalized image `center_x` and a configurable horizontal field of view, so left/right/crossing scenarios are geometrically consistent.
@@ -517,7 +643,11 @@ bridge forwards abstract safe velocity -> sim server kinematic teleport
 
 Known limitations:
 
-- Custom mesh import is not confirmed in this HoloOcean 2.3.0 setup; complex objects are approximated from primitives.
+- Real custom meshes (anchor/mine/torpedo) require the EXTERNAL modified
+  engine (see "Custom Real-Anchor Worlds"); the packaged stock 2.3.0 worlds
+  still approximate complex objects from primitives.
+- The external engine accepts ONE client attach per engine start; every
+  sim-server session launches (or needs) a fresh engine window.
 - The oracle is ground truth for simulation, debugging, and validation only. It is not a real onboard sensor.
 - Primitive aggregate bounds are approximate and conservative, especially for rotated parts.
 - Vehicle motion in the sim server is kinematic teleport, not hydrodynamic thruster control.

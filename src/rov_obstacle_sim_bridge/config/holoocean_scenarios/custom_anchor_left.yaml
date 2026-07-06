@@ -1,0 +1,48 @@
+# Custom REAL anchor to the LEFT — external modified engine (visible).
+# Same structure as custom_anchor_visible.yaml; anchor offset to +y (left).
+
+holoocean:
+  agent_name: auv0
+  camera_sensor: FrontCamera
+  ticks_per_sec: 30
+  frames_per_sec: 30
+  show_viewport: true
+
+custom_engine:
+  enabled: true
+  engine_config: ../../../../config/custom_holoocean_engine.yaml
+  world: ExampleLevel
+  auto_launch: true
+  stop_engine_on_exit: true
+  agent_type: HoveringAUV
+  agent_location: [-101.55, 38.38, -69.0]
+  agent_yaw_deg: 0.0
+  camera_socket: CameraLeftSocket
+  clear_spawned_on_start: true
+
+sim:
+  motion_model: teleport
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+custom_assets:
+  - name: anchor_real_left
+    class_name: anchor
+    mesh_asset: "/Game/ancora.ancora"
+    relative_position: [11.0, 3.0, -0.6]
+    rotation: [0.0, 0.0, 45.0]
+    scale: 4.0
+    radius_m: 1.8
+    half_extents_m: [0.6, 1.5, 1.8]
+    spawned_at_runtime: true

@@ -1,0 +1,69 @@
+# Custom REAL anchor scenario — EXTERNAL modified HoloOcean engine.
+#
+# Uses the modified UE 5.3 project (Holodeck.uproject, read-only external
+# folder) in visible -game mode.  The anchor is the real cooked mesh
+# /Game/ancora.ancora spawned at runtime through the engine's custom
+# SpawnAsset world command.  Oracle detections come from the configured
+# position/bounds below (the oracle never has to "see" the mesh).
+#
+# Run (terminal 1, conda ocean):
+#   conda run --no-capture-output -n ocean python ^
+#     src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
+#     --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\custom_anchor_visible.yaml ^
+#     --serve
+#
+# The agent starts ~70 m deep at a site validated against the external
+# world_population.json (real seabed underneath, inside the octree area).
+
+holoocean:
+  agent_name: auv0
+  camera_sensor: FrontCamera
+  ticks_per_sec: 30
+  frames_per_sec: 30
+  show_viewport: true          # visible window (engine runs windowed -game)
+
+custom_engine:
+  enabled: true
+  # Path resolved relative to this file -> <repo>/config/custom_holoocean_engine.yaml
+  engine_config: ../../../../config/custom_holoocean_engine.yaml
+  world: ExampleLevel
+  auto_launch: true            # launch the visible engine window automatically
+  stop_engine_on_exit: true
+  agent_type: HoveringAUV
+  # Client metres (REP-103: +x fwd, +y left, +z up).  ~69 m deep, real seabed.
+  agent_location: [-101.55, 38.38, -69.0]
+  agent_yaw_deg: 0.0
+  camera_socket: CameraLeftSocket
+  clear_spawned_on_start: true
+
+sim:
+  motion_model: teleport
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+custom_assets:
+  - name: anchor_real
+    class_name: anchor
+    mesh_asset: "/Game/ancora.ancora"
+    # 12 m ahead of the rover start, slightly below camera height.
+    relative_position: [12.0, 0.0, -0.6]
+    rotation: [0.0, 0.0, 90.0]
+    # Unreal actor scale.  4.0 gives a ~3 m anchor (verified visually);
+    # the external world_population.json uses 7-14 for its much larger
+    # sonar-oriented anchors.
+    scale: 4.0
+    # Oracle ground-truth geometry (metres, config-driven).
+    radius_m: 1.8
+    half_extents_m: [0.6, 1.5, 1.8]
+    spawned_at_runtime: true

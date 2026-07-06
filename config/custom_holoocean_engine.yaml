@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# EXTERNAL modified HoloOcean engine configuration (Windows).
+#
+# This file is the ONLY place where paths to the external, READ-ONLY
+# modified HoloOcean engine/assets folder are recorded.  Nothing in this
+# repository ever writes into that folder; the engine is launched from it
+# and custom assets are spawned at runtime through the engine's own
+# `SpawnAsset` world command (a C++ modification that lives in the external
+# engine source).
+#
+# If you move the external folder or use another machine, update the paths
+# below (or point the HOLO_CUSTOM_ENGINE_CONFIG environment variable at a
+# different YAML with the same structure).
+# ---------------------------------------------------------------------------
+
+external_engine:
+  # Unreal Editor used to run the modified project in `-game` mode.
+  # The modified engine is an UE 5.3.2 *editor project* (Holodeck.uproject),
+  # not a packaged binary, so the stock UE editor binary is required.
+  ue_editor_exe: "C:/Program Files/Epic Games/UE_5.3/Engine/Binaries/Win64/UnrealEditor.exe"
+
+  # The modified HoloOcean project file (READ-ONLY external folder).
+  uproject: "C:/Users/andrea.bedei3/Desktop/Holo/MondoTest/HoloOcean/engine/Holodeck.uproject"
+
+  # Custom world (map) that ships with the modified engine.
+  default_map: "ExampleLevel"
+
+  # Optional: the population file used by the previous manual workflow
+  # (read-only reference; used to pick realistic anchor sites and scales).
+  world_population_json: "C:/Users/andrea.bedei3/Desktop/Holo/MondoTest/HoloOcean/engine/Content/Config/world_population.json"
+
+launch:
+  # Always run VISIBLE.  Headless/offscreen is intentionally not supported
+  # by these launchers: visual confirmation is part of the workflow.
+  windowed: true
+  res_x: 1280
+  res_y: 720
+  ticks_per_sec: 30
+  frames_per_sec: 30
+  # Engine log is redirected INTO THIS REPO so the external folder stays
+  # untouched by our runs (path relative to the repository root).
+  log_file: "logs/ue_custom_engine.log"
+  # Additional raw UE command line arguments, if ever needed.
+  extra_args: []
+
+attach:
+  # The UE editor needs time to load ExampleLevel the first time
+  # (asset/shader warm-up).  The Python client retries attaching until
+  # this timeout expires.
+  timeout_s: 900
+  poll_interval_s: 5.0
+
+# Conda environment that provides the HoloOcean Python client (3.9).
+conda_env: "ocean"
+
+# Custom spawnable meshes cooked into the modified engine.
+assets:
+  anchor_mesh: "/Game/ancora.ancora"
+  mine_mesh: "/Game/mina.mina"
+  torpedo_mesh: "/Game/siluro.siluro"

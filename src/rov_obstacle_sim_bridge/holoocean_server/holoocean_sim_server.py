@@ -133,6 +133,44 @@ class SpawnedPrimitive:
 
 
 @dataclass
+class CustomAssetSpec:
+    """A real Unreal mesh asset from the EXTERNAL modified engine.
+
+    Spawned at runtime through the engine's custom ``SpawnAsset`` world
+    command (or assumed to already exist in the world when
+    ``spawned_at_runtime`` is false).  The oracle never tries to visually
+    detect the mesh: detections come from the configured position/bounds.
+    """
+
+    name: str
+    class_name: str
+    mesh_asset: str                     # e.g. /Game/ancora.ancora
+    relative_position: Optional[tuple[float, float, float]] = None  # fwd,left,up (m)
+    absolute_position: Optional[tuple[float, float, float]] = None  # world client m
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)  # roll, pitch, yaw deg
+    scale: Any = 1.0                    # float or [x, y, z] (Unreal actor scale)
+    radius_m: float = 1.5               # oracle bounding radius
+    half_extents_m: Optional[tuple[float, float, float]] = None  # oracle box half sizes
+    spawned_at_runtime: bool = True
+
+
+@dataclass
+class CustomEngineSpec:
+    """Settings for attaching to the EXTERNAL modified HoloOcean engine."""
+
+    enabled: bool = False
+    engine_config: str = ""             # path to custom_holoocean_engine.yaml
+    world: str = "ExampleLevel"
+    auto_launch: bool = True            # launch the visible engine window ourselves
+    stop_engine_on_exit: bool = True
+    agent_type: str = "HoveringAUV"
+    agent_location: tuple[float, float, float] = (0.0, 0.0, -20.0)  # client m
+    agent_yaw_deg: float = 0.0
+    camera_socket: str = "CameraLeftSocket"
+    clear_spawned_on_start: bool = True
+
+
+@dataclass
 class SimConfig:
     scenario: str = "OpenWater-HoveringCamera"
     agent_name: str = "auv0"
@@ -153,6 +191,9 @@ class SimConfig:
     obstacles: list[ObstacleSpec] = field(default_factory=list)
     semantic_objects: list[SemanticObjectSpec] = field(default_factory=list)
     oracle_debug_primitive_detections: bool = False
+    custom_engine: Optional[CustomEngineSpec] = None
+    custom_assets: list[CustomAssetSpec] = field(default_factory=list)
+    config_dir: str = ""             # directory of the scenario YAML (for relpaths)
 
 
 def load_config(path: str) -> SimConfig:
@@ -217,6 +258,14 @@ def load_config(path: str) -> SimConfig:
             )
         )
 
+    custom_engine = _load_custom_engine_spec(data.get("custom_engine"))
+    custom_assets = _load_custom_asset_specs(data.get("custom_assets"))
+    if custom_assets and (custom_engine is None or not custom_engine.enabled):
+        raise ValueError(
+            "custom_assets require a 'custom_engine' section with enabled: true "
+            "(the SpawnAsset world command only exists in the modified engine)"
+        )
+
     return SimConfig(
         scenario=str(ho.get("scenario", "OpenWater-HoveringCamera")),
         agent_name=str(ho.get("agent_name", "auv0")),
@@ -239,7 +288,87 @@ def load_config(path: str) -> SimConfig:
         oracle_debug_primitive_detections=bool(
             oracle.get("debug_primitive_detections", False)
         ),
+        custom_engine=custom_engine,
+        custom_assets=custom_assets,
+        config_dir=os.path.dirname(os.path.abspath(path)),
     )
+
+
+def _load_custom_engine_spec(raw: Any) -> Optional[CustomEngineSpec]:
+    if not raw:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("'custom_engine' must be a mapping")
+    return CustomEngineSpec(
+        enabled=bool(raw.get("enabled", False)),
+        engine_config=str(raw.get("engine_config", "") or ""),
+        world=str(raw.get("world", "ExampleLevel")),
+        auto_launch=bool(raw.get("auto_launch", True)),
+        stop_engine_on_exit=bool(raw.get("stop_engine_on_exit", True)),
+        agent_type=str(raw.get("agent_type", "HoveringAUV")),
+        agent_location=_float3(
+            raw.get("agent_location", [0.0, 0.0, -20.0]),
+            "custom_engine.agent_location",
+        ),
+        agent_yaw_deg=float(raw.get("agent_yaw_deg", 0.0)),
+        camera_socket=str(raw.get("camera_socket", "CameraLeftSocket")),
+        clear_spawned_on_start=bool(raw.get("clear_spawned_on_start", True)),
+    )
+
+
+def _load_custom_asset_specs(raw: Any) -> list[CustomAssetSpec]:
+    specs: list[CustomAssetSpec] = []
+    for entry in raw or []:
+        name = str(entry["name"])
+        mesh_asset = str(entry.get("mesh_asset", "") or "")
+        if not mesh_asset.startswith("/"):
+            raise ValueError(
+                f"custom_assets.{name}.mesh_asset must be an Unreal path "
+                f"like /Game/ancora.ancora (got {mesh_asset!r})"
+            )
+        relative = entry.get("relative_position")
+        absolute = entry.get("absolute_position")
+        if relative is None and absolute is None:
+            raise ValueError(
+                f"custom_assets.{name} needs relative_position or absolute_position"
+            )
+        spawned = bool(entry.get("spawned_at_runtime", True))
+        if not spawned and absolute is None:
+            raise ValueError(
+                f"custom_assets.{name}: static world assets "
+                "(spawned_at_runtime: false) require absolute_position"
+            )
+        half = entry.get("half_extents_m")
+        specs.append(
+            CustomAssetSpec(
+                name=name,
+                class_name=str(entry.get("class_name", "unknown_obstacle")),
+                mesh_asset=mesh_asset,
+                relative_position=(
+                    _float3(relative, f"custom_assets.{name}.relative_position")
+                    if relative is not None
+                    else None
+                ),
+                absolute_position=(
+                    _float3(absolute, f"custom_assets.{name}.absolute_position")
+                    if absolute is not None
+                    else None
+                ),
+                rotation=_float3(
+                    entry.get("rotation", [0.0, 0.0, 0.0]),
+                    f"custom_assets.{name}.rotation",
+                ),
+                scale=entry.get("scale", 1.0),
+                radius_m=float(entry.get("radius_m", 1.5)),
+                half_extents_m=(
+                    _float3(half, f"custom_assets.{name}.half_extents_m")
+                    if half is not None
+                    else None
+                ),
+                spawned_at_runtime=spawned,
+            )
+        )
+    return specs
 
 
 def _load_part_spec(
@@ -587,6 +716,132 @@ def build_spawn_plan(
     return spawns, oracle_obstacles
 
 
+@dataclass
+class CustomAssetSpawn:
+    """A resolved SpawnAsset call (client metres, client RPY degrees)."""
+
+    name: str
+    class_name: str
+    mesh_asset: str
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float]
+    scale: tuple[float, float, float]
+    spawned_at_runtime: bool
+
+
+def build_custom_asset_plan(
+    config: SimConfig,
+    sx: float,
+    sy: float,
+    sz: float,
+    syaw: float,
+) -> tuple[list[CustomAssetSpawn], list[dict[str, Any]]]:
+    """Resolve custom mesh assets to world poses and oracle entries.
+
+    Mirrors :func:`build_spawn_plan` for real Unreal assets from the external
+    modified engine.  ``relative_position`` entries are placed relative to the
+    rover's working pose (like primitives); ``absolute_position`` entries stay
+    fixed in the world (e.g. anchors that conceptually belong to the map).
+    The oracle entry uses the configured ``radius_m``/``half_extents_m`` —
+    ground truth comes from configuration, never from rendering.
+    """
+    origin = (sx, sy, sz)
+    plan: list[CustomAssetSpawn] = []
+    oracle_entries: list[dict[str, Any]] = []
+
+    for spec in config.custom_assets:
+        if spec.absolute_position is not None:
+            position = spec.absolute_position
+            rotation = spec.rotation
+        else:
+            position = _relative_to_world(origin, syaw, spec.relative_position)
+            rotation = _spawn_rotation_deg(spec.rotation, syaw)
+
+        bounds: Optional[dict[str, list[float]]] = None
+        if spec.half_extents_m is not None:
+            rot_matrix = _euler_matrix_deg(rotation)
+            hx, hy, hz = (
+                max(0.01, abs(spec.half_extents_m[0])),
+                max(0.01, abs(spec.half_extents_m[1])),
+                max(0.01, abs(spec.half_extents_m[2])),
+            )
+            corners = []
+            for cx in (-hx, hx):
+                for cy in (-hy, hy):
+                    for cz in (-hz, hz):
+                        corners.append(_add3(position, _matvec3(rot_matrix, (cx, cy, cz))))
+            bounds = _bounds_from_points(corners)
+
+        plan.append(
+            CustomAssetSpawn(
+                name=spec.name,
+                class_name=spec.class_name,
+                mesh_asset=spec.mesh_asset,
+                position=position,
+                rotation=rotation,
+                scale=_scale_vector(spec.scale),
+                spawned_at_runtime=spec.spawned_at_runtime,
+            )
+        )
+        oracle_entries.append(
+            _oracle_entry(
+                name=spec.name,
+                class_name=spec.class_name,
+                position=position,
+                radius_m=spec.radius_m,
+                bounds=bounds,
+            )
+        )
+
+    return plan, oracle_entries
+
+
+def build_custom_scenario_cfg(config: SimConfig) -> dict[str, Any]:
+    """HoloOcean ``scenario_cfg`` dict for attaching to the modified engine.
+
+    Pure helper (no holoocean import) so unit tests can validate it.  The
+    camera sensor is named after ``config.camera_sensor`` so the rest of the
+    server (``step()``) works unchanged in custom-engine mode.
+    """
+    spec = config.custom_engine
+    if spec is None or not spec.enabled:
+        raise ValueError("build_custom_scenario_cfg requires an enabled custom_engine")
+    return {
+        "name": "rov_obstacle_custom_engine",
+        "world": spec.world,
+        "main_agent": config.agent_name,
+        "ticks_per_sec": int(config.ticks_per_sec),
+        # Explicit value required: holoocean.make() falls back to an
+        # interactive input() prompt when the key is missing.
+        "frames_per_sec": (
+            int(config.frames_per_sec) if config.frames_per_sec else False
+        ),
+        "agents": [
+            {
+                "agent_name": config.agent_name,
+                "agent_type": spec.agent_type,
+                "sensors": [
+                    {"sensor_type": "PoseSensor", "socket": "IMUSocket"},
+                    {"sensor_type": "VelocitySensor", "socket": "IMUSocket"},
+                    {"sensor_type": "DepthSensor", "socket": "DepthSocket"},
+                    {
+                        "sensor_type": "RGBCamera",
+                        "sensor_name": config.camera_sensor,
+                        "socket": spec.camera_socket,
+                        "configuration": {
+                            "CaptureWidth": int(config.camera_width),
+                            "CaptureHeight": int(config.camera_height),
+                        },
+                    },
+                ],
+                "control_scheme": 0,
+                "location": [float(v) for v in spec.agent_location],
+                "rotation": [0.0, 0.0, float(spec.agent_yaw_deg)],
+            }
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Sim server
 # ---------------------------------------------------------------------------
@@ -597,6 +852,8 @@ class HolooceanSimServer:
         self.verbose = verbose
         self.env: Any = None
         self.agent: Any = None
+        self._engine_proc: Any = None       # external engine process (if we launched it)
+        self._engine_launcher: Any = None   # lazily imported custom_engine_launcher
 
         # Kinematic pose state (world frame).
         self.x = 0.0
@@ -619,15 +876,18 @@ class HolooceanSimServer:
 
     # -- lifecycle -----------------------------------------------------------
     def start(self) -> None:
-        import holoocean
-        self.log(f"make({self.cfg.scenario}) ...")
         t0 = time.time()
-        self.env = holoocean.make(
-            self.cfg.scenario,
-            show_viewport=self.cfg.show_viewport,
-            ticks_per_sec=self.cfg.ticks_per_sec,
-            frames_per_sec=self.cfg.frames_per_sec,
-        )
+        if self.cfg.custom_engine is not None and self.cfg.custom_engine.enabled:
+            self._start_custom_engine()
+        else:
+            import holoocean
+            self.log(f"make({self.cfg.scenario}) ...")
+            self.env = holoocean.make(
+                self.cfg.scenario,
+                show_viewport=self.cfg.show_viewport,
+                ticks_per_sec=self.cfg.ticks_per_sec,
+                frames_per_sec=self.cfg.frames_per_sec,
+            )
         self.agent = self.env.agents[self.cfg.agent_name]
         self.log(f"env ready in {time.time() - t0:.1f}s")
 
@@ -657,6 +917,54 @@ class HolooceanSimServer:
         # the camera regardless of the raw spawn location.
         self._spawn_obstacles(self.x, self.y, self.z, self.yaw)
 
+    def _start_custom_engine(self) -> None:
+        """Attach to the EXTERNAL modified engine (launching it if needed).
+
+        The engine is an UE editor project run in visible ``-game`` mode; the
+        HoloOcean client attaches through shared memory instead of launching a
+        packaged binary.  The external folder is used strictly read-only.
+        """
+        spec = self.cfg.custom_engine
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import custom_engine_launcher as cel
+        self._engine_launcher = cel
+
+        engine_config_path = spec.engine_config or None
+        if engine_config_path and not os.path.isabs(engine_config_path):
+            engine_config_path = os.path.normpath(
+                os.path.join(self.cfg.config_dir, engine_config_path)
+            )
+        engine_cfg = cel.load_engine_config(engine_config_path)
+        problems = cel.validate_engine_config(engine_cfg, check_paths=True)
+        if problems:
+            raise RuntimeError(
+                "External engine not usable:\n  - " + "\n  - ".join(problems)
+            )
+
+        if spec.auto_launch:
+            self.log(f"launching external engine (world={spec.world}, visible)")
+            self._engine_proc = cel.launch_engine(engine_cfg, map_name=spec.world)
+        else:
+            self.log("expecting an already-running external engine window")
+
+        scenario_cfg = build_custom_scenario_cfg(self.cfg)
+        self.log(f"attaching to '{spec.world}' as agent "
+                 f"'{self.cfg.agent_name}' ({spec.agent_type})")
+        self.env = cel.attach_holoocean(
+            scenario_cfg,
+            engine_cfg,
+            engine_process=self._engine_proc,
+            verbose=self.verbose,
+        )
+        if spec.clear_spawned_on_start:
+            # Direct command via CommandFactory; send_world_command would
+            # fatal the engine (unknown blueprint custom command).
+            import custom_asset_commands as cac
+            cac.enqueue_clear_spawned(self.env)
+            self.env.tick()
+
     def _spawn_obstacles(self, sx: float, sy: float, sz: float,
                          syaw: float) -> None:
         spawn_plan, oracle_obstacles = build_spawn_plan(self.cfg, sx, sy, sz, syaw)
@@ -682,7 +990,44 @@ class HolooceanSimServer:
                          f"{parent}")
             except Exception as exc:  # pragma: no cover - depends on engine
                 self.log(f"WARNING: failed to spawn '{primitive.name}': {exc!r}")
-        self.obstacle_world = oracle_obstacles
+
+        asset_plan, asset_oracle = build_custom_asset_plan(self.cfg, sx, sy, sz, syaw)
+        if asset_plan:
+            here = os.path.dirname(os.path.abspath(__file__))
+            if here not in sys.path:
+                sys.path.insert(0, here)
+        spawned_any_asset = False
+        for asset in asset_plan:
+            if not asset.spawned_at_runtime:
+                self.log(f"custom asset '{asset.name}' assumed static in world "
+                         f"at ({asset.position[0]:.1f},{asset.position[1]:.1f},"
+                         f"{asset.position[2]:.1f})")
+                continue
+            wx, wy, wz = asset.position
+            try:
+                import custom_asset_commands as cac
+                cac.enqueue_spawn_asset(
+                    self.env,
+                    position=[wx, wy, wz],
+                    rotation=list(asset.rotation),
+                    scale=list(asset.scale),
+                    mesh_asset=asset.mesh_asset,
+                    label=asset.name,
+                    units="meters",
+                )
+                spawned_any_asset = True
+                self.log(f"spawned custom asset '{asset.name}' "
+                         f"({asset.class_name}, {asset.mesh_asset}) at "
+                         f"world=({wx:.1f},{wy:.1f},{wz:.1f}) "
+                         f"scale={asset.scale[0]:.2f}")
+            except Exception as exc:  # pragma: no cover - depends on engine
+                self.log(f"WARNING: failed to spawn custom asset "
+                         f"'{asset.name}': {exc!r}")
+        if spawned_any_asset:
+            # Commands execute on the next engine tick.
+            self.env.tick()
+
+        self.obstacle_world = oracle_obstacles + asset_oracle
         self.log(f"oracle semantic obstacles: {len(self.obstacle_world)}")
 
     def close(self) -> None:
@@ -692,6 +1037,15 @@ class HolooceanSimServer:
             except Exception:
                 pass
             self.env = None
+        if self._engine_proc is not None:
+            spec = self.cfg.custom_engine
+            if spec is not None and spec.stop_engine_on_exit:
+                self.log("stopping external engine window")
+                try:
+                    self._engine_launcher.stop_engine(self._engine_proc)
+                except Exception:
+                    pass
+            self._engine_proc = None
 
     # -- per-tick update -----------------------------------------------------
     def apply_command(self, header: dict) -> None:
@@ -877,9 +1231,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--selftest", action="store_true",
                         help="run scripted self-test (no socket)")
     parser.add_argument("--selftest-seconds", type=float, default=6.0)
+    parser.add_argument("--engine-running", action="store_true",
+                        help="attach to an already-running external engine "
+                             "window instead of launching one")
+    parser.add_argument("--keep-engine", action="store_true",
+                        help="leave the external engine window running on exit")
+    parser.add_argument("--engine-config", default=None,
+                        help="override path to custom_holoocean_engine.yaml")
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
+    if cfg.custom_engine is not None:
+        if args.engine_running:
+            cfg.custom_engine.auto_launch = False
+        if args.keep_engine:
+            cfg.custom_engine.stop_engine_on_exit = False
+        if args.engine_config:
+            cfg.custom_engine.engine_config = os.path.abspath(args.engine_config)
     server = HolooceanSimServer(cfg)
     server.start()
     try:

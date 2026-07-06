@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Custom anchor world description (documentation-level configuration).
+#
+# Summarises WHAT the custom world contains and HOW the real anchor is
+# produced, independent of any single scenario.  The runtime values used by
+# the sim server live in the scenario YAMLs under
+#   src/rov_obstacle_sim_bridge/config/holoocean_scenarios/custom_anchor_*.yaml
+# and the external engine paths live in config/custom_holoocean_engine.yaml.
+# ---------------------------------------------------------------------------
+
+world:
+  name: ExampleLevel
+  source: external modified HoloOcean engine (read-only folder)
+  description: >
+    Custom underwater map shipped inside the modified Holodeck.uproject.
+    Water surface sits around z = -25 m (client metres); the seabed spans
+    roughly -26 m to -76 m.  The map itself contains no anchors: every
+    anchor/mine/torpedo is spawned at runtime through the engine's custom
+    SpawnAsset world command.
+
+anchor:
+  asset: "/Game/ancora.ancora"
+  class_name: anchor
+  spawned_at_runtime: true      # NOT a static actor baked into the map
+  spawn_command: SpawnAsset     # custom C++ world command in the engine
+  spawn_units: meters           # client metres (engine converts to UE cm)
+  scenario_scale: 4.0           # ~3 m anchor (used by the repo scenarios)
+  population_scale: 7-14        # larger sonar-oriented anchors in world_population.json
+  # Oracle ground truth used for /perception/obstacles_oracle projection.
+  oracle:
+    radius_m: 1.8
+    half_extents_m: [0.6, 1.5, 1.8]
+
+reference_site:
+  # Validated spawn site (from the external world_population.json,
+  # entry ancora_007, core octree area with real seabed underneath).
+  anchor_position_client_m: [-93.55, 38.38, -69.60]
+  rover_start_client_m: [-101.55, 38.38, -69.0]
+  rover_yaw_deg: 0.0
+
+other_assets:
+  mine: "/Game/mina.mina"
+  torpedo: "/Game/siluro.siluro"
+  basic_sphere: "/Engine/BasicShapes/Sphere.Sphere"   # for distractors
+
+constraints:
+  simulation_only: true
+  visible_rendering_required: true
+  external_folder_read_only: true
+  no_mavlink: true
+  no_real_thrusters: true
