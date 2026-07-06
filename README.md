@@ -35,6 +35,81 @@ The neural detector is intentionally not implemented yet. The fake detector give
 
 The current fake detector skips `/camera/front/image_raw` and publishes `Obstacle2DArray` directly so the planner can be tested before the neural detector exists.
 
+## Real HoloOcean Bridge (Two-Process)
+
+HoloOcean and ROS 2 run in **two different Python interpreters that cannot share
+a process**:
+
+- HoloOcean 2.3.0 -> conda env `ocean` (Python 3.9).
+- ROS 2 Lyrical -> pixi env at `C:\dev\lyrical` (Python 3.12).
+
+So the integration is a **two-process bridge** connected by a localhost TCP
+socket. This matches the design goal "HoloOcean is a simulator that *publishes*
+sensors and vehicle state into ROS 2":
+
+```text
+[conda ocean / py3.9]                         [pixi ROS 2 / py3.12]
+holoocean_sim_server.py  ── TCP 127.0.0.1 ──>  holoocean_bridge_node
+  make(scenario) + spawn_prop spheres          /camera/front/image_raw (Image rgb8)
+  step sim, read camera/pose/vel/depth         /rov/pose /rov/velocity /rov/depth
+  apply incoming cmd_vel (kinematic)  <── TCP ─ /perception/obstacles_oracle  (SIM-ONLY)
+                                               forwards /planner/cmd_vel_safe -> server
+       shared: rov_obstacle_sim_bridge/sim_bridge_protocol.py  (stdlib only, both envs)
+```
+
+The sim server (`src/rov_obstacle_sim_bridge/holoocean_server/holoocean_sim_server.py`)
+spawns obstacles with HoloOcean's native `spawn_prop` (`sphere`, `box`,
+`cylinder`, `cone`). Scenarios live in
+`config/holoocean_scenarios/*.yaml`; obstacle `relative_position` is
+`[forward_m, left_m, up_m]` in the rover's spawn body frame. Vehicle motion is a
+**kinematic teleport** convenience for simulation only — it never touches
+thrusters, MAVLink or a real ROV.
+
+`/perception/obstacles_oracle` is a **simulation-only** ground-truth projection
+(debugging / dataset labels / planner validation), never a real onboard sensor.
+
+### Coordinate convention (calibrated against real renders)
+
+HoloOcean's world frame is right-handed REP-103: **+X forward, +Y left, +Z up**.
+Verified empirically — facing +X, a sphere at world +Y renders on the image
+LEFT, and teleport yaw=+90 deg turns the camera toward +Y. The bridge negates
+y/yaw when projecting through `oracle_geometry` (which uses +y = right) so the
+oracle `center_x` matches where the obstacle actually appears.
+
+### Run the real HoloOcean avoidance demo
+
+Terminal 1 — sim server in the conda `ocean` env:
+
+```bat
+conda run -n ocean python ^
+  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
+  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\sphere_front.yaml ^
+  --serve
+```
+
+Terminal 2 — ROS 2 closed-loop avoidance in the pixi env:
+
+```bat
+call scripts\source_ros2_windows.bat
+call install\setup.bat
+ros2 launch rov_obstacle_sim_bridge holoocean_oracle_avoidance.launch.py
+```
+
+Smoke-test the sim server alone (no ROS 2, real HoloOcean) with a scripted
+forward run:
+
+```bat
+conda run -n ocean python ^
+  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
+  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\sphere_front.yaml ^
+  --selftest
+```
+
+Verified end-to-end (sim server + bridge + planner) in real HoloOcean: the
+planner detects the central sphere, runs the full
+`NORMAL -> APPROACH_OBSTACLE -> AVOIDING_LEFT -> RECOVERING -> NORMAL` cycle, and
+the rover deviates and recovers.
+
 ## Stabilization Patch
 
 The ROS topic names are configurable through node parameters, while the default demo topics remain unchanged. The fake detector now computes `bearing_rad` from normalized image `center_x` and a configurable horizontal field of view, so left/right/crossing scenarios are geometrically consistent.
