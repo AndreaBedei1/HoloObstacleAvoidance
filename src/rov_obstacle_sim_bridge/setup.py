@@ -30,7 +30,15 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (
+            os.path.join("share", package_name, "config", "holoocean_scenarios"),
+            glob("config/holoocean_scenarios/*.yaml"),
+        ),
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
+        (
+            os.path.join("share", package_name, "holoocean_server"),
+            glob("holoocean_server/*.py"),
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -41,6 +49,7 @@ setup(
     cmdclass={"test": PyTestCommand},
     entry_points={
         "console_scripts": [
+            "holoocean_bridge_node=rov_obstacle_sim_bridge.holoocean_bridge_node:main",
             "holoocean_obstacle_oracle_node=rov_obstacle_sim_bridge.holoocean_obstacle_oracle_node:main",
             "holoocean_pose_bridge_node=rov_obstacle_sim_bridge.holoocean_pose_bridge_node:main",
             "simulated_rover_pose_publisher_node=rov_obstacle_sim_bridge.simulated_rover_pose_publisher_node:main",

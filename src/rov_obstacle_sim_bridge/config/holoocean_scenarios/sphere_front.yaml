@@ -1,0 +1,41 @@
+# HoloOcean sim-server scenario: a single static sphere directly ahead.
+# Consumed by holoocean_server/holoocean_sim_server.py (conda `ocean` env).
+#
+# Obstacle positions are RELATIVE to the rover's actual spawn pose, expressed in
+# body axes at spawn time: [forward_m, right_m, up_m].  The server resolves them
+# to HoloOcean world coordinates after reading the spawn pose, so scenarios are
+# robust to whatever absolute spawn location the scenario uses.
+
+holoocean:
+  scenario: OpenWater-HoveringCamera
+  agent_name: auv0
+  camera_sensor: LeftCamera
+  ticks_per_sec: 30
+  frames_per_sec: false      # run as fast as the engine allows
+  show_viewport: false
+
+sim:
+  motion_model: teleport     # teleport (kinematic) | hold
+  start_offset: [0.0, 0.0, 60.0]   # lift the rover into open water above terrain
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+obstacles:
+  - name: sphere_front
+    class_name: sphere
+    prop_type: sphere
+    relative_position: [10.0, 0.0, 0.0]   # 10 m straight ahead
+    radius_m: 1.5
+    scale: 3.0
+    material: white
+    sim_physics: false

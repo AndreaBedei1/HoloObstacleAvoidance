@@ -1,0 +1,52 @@
+# HoloOcean sim-server scenario: several spheres at once (medium difficulty).
+# relative_position is [forward_m, left_m, up_m] in the rover spawn body frame.
+
+holoocean:
+  scenario: OpenWater-HoveringCamera
+  agent_name: auv0
+  camera_sensor: LeftCamera
+  ticks_per_sec: 30
+  frames_per_sec: false
+  show_viewport: false
+
+sim:
+  motion_model: teleport
+  start_offset: [0.0, 0.0, 60.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+obstacles:
+  - name: sphere_center
+    class_name: sphere
+    prop_type: sphere
+    relative_position: [12.0, 0.0, 0.0]
+    radius_m: 1.5
+    scale: 3.0
+    material: white
+    sim_physics: false
+  - name: sphere_left
+    class_name: sphere
+    prop_type: sphere
+    relative_position: [8.0, 3.0, 0.5]
+    radius_m: 1.0
+    scale: 2.0
+    material: gold
+    sim_physics: false
+  - name: sphere_right
+    class_name: sphere
+    prop_type: sphere
+    relative_position: [16.0, -5.0, -1.0]
+    radius_m: 2.0
+    scale: 4.0
+    material: steel
+    sim_physics: false

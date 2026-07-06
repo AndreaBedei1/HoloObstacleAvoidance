@@ -1,0 +1,28 @@
+# Parameters for the ROS 2 side of the HoloOcean bridge (holoocean_bridge_node).
+# This node connects to the holoocean_sim_server over a localhost TCP socket.
+# It performs NO HoloOcean import itself (HoloOcean runs in the conda `ocean`
+# env, in the separate sim-server process).
+
+holoocean_bridge:
+  ros__parameters:
+    host: "127.0.0.1"
+    port: 47654
+    poll_rate_hz: 60.0
+
+    world_frame_id: "world"
+    camera_frame_id: "front_camera"
+
+    image_topic: "/camera/front/image_raw"
+    pose_topic: "/rov/pose"
+    velocity_topic: "/rov/velocity"
+    depth_topic: "/rov/depth"
+    # SIMULATION-ONLY ground-truth obstacle projection (debug / labels / eval).
+    oracle_topic: "/perception/obstacles_oracle"
+    cmd_vel_topic: "/planner/cmd_vel_safe"
+
+    publish_image: true
+
+    # Oracle projection range gate (metres).
+    min_detection_range_m: 0.2
+    max_detection_range_m: 40.0
+    risk_area_gain: 4.0

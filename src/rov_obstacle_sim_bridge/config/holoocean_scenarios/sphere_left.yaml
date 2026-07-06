@@ -1,0 +1,37 @@
+# HoloOcean sim-server scenario: a single sphere on the LEFT of the camera.
+# relative_position is [forward_m, left_m, up_m] in the rover's spawn body frame.
+# +left = +Y in HoloOcean's REP-103 world frame (renders on the image LEFT).
+
+holoocean:
+  scenario: OpenWater-HoveringCamera
+  agent_name: auv0
+  camera_sensor: LeftCamera
+  ticks_per_sec: 30
+  frames_per_sec: false
+  show_viewport: false
+
+sim:
+  motion_model: teleport
+  start_offset: [0.0, 0.0, 60.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 1.5
+  max_sway: 1.5
+  max_heave: 1.0
+  max_yaw_rate: 0.8
+
+obstacles:
+  - name: sphere_left
+    class_name: sphere
+    prop_type: sphere
+    relative_position: [10.0, 4.0, 0.0]    # 10 m ahead, 4 m to the left
+    radius_m: 1.5
+    scale: 3.0
+    material: white
+    sim_physics: false
