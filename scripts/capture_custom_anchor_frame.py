@@ -124,7 +124,9 @@ def build_probe_scenario(agent_location, agent_yaw_deg, width, height, tps):
 
 
 def save_rgb(frame: np.ndarray, path: Path) -> None:
-    rgb = np.ascontiguousarray(np.array(frame)[:, :, :3].astype(np.uint8))
+    # HoloOcean camera buffers are BGRA (UE FColor memory layout), despite
+    # the client docstring saying RGBA: channels 2,1,0 are the true RGB.
+    rgb = np.ascontiguousarray(np.array(frame)[:, :, 2::-1].astype(np.uint8))
     try:
         import cv2
 

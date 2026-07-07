@@ -18,6 +18,8 @@ PACKAGE_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = PACKAGE_DIR.parents[1]
 SERVER_PATH = PACKAGE_DIR / "holoocean_server" / "holoocean_sim_server.py"
 SCENARIO_DIR = PACKAGE_DIR / "config" / "holoocean_scenarios"
+# Primitive scenarios are legacy: kept only for loader/oracle regressions.
+LEGACY_DIR = SCENARIO_DIR / "legacy_primitives"
 
 
 def _load_server_module():
@@ -37,7 +39,7 @@ class CoordinateConventionDocsTest(unittest.TestCase):
         paths = [
             REPO_DIR / "README.md",
             SERVER_PATH,
-            SCENARIO_DIR / "sphere_front.yaml",
+            LEGACY_DIR / "sphere_front.yaml",
         ]
         for path in paths:
             text = path.read_text(encoding="utf-8")
@@ -45,13 +47,13 @@ class CoordinateConventionDocsTest(unittest.TestCase):
             self.assertNotIn("[forward, right, up", text, msg=str(path))
 
     def test_sphere_front_documents_forward_left_up(self):
-        text = (SCENARIO_DIR / "sphere_front.yaml").read_text(encoding="utf-8")
+        text = (LEGACY_DIR / "sphere_front.yaml").read_text(encoding="utf-8")
         self.assertIn("[forward_m, left_m, up_m]", text)
 
 
 class SemanticObjectConfigTest(unittest.TestCase):
     def test_loads_anchor_parts(self):
-        cfg = SERVER.load_config(str(SCENARIO_DIR / "anchor_center_static.yaml"))
+        cfg = SERVER.load_config(str(LEGACY_DIR / "anchor_center_static.yaml"))
 
         self.assertEqual(len(cfg.semantic_objects), 1)
         anchor = cfg.semantic_objects[0]
@@ -62,7 +64,7 @@ class SemanticObjectConfigTest(unittest.TestCase):
         self.assertEqual(anchor.parts[0].prop_type, "box")
 
     def test_build_spawn_plan_aggregates_anchor(self):
-        cfg = SERVER.load_config(str(SCENARIO_DIR / "anchor_center_static.yaml"))
+        cfg = SERVER.load_config(str(LEGACY_DIR / "anchor_center_static.yaml"))
         spawns, oracle = SERVER.build_spawn_plan(cfg, 0.0, 0.0, 0.0, 0.0)
 
         self.assertGreaterEqual(len(spawns), 6)
@@ -118,13 +120,13 @@ class SemanticObjectConfigTest(unittest.TestCase):
             "anchor_with_spheres.yaml",
         ]:
             with self.subTest(name=name):
-                cfg = SERVER.load_config(str(SCENARIO_DIR / name))
+                cfg = SERVER.load_config(str(LEGACY_DIR / name))
                 spawns, oracle = SERVER.build_spawn_plan(cfg, 0.0, 0.0, 0.0, 0.0)
                 self.assertGreater(len(spawns), 0)
                 self.assertTrue(any(o["class_name"] == "anchor" for o in oracle))
 
     def test_sphere_scenario_regression(self):
-        cfg = SERVER.load_config(str(SCENARIO_DIR / "sphere_front.yaml"))
+        cfg = SERVER.load_config(str(LEGACY_DIR / "sphere_front.yaml"))
         spawns, oracle = SERVER.build_spawn_plan(cfg, 0.0, 0.0, 0.0, 0.0)
 
         self.assertEqual(len(cfg.semantic_objects), 0)
@@ -134,7 +136,7 @@ class SemanticObjectConfigTest(unittest.TestCase):
         self.assertNotIn("bounds", oracle[0])
 
     def test_constructing_server_does_not_import_holoocean(self):
-        cfg = SERVER.load_config(str(SCENARIO_DIR / "anchor_center_static.yaml"))
+        cfg = SERVER.load_config(str(LEGACY_DIR / "anchor_center_static.yaml"))
         server = SERVER.HolooceanSimServer(cfg, verbose=False)
 
         self.assertIsNone(server.env)

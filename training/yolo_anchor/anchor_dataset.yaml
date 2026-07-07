@@ -1,0 +1,21 @@
+# Ultralytics dataset config for the LIGHT anchor fine-tune (prepared, not
+# yet populated — dataset generation is intentionally deferred).
+#
+# Expected layout once frames are exported:
+#   training/yolo_anchor/dataset/
+#     images/train/*.png   images/val/*.png
+#     labels/train/*.txt   labels/val/*.txt   (YOLO xywhn format)
+#
+# Labels come for free from the simulation oracle: the bridge's
+# /perception/obstacles_oracle detections are already normalized
+# (center_x, center_y, width, height) in image space — exactly YOLO's
+# xywhn — so each saved camera frame can be paired with a label file
+# without any manual annotation.
+
+path: dataset
+train: images/train
+val: images/val
+
+nc: 1
+names:
+  0: anchor

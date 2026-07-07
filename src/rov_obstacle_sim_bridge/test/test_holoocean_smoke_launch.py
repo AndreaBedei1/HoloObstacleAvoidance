@@ -38,7 +38,9 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
 
         self.assertIn("holoocean_bridge_node", text)
         self.assertIn("local_avoidance_planner_node", text)
-        self.assertIn("anchor_center_static.yaml", text)
+        # The supported anchor path is the REAL custom mesh scenario.
+        self.assertIn("custom_anchor_visible.yaml", text)
+        self.assertNotIn("anchor_center_static.yaml", text)
         self.assertIn('"relay_oracle_topic": "/perception/obstacles"', text)
         self.assertNotIn("mavlink", text.lower())
         self.assertNotIn("thruster", text.lower())
@@ -52,9 +54,22 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
         self.assertIn("holoocean_bridge_node", text)
         self.assertIn('"relay_oracle_topic": "/perception/obstacles"', text)
 
-    def test_anchor_scenario_files_exist(self):
+    def test_custom_anchor_scenarios_are_the_main_path(self):
         package_dir = Path(__file__).resolve().parents[1]
         scenario_dir = package_dir / "config" / "holoocean_scenarios"
+
+        for name in [
+            "custom_anchor_visible.yaml",
+            "custom_anchor_left.yaml",
+            "custom_anchor_right.yaml",
+            "custom_anchor_with_spheres.yaml",
+        ]:
+            self.assertTrue((scenario_dir / name).exists(), msg=name)
+
+    def test_primitive_scenarios_moved_to_legacy(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        scenario_dir = package_dir / "config" / "holoocean_scenarios"
+        legacy_dir = scenario_dir / "legacy_primitives"
 
         for name in [
             "anchor_center_static.yaml",
@@ -62,8 +77,16 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
             "anchor_right_static.yaml",
             "anchor_partially_visible.yaml",
             "anchor_with_spheres.yaml",
+            "sphere_front.yaml",
+            "sphere_left.yaml",
+            "sphere_right.yaml",
+            "multi_sphere.yaml",
         ]:
-            self.assertTrue((scenario_dir / name).exists(), msg=name)
+            self.assertTrue((legacy_dir / name).exists(), msg=name)
+            self.assertFalse(
+                (scenario_dir / name).exists(),
+                msg=f"{name} should live only in legacy_primitives/",
+            )
 
 
 if __name__ == "__main__":

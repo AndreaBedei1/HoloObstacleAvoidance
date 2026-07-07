@@ -42,6 +42,7 @@ setup(
     entry_points={
         "console_scripts": [
             "fake_obstacle_detector_node = rov_obstacle_perception.fake_obstacle_detector_node:main",
+            "yolo_obstacle_detector_node = rov_obstacle_perception.yolo_obstacle_detector_node:main",
         ],
     },
 )

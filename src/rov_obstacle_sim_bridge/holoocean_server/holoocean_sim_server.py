@@ -1098,7 +1098,10 @@ class HolooceanSimServer:
         cam_key = self.cfg.camera_sensor
         if isinstance(state, dict) and cam_key in state:
             frame = np.array(state[cam_key])
-            rgb = np.ascontiguousarray(frame[:, :, :3].astype(np.uint8))
+            # HoloOcean camera buffers are BGRA in memory (UE FColor layout;
+            # the client docstring says "RGBA" but the engine fills FColor*),
+            # so channels 2,1,0 give true RGB for the advertised rgb8 encoding.
+            rgb = np.ascontiguousarray(frame[:, :, 2::-1].astype(np.uint8))
             image_blob = rgb.tobytes()
             image_meta = {
                 "present": True,

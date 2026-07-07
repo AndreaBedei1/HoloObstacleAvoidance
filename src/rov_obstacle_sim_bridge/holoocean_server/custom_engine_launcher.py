@@ -156,17 +156,108 @@ def build_engine_command(cfg: dict, map_name: Optional[str] = None) -> list:
     return cmd
 
 
+def parse_engine_process_lines(lines, uproject: str) -> list:
+    """Parse ``PID|CommandLine`` lines, keeping engine processes that run
+    OUR ``.uproject`` (path compared case-insensitively, both slash styles).
+
+    Pure helper so tests can exercise the matching without PowerShell.
+    """
+    needle_full = str(uproject).replace("\\", "/").lower()
+    needle_name = needle_full.rsplit("/", 1)[-1]
+    pids = []
+    for raw in lines:
+        line = str(raw).strip()
+        if not line or "|" not in line:
+            continue
+        pid_text, _, cmdline = line.partition("|")
+        try:
+            pid = int(pid_text.strip())
+        except ValueError:
+            continue
+        normalized = cmdline.replace("\\", "/").lower()
+        if needle_full in normalized or needle_name in normalized:
+            pids.append(pid)
+    return pids
+
+
+def find_stale_engine_pids(cfg: dict) -> list:
+    """PIDs of UnrealEditor processes already running our Holodeck project.
+
+    A leftover engine from a crashed/killed session keeps the HoloOcean
+    shared-memory objects alive in a state no new client can attach to
+    (the one-time ready signal was consumed), so it must be cleaned up
+    before a new visible run.
+    """
+    if os.name != "nt":  # pragma: no cover - Windows-only integration
+        return []
+    uproject = str(cfg.get("external_engine", {}).get("uproject", ""))
+    if not uproject:
+        return []
+    query = (
+        "Get-CimInstance Win32_Process -Filter \"Name='UnrealEditor.exe'\" | "
+        "ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", query],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        return []
+    return parse_engine_process_lines(result.stdout.splitlines(), uproject)
+
+
+def cleanup_stale_engines(cfg: dict, verbose: bool = True) -> int:
+    """Kill leftover engine processes for our project; return how many died.
+
+    Uses ``taskkill /T`` so helper children (crash reporter, shader workers)
+    disappear with the main process, then waits until the PIDs are really
+    gone so the kernel releases the ``Global\\HOLODECK_*`` shared objects
+    before a fresh engine recreates them.
+    """
+    pids = find_stale_engine_pids(cfg)
+    if not pids:
+        return 0
+    if verbose:
+        print(f"[custom-engine] cleaning {len(pids)} stale engine process(es): "
+              f"{pids}", flush=True)
+    for pid in pids:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+        )
+    deadline = time.time() + 20.0
+    while time.time() < deadline and find_stale_engine_pids(cfg):
+        time.sleep(1.0)
+    remaining = find_stale_engine_pids(cfg)
+    if remaining:
+        raise RuntimeError(
+            f"Stale engine processes survived taskkill: {remaining}. "
+            "Close them manually before launching."
+        )
+    time.sleep(1.0)  # let the OS finish releasing named kernel objects
+    return len(pids)
+
+
 def launch_engine(
     cfg: dict,
     map_name: Optional[str] = None,
     verbose: bool = True,
+    clean_stale: bool = True,
 ) -> "subprocess.Popen[Any]":
-    """Start the external engine in a new visible window and return the process."""
+    """Start the external engine in a new visible window and return the process.
+
+    By default any stale engine process from a previous session is killed
+    first — a used engine window can never be re-attached (one-shot ready
+    semaphore), so keeping it around only blocks the new run.
+    """
     problems = validate_engine_config(cfg, check_paths=True)
     if problems:
         raise RuntimeError(
             "Cannot launch external engine:\n  - " + "\n  - ".join(problems)
         )
+    if clean_stale:
+        cleanup_stale_engines(cfg, verbose=verbose)
     log_path = engine_log_path(cfg)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -182,11 +273,21 @@ def launch_engine(
 
 
 def stop_engine(process: Optional["subprocess.Popen[Any]"], timeout_s: float = 10.0) -> None:
-    """Terminate an engine process previously returned by :func:`launch_engine`."""
+    """Terminate an engine process previously returned by :func:`launch_engine`.
+
+    On Windows the whole process TREE is killed (``taskkill /T``) so helper
+    processes cannot keep the HoloOcean shared-memory objects alive.
+    """
     if process is None or process.poll() is not None:
         return
     try:
-        process.terminate()
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+            )
+        else:  # pragma: no cover - Windows-only integration
+            process.terminate()
         process.wait(timeout=timeout_s)
     except Exception:
         try:

@@ -1,8 +1,9 @@
-"""Closed-loop avoidance launch for primitive-composed HoloOcean anchor scenarios.
+"""Closed-loop avoidance launch for the REAL custom anchor scenarios.
 
-The HoloOcean sim server still runs separately in the conda ``ocean`` env. This
-launch starts only the ROS 2 side: TCP bridge, nominal command publisher, and
-the generic local avoidance planner.
+The HoloOcean sim server still runs separately in the conda ``ocean`` env
+(it launches the EXTERNAL modified engine and spawns /Game/ancora.ancora).
+This launch starts only the ROS 2 side: TCP bridge, nominal command
+publisher, and the generic local avoidance planner.
 """
 
 from launch import LaunchDescription
@@ -27,7 +28,7 @@ def generate_launch_description():
             FindPackageShare("rov_obstacle_sim_bridge"),
             "config",
             "holoocean_scenarios",
-            "anchor_center_static.yaml",
+            "custom_anchor_visible.yaml",
         ]
     )
 

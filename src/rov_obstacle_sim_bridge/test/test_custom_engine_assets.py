@@ -194,8 +194,10 @@ class CustomScenarioLoadTest(unittest.TestCase):
             self.assertTrue(cfg.custom_engine.enabled, msg=name)
             self.assertGreaterEqual(len(cfg.custom_assets), 1, msg=name)
 
-    def test_primitive_scenarios_have_no_custom_engine(self):
-        cfg = SERVER.load_config(str(SCENARIO_DIR / "sphere_front.yaml"))
+    def test_legacy_primitive_scenarios_have_no_custom_engine(self):
+        cfg = SERVER.load_config(
+            str(SCENARIO_DIR / "legacy_primitives" / "sphere_front.yaml")
+        )
         self.assertIsNone(cfg.custom_engine)
         self.assertEqual(cfg.custom_assets, [])
 
@@ -410,6 +412,43 @@ class SpawnAssetParamsTest(unittest.TestCase):
     def test_wrong_lengths_rejected(self):
         with self.assertRaises(ValueError):
             COMMANDS.spawn_asset_params((1.0, 2.0), (0, 0, 0), (1, 1, 1), "/G/x.x")
+
+
+class StaleEngineParsingTest(unittest.TestCase):
+    """parse_engine_process_lines — stale engine PID matching (pure)."""
+
+    UPROJECT = "C:/Users/x/Desktop/Holo/MondoTest/HoloOcean/engine/Holodeck.uproject"
+
+    def test_matches_full_path_any_slashes(self):
+        lines = [
+            r"123|C:\UE\UnrealEditor.exe C:\Users\x\Desktop\Holo\MondoTest\HoloOcean\engine\Holodeck.uproject /Game/ExampleLevel -game",
+            "456|C:/UE/UnrealEditor.exe C:/Users/x/Desktop/Holo/MondoTest/HoloOcean/engine/Holodeck.uproject /Game/M -game",
+        ]
+        pids = LAUNCHER.parse_engine_process_lines(lines, self.UPROJECT)
+        self.assertEqual(pids, [123, 456])
+
+    def test_ignores_other_projects_without_name_match(self):
+        lines = ["789|C:/UE/UnrealEditor.exe C:/other/Different.uproject -game"]
+        self.assertEqual(
+            LAUNCHER.parse_engine_process_lines(lines, self.UPROJECT), []
+        )
+
+    def test_name_fallback_matches(self):
+        # A manually-started engine may use a different path spelling; the
+        # project file name is distinctive enough to treat it as ours.
+        lines = ["222|UnrealEditor.exe D:/copy/engine/HOLODECK.UPROJECT -game"]
+        self.assertEqual(
+            LAUNCHER.parse_engine_process_lines(lines, self.UPROJECT), [222]
+        )
+
+    def test_garbage_lines_are_skipped(self):
+        lines = ["", "no-separator", "abc|has separator but bad pid", None]
+        self.assertEqual(
+            LAUNCHER.parse_engine_process_lines(lines, self.UPROJECT), []
+        )
+
+    def test_cleanup_without_uproject_is_noop(self):
+        self.assertEqual(LAUNCHER.cleanup_stale_engines({"external_engine": {}}), 0)
 
 
 class ExternalEngineOptionalTest(unittest.TestCase):

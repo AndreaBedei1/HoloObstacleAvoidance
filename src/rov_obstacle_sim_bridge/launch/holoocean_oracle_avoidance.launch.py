@@ -10,11 +10,12 @@ Pipeline (the HoloOcean sim server runs separately in the conda ``ocean`` env)::
     local_avoidance_planner: /perception/obstacles + /cmd_vel_nominal
                               -> /planner/cmd_vel_safe -> bridge -> sim server
 
-Start the sim server first (in another terminal, conda ``ocean`` env)::
+Start the sim server first (in another terminal, conda ``ocean`` env).  The
+supported scenario is the REAL custom anchor on the external modified engine::
 
     conda run -n ocean python \
       src/rov_obstacle_sim_bridge/holoocean_server/holoocean_sim_server.py \
-      --config src/rov_obstacle_sim_bridge/config/holoocean_scenarios/sphere_front.yaml \
+      --config src/rov_obstacle_sim_bridge/config/holoocean_scenarios/custom_anchor_visible.yaml \
       --serve
 """
 

@@ -1,0 +1,25 @@
+# YOLO visual detector (skeleton) — simulation-only.
+#
+# Without `ultralytics` installed the node runs in skeleton mode and
+# publishes nothing.  When enabling it against the HoloOcean bridge, start
+# the bridge with relay_oracle_topic:='' so /perception/obstacles has a
+# single publisher (the planner is unchanged either way).
+/yolo_obstacle_detector:
+  ros__parameters:
+    image_topic: "/camera/front/image_raw"
+    output_topic: "/perception/obstacles"
+    frame_id: "front_camera"
+    # COCO-pretrained nano weights by default (auto-download by ultralytics).
+    # Point to the fine-tuned anchor weights once trained, e.g.
+    # training/yolo_anchor/runs/detect/train/weights/best.pt
+    model_path: "yolov8n.pt"
+    device: "cpu"
+    confidence_threshold: 0.25
+    # Keep only these classes ([""] = keep everything the model reports).
+    target_classes: [""]
+    # Map detector class names to planner class names, e.g. a fine-tuned
+    # model that says "ancora" -> planner "anchor":  "ancora:anchor"
+    class_map: ""
+    horizontal_fov_deg: 90.0
+    risk_area_gain: 4.0
+    inference_stride: 3

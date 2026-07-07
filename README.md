@@ -113,22 +113,20 @@ oracle `center_x` matches where the obstacle actually appears.
 
 ### Run real HoloOcean closed loop
 
-Terminal 1: sim server in the conda `ocean` env. Use `sphere_front.yaml` for
-the baseline sphere scenario:
+**The supported simulation path is the REAL custom anchor** on the external
+modified engine (next section). One command runs everything:
 
 ```bat
-conda run -n ocean python ^
-  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
-  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\sphere_front.yaml ^
-  --serve
+scripts\run_custom_anchor_closed_loop.bat
 ```
 
-Or run the centered primitive anchor:
+Manual two-terminal equivalent — Terminal 1: sim server in the conda `ocean`
+env (it launches the visible engine window itself):
 
 ```bat
 conda run -n ocean python ^
   src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
-  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml ^
+  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\custom_anchor_visible.yaml ^
   --serve
 ```
 
@@ -140,52 +138,21 @@ call install\setup.bat
 ros2 launch rov_obstacle_sim_bridge holoocean_oracle_avoidance.launch.py
 ```
 
-For anchor work, the equivalent convenience launch is:
+(`holoocean_anchor_avoidance.launch.py` is the same ROS 2 side with the
+custom-anchor scenario referenced as its informational default; the HoloOcean
+server always runs separately in the conda `ocean` Python 3.9 process.)
 
-```bat
-ros2 launch rov_obstacle_sim_bridge holoocean_anchor_avoidance.launch.py ^
-  scenario_config:=src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml
-```
+Supported scenario YAMLs (all real custom assets, visible engine):
 
-The `scenario_config` launch argument is informational; the HoloOcean server is
-still started separately in Terminal 1 because it must run in the conda `ocean`
-Python 3.9 process.
+- `custom_anchor_visible.yaml` (default)
+- `custom_anchor_left.yaml`
+- `custom_anchor_right.yaml`
+- `custom_anchor_with_spheres.yaml`
 
-Available HoloOcean scenario YAMLs:
-
-- `sphere_front.yaml`
-- `sphere_left.yaml`
-- `sphere_right.yaml`
-- `multi_sphere.yaml`
-- `anchor_center_static.yaml`
-- `anchor_left_static.yaml`
-- `anchor_right_static.yaml`
-- `anchor_partially_visible.yaml`
-- `anchor_with_spheres.yaml`
-
-Smoke-test the sim server alone (no ROS 2, real HoloOcean) with a scripted
-forward run:
-
-```bat
-conda run -n ocean python ^
-  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
-  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\sphere_front.yaml ^
-  --selftest
-```
-
-Anchor self-test:
-
-```bat
-conda run -n ocean python ^
-  src\rov_obstacle_sim_bridge\holoocean_server\holoocean_sim_server.py ^
-  --config src\rov_obstacle_sim_bridge\config\holoocean_scenarios\anchor_center_static.yaml ^
-  --selftest
-```
-
-Verified end-to-end (sim server + bridge + planner) in real HoloOcean: the
-planner detects the central sphere, runs the full
-`NORMAL -> APPROACH_OBSTACLE -> AVOIDING_LEFT -> RECOVERING -> NORMAL` cycle, and
-the rover deviates and recovers.
+The old primitive/sphere-composed scenarios were moved to
+`config/holoocean_scenarios/legacy_primitives/` and are no longer part of the
+workflow (kept only for loader regression tests — see the README in that
+folder).
 
 ## Custom Real-Anchor Worlds (External Modified Engine)
 
@@ -312,6 +279,34 @@ Engine-side notes (details in `docs/external_holoocean_engine.md`):
   custom worlds use `SpawnAsset` with `/Engine/BasicShapes/*` meshes.
 - Everything here remains simulation-only: no MAVLink, no thrusters, no
   real rover control, no neural detector, never headless.
+
+## Visual Detection With YOLO (skeleton)
+
+The next perception stage is visual detection with YOLO (no new model from
+scratch). Evaluation of pretrained COCO weights on the custom-anchor frames
+(`docs/yolo_evaluation.md`): the anchor is invisible to stock `yolov8n.pt`
+at operational distance (best case: "airplane" on extreme close-ups), so a
+**light fine-tune on the single `anchor` class** is the way forward —
+plan and commands in `training/yolo_anchor/README.md` (oracle-labeled
+frames, zero manual annotation; dataset generation deferred).
+
+A ready ROS 2 skeleton node exists now:
+
+```bat
+ros2 launch rov_obstacle_perception yolo_detector.launch.py
+```
+
+- subscribes `/camera/front/image_raw`, publishes `/perception/obstacles`
+  (same message flow as the oracle relay; planner unchanged);
+- runs ultralytics YOLO when installed (`pip install ultralytics` in the
+  ROS env; already present on this machine), otherwise stays in skeleton
+  mode and publishes nothing;
+- config: `src/rov_obstacle_perception/config/yolo_detector.yaml`
+  (`model_path`, `confidence_threshold`, `class_map`, `inference_stride`);
+- when using it against the bridge, start the bridge with
+  `relay_oracle_topic:=''` so `/perception/obstacles` has one publisher;
+- evaluate pretrained weights anytime with
+  `scripts\evaluate_pretrained_yolo.py`.
 
 ## Stabilization Patch
 

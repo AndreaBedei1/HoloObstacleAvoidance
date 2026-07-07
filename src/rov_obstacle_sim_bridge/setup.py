@@ -34,6 +34,13 @@ setup(
             os.path.join("share", package_name, "config", "holoocean_scenarios"),
             glob("config/holoocean_scenarios/*.yaml"),
         ),
+        (
+            os.path.join(
+                "share", package_name, "config", "holoocean_scenarios",
+                "legacy_primitives",
+            ),
+            glob("config/holoocean_scenarios/legacy_primitives/*.yaml"),
+        ),
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
         (
             os.path.join("share", package_name, "holoocean_server"),

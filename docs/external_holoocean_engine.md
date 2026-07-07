@@ -111,6 +111,11 @@ workflow was:
   engine: `SpawnProp` is a level-blueprint command that `ExampleLevel` does
   not implement. Distractor primitives in custom worlds are spawned through
   `SpawnAsset` with `/Engine/BasicShapes/*` meshes instead.
+* **Camera pixel order is BGRA**, not RGBA: the engine fills the shared
+  camera buffer through an `FColor*` (`HolodeckCamera.cpp`), and UE's
+  `FColor` memory layout is B,G,R,A — the client docstring saying "RGBA" is
+  wrong. Consumers must take channels `2,1,0` to get RGB (the sim server
+  does this before advertising `rgb8`).
 
 ## ExampleLevel geometry notes
 
