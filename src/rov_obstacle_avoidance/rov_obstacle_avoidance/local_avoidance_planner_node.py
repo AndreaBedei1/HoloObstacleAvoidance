@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 import rclpy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped, Twist
 from rclpy.node import Node
 from rov_obstacle_msgs.msg import AvoidanceDebug, Obstacle2DArray
 
@@ -13,6 +15,12 @@ from .planner import (
     PlannerConfig,
     VelocityCommand,
 )
+
+
+def yaw_from_quaternion(q) -> float:
+    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return math.atan2(siny_cosp, cosy_cosp)
 
 
 class LocalAvoidancePlannerNode(Node):
@@ -27,11 +35,13 @@ class LocalAvoidancePlannerNode(Node):
         nominal_cmd_topic = str(self.get_parameter("nominal_cmd_topic").value)
         safe_cmd_topic = str(self.get_parameter("safe_cmd_topic").value)
         debug_topic = str(self.get_parameter("debug_topic").value)
+        pose_topic = str(self.get_parameter("pose_topic").value)
         self._debug_frame_id = str(self.get_parameter("debug_frame_id").value)
         self._safe_publisher = self.create_publisher(Twist, safe_cmd_topic, 10)
         self._debug_publisher = self.create_publisher(AvoidanceDebug, debug_topic, 10)
         self.create_subscription(Obstacle2DArray, obstacle_topic, self._on_obstacles, 10)
         self.create_subscription(Twist, nominal_cmd_topic, self._on_nominal_command, 10)
+        self.create_subscription(PoseStamped, pose_topic, self._on_pose, 10)
         planner_rate_hz = max(1.0, float(self.get_parameter("planner_rate_hz").value))
         self._timer = self.create_timer(1.0 / planner_rate_hz, self._publish_safe_command)
         self.get_logger().info(f"Local avoidance planner publishing {safe_cmd_topic}.")
@@ -41,6 +51,7 @@ class LocalAvoidancePlannerNode(Node):
         self.declare_parameter("nominal_cmd_topic", "/cmd_vel_nominal")
         self.declare_parameter("safe_cmd_topic", "/planner/cmd_vel_safe")
         self.declare_parameter("debug_topic", "/avoidance/debug")
+        self.declare_parameter("pose_topic", "/rov/pose")
         self.declare_parameter("debug_frame_id", "front_camera")
         self.declare_parameter("risk_enter_threshold", 0.55)
         self.declare_parameter("risk_exit_threshold", 0.30)
@@ -51,9 +62,18 @@ class LocalAvoidancePlannerNode(Node):
         self.declare_parameter("max_surge", 0.5)
         self.declare_parameter("min_surge_during_avoidance", 0.08)
         self.declare_parameter("avoidance_sway", 0.20)
-        self.declare_parameter("avoidance_yaw_rate", 0.35)
+        self.declare_parameter("avoidance_yaw_rate", 0.1)
         self.declare_parameter("command_timeout_s", 1.0)
         self.declare_parameter("nominal_timeout_behavior", "stop")
+        # Pose-aware recovery / line-keeping (return to the ORIGINAL path).
+        self.declare_parameter("recovery_lateral_gain", 0.8)
+        self.declare_parameter("recovery_yaw_gain", 1.0)
+        self.declare_parameter("recovery_max_sway", 0.25)
+        self.declare_parameter("recovery_max_yaw_rate", 0.30)
+        self.declare_parameter("recovery_lateral_tolerance_m", 0.20)
+        self.declare_parameter("recovery_yaw_tolerance_deg", 5.0)
+        self.declare_parameter("recovery_max_time_s", 15.0)
+        self.declare_parameter("forward_reference_min_surge", 0.02)
         self.declare_parameter("planner_rate_hz", 20.0)
 
     def _planner_config(self) -> PlannerConfig:
@@ -72,10 +92,32 @@ class LocalAvoidancePlannerNode(Node):
             avoidance_yaw_rate=float(self.get_parameter("avoidance_yaw_rate").value),
             command_timeout_s=float(self.get_parameter("command_timeout_s").value),
             nominal_timeout_behavior=str(self.get_parameter("nominal_timeout_behavior").value),
+            recovery_lateral_gain=float(self.get_parameter("recovery_lateral_gain").value),
+            recovery_yaw_gain=float(self.get_parameter("recovery_yaw_gain").value),
+            recovery_max_sway=float(self.get_parameter("recovery_max_sway").value),
+            recovery_max_yaw_rate=float(self.get_parameter("recovery_max_yaw_rate").value),
+            recovery_lateral_tolerance_m=float(
+                self.get_parameter("recovery_lateral_tolerance_m").value
+            ),
+            recovery_yaw_tolerance_deg=float(
+                self.get_parameter("recovery_yaw_tolerance_deg").value
+            ),
+            recovery_max_time_s=float(self.get_parameter("recovery_max_time_s").value),
+            forward_reference_min_surge=float(
+                self.get_parameter("forward_reference_min_surge").value
+            ),
         )
 
     def _on_nominal_command(self, msg: Twist) -> None:
         self._planner.update_nominal_command(_velocity_from_twist(msg), self._now_s())
+
+    def _on_pose(self, msg: PoseStamped) -> None:
+        self._planner.update_pose(
+            float(msg.pose.position.x),
+            float(msg.pose.position.y),
+            yaw_from_quaternion(msg.pose.orientation),
+            self._now_s(),
+        )
 
     def _on_obstacles(self, msg: Obstacle2DArray) -> None:
         obstacles = [
@@ -100,7 +142,9 @@ class LocalAvoidancePlannerNode(Node):
         if output.state != self._last_logged_state:
             self.get_logger().info(
                 f"Avoidance state changed {self._last_logged_state.value} -> {output.state.value} "
-                f"(side={output.selected_side.value}, risk={output.risk:.3f})"
+                f"(side={output.selected_side.value}, risk={output.risk:.3f}, "
+                f"cross_track={output.cross_track_error_m:.2f}m, "
+                f"yaw_err={math.degrees(output.yaw_error_rad):.1f}deg)"
             )
             self._last_logged_state = output.state
         safe_command = _twist_from_velocity(output.command)

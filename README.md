@@ -522,6 +522,29 @@ The current planner uses image-space obstacle position to select an abstract avo
 
 This sign convention must be verified against HoloOcean body-frame conventions and against the real BlueROV command convention before connecting `/planner/cmd_vel_safe` to any simulator or real vehicle controller.
 
+## Return To Original Path (pose-aware recovery)
+
+The planner subscribes to `/rov/pose` and remembers the *original straight
+path* (position + heading) the vehicle was following before it had to avoid.
+Avoidance is deliberately **lateral first**: it strafes (`linear.y`) with only a
+small, limited yaw drift, so the heading stays close to the original course.
+
+Once the obstacle clears, the `RECOVERING` state uses the pose to steer the
+vehicle back onto the original line **and** heading (a holonomic cross-track +
+heading controller), instead of merely resuming body-frame forward motion. When
+the vehicle is back on the line the `NORMAL` state keeps holding it, so a small
+residual heading error can no longer integrate into a permanent lateral drift.
+This fixes the previous behaviour where the vehicle avoided left and then kept
+the new leftward route.
+
+The closed-loop validator (`scripts/validate_holoocean_closed_loop.py`) reports
+`initial_yaw_rad`, `final_yaw_rad`, `final_lateral_error_m`, `final_yaw_error_deg`
+and `returned_to_original_line` to quantify the return. Recovery gains and
+tolerances are configurable in `local_avoidance_planner.yaml`
+(`recovery_lateral_gain`, `recovery_yaw_gain`, `recovery_max_sway`,
+`recovery_max_yaw_rate`, `recovery_lateral_tolerance_m`,
+`recovery_yaw_tolerance_deg`, `recovery_max_time_s`).
+
 ## Messages
 
 `Obstacle2D` contains normalized image-space bounding box fields, bearing, apparent area, risk, and tracking validity.

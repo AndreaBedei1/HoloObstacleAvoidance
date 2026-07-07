@@ -139,11 +139,38 @@ class ClosedLoopCollector:
         self.max_forward_progress_m = max(self.max_forward_progress_m, forward)
         self.max_lateral_deviation_m = max(self.max_lateral_deviation_m, lateral)
 
+    def _path_relative_final_errors(self) -> tuple[float, float, float, float]:
+        """(initial_yaw, final_yaw, final_lateral_error_m, final_yaw_error_deg).
+
+        Errors are relative to the ORIGINAL path: the line through the first pose
+        along the initial heading.  This directly measures whether the vehicle
+        returned to its original straight route and heading after avoiding.
+        """
+        if self.first_pose is None or self.last_pose is None:
+            return 0.0, 0.0, 0.0, 0.0
+        x0, y0, _z0, yaw0 = self.first_pose
+        xf, yf, _zf, yawf = self.last_pose
+        dx = xf - x0
+        dy = yf - y0
+        forward_x = math.cos(yaw0)
+        forward_y = math.sin(yaw0)
+        lateral = abs(-forward_y * dx + forward_x * dy)
+        yaw_err = math.atan2(math.sin(yawf - yaw0), math.cos(yawf - yaw0))
+        return yaw0, yawf, lateral, math.degrees(yaw_err)
+
     def summary(self) -> dict:
         recovered = False
         if "RECOVERING" in self.states:
             recovery_idx = self.states.index("RECOVERING")
             recovered = "NORMAL" in self.states[recovery_idx + 1 :]
+        initial_yaw, final_yaw, final_lateral_error, final_yaw_error_deg = (
+            self._path_relative_final_errors()
+        )
+        returned_to_original_line = (
+            self.first_pose is not None
+            and final_lateral_error < 0.5
+            and abs(final_yaw_error_deg) < 10.0
+        )
         return {
             "saved_images": self.saved_images,
             "camera_frames": self.camera_frames,
@@ -183,6 +210,11 @@ class ClosedLoopCollector:
             "states": self.states,
             "max_risk": round(self.max_risk, 4),
             "recovered_after_avoidance": recovered,
+            "initial_yaw_rad": round(initial_yaw, 4),
+            "final_yaw_rad": round(final_yaw, 4),
+            "final_lateral_error_m": round(final_lateral_error, 3),
+            "final_yaw_error_deg": round(final_yaw_error_deg, 2),
+            "returned_to_original_line": bool(returned_to_original_line),
         }
 
 
@@ -250,8 +282,15 @@ def main() -> int:
         and result["avoidance_cmd_msgs"] > 0
         and result["max_forward_progress_m"] > 0.05
         and result["max_lateral_deviation_m"] > 0.05
+        # Full avoid-and-return state sequence.
         and "APPROACH_OBSTACLE" in result["states"]
         and any(s.startswith("AVOIDING_") for s in result["states"])
+        and "RECOVERING" in result["states"]
+        and result["recovered_after_avoidance"]
+        # Returned to the ORIGINAL path (position + heading), not just forward.
+        and result["final_lateral_error_m"] < 0.5
+        and abs(result["final_yaw_error_deg"]) < 10.0
+        and result["returned_to_original_line"]
     )
     return 0 if required else 1
 
