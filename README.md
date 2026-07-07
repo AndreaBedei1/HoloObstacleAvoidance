@@ -522,21 +522,32 @@ The current planner uses image-space obstacle position to select an abstract avo
 
 This sign convention must be verified against HoloOcean body-frame conventions and against the real BlueROV command convention before connecting `/planner/cmd_vel_safe` to any simulator or real vehicle controller.
 
-## Return To Original Path (pose-aware recovery)
+## Committed Circumnavigation (go around, then return once)
 
 The planner subscribes to `/rov/odom_estimated` (the estimated odometry, see
 below — **not** the simulator ground truth) and remembers the *original straight
-path* (position + heading) the vehicle was following before it had to avoid.
-Avoidance is deliberately **lateral first**: it strafes (`linear.y`) with only a
-small, limited yaw drift, so the heading stays close to the original course.
+path* (position + heading) the vehicle was following before it had to avoid. It
+then executes a single, committed go-around instead of reacting frame-by-frame:
 
-Once the obstacle clears, the `RECOVERING` state uses the pose to steer the
-vehicle back onto the original line **and** heading (a holonomic cross-track +
-heading controller), instead of merely resuming body-frame forward motion. When
-the vehicle is back on the line the `NORMAL` state keeps holding it, so a small
-residual heading error can no longer integrate into a permanent lateral drift.
-This fixes the previous behaviour where the vehicle avoided left and then kept
-the new leftward route.
+1. **APPROACH** — an obstacle is detected ahead; the vehicle keeps closing
+   straight while estimating its **range** monocularly (bbox size + assumed
+   target height + camera FOV — realistic sensors only, no ground truth).
+2. **AVOIDING** — once within `engage_distance_m`, it commits to one side,
+   strafes out to a `clearance_offset_m` lateral offset, then runs **parallel**
+   to the path. The decision that the obstacle has been passed is
+   **odometry-gated** (forward progress past the estimated obstacle position +
+   `pass_margin_m`), *not* based on loss of detection — so a detector dropout can
+   never make the vehicle turn back into the obstacle.
+3. **RECOVERING** — once passed, it returns diagonally to the original line and
+   heading (holonomic cross-track + heading controller), then **NORMAL** holds
+   the line.
+
+This fixes the two failure modes seen earlier: the continuous left/right
+oscillation of a reactive controller, and driving into the obstacle when the
+detector blinks out. Circumnavigation parameters live in
+`local_avoidance_planner.yaml` (`engage_distance_m`, `clearance_offset_m`,
+`pass_margin_m`, `go_around_surge`, `target_obstacle_height_m`,
+`camera_vertical_fov_deg`).
 
 The closed-loop validator (`scripts/validate_holoocean_closed_loop.py`) reports
 `initial_yaw_rad`, `final_yaw_rad`, `final_lateral_error_m`, `final_yaw_error_deg`

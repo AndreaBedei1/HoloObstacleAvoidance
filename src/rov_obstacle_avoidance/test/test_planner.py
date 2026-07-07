@@ -90,45 +90,56 @@ class PlannerBehaviorTest(unittest.TestCase):
         self.assertLess(second.command.surge, self.nominal.surge)
 
     def test_left_obstacle_causes_right_avoidance(self):
+        # Obstacle on the image left -> commit to the RIGHT once in engage range.
         planner = LocalAvoidancePlanner(self.config)
         planner.update_nominal_command(self.nominal, now_s=0.0)
         planner.update_obstacles([_obstacle(center_x=0.2)], now_s=0.0)
 
-        output = planner.compute(now_s=0.1)
+        planner.compute(now_s=0.1)  # NORMAL -> APPROACH_OBSTACLE
+        output = planner.compute(now_s=0.2)  # APPROACH -> commit -> AVOIDING
 
+        self.assertEqual(output.state, PlannerState.AVOIDING_RIGHT)
         self.assertEqual(output.selected_side, AvoidanceSide.RIGHT)
-        self.assertLess(output.command.sway, 0.0)
-        self.assertLess(output.command.yaw_rate, 0.0)
+        self.assertLess(output.command.sway, 0.0)  # strafe right (pose-less fallback)
 
     def test_right_obstacle_causes_left_avoidance(self):
         planner = LocalAvoidancePlanner(self.config)
         planner.update_nominal_command(self.nominal, now_s=0.0)
         planner.update_obstacles([_obstacle(center_x=0.8)], now_s=0.0)
 
-        output = planner.compute(now_s=0.1)
+        planner.compute(now_s=0.1)  # NORMAL -> APPROACH_OBSTACLE
+        output = planner.compute(now_s=0.2)  # APPROACH -> commit -> AVOIDING
 
+        self.assertEqual(output.state, PlannerState.AVOIDING_LEFT)
         self.assertEqual(output.selected_side, AvoidanceSide.LEFT)
-        self.assertGreater(output.command.sway, 0.0)
-        self.assertGreater(output.command.yaw_rate, 0.0)
+        self.assertGreater(output.command.sway, 0.0)  # strafe left
 
     def test_state_transitions_through_recovery_to_normal(self):
+        # Pose-driven committed maneuver: NORMAL -> APPROACH -> AVOIDING
+        # (commit) -> RECOVERING (after passing) -> NORMAL.
         planner = LocalAvoidancePlanner(self.config)
         planner.update_nominal_command(self.nominal, now_s=0.0)
+        planner.update_pose(0.0, 0.0, 0.0, now_s=0.0)
         planner.update_obstacles([_obstacle(center_x=0.5)], now_s=0.0)
 
-        planner.compute(now_s=0.1)
-        avoiding = planner.compute(now_s=0.2)
+        planner.compute(now_s=0.1)  # NORMAL -> APPROACH (captures reference)
+        planner.update_pose(0.1, 0.0, 0.0, now_s=0.2)
+        avoiding = planner.compute(now_s=0.2)  # commit -> AVOIDING
         self.assertIn(avoiding.state, {PlannerState.AVOIDING_LEFT, PlannerState.AVOIDING_RIGHT})
 
-        planner.update_obstacles([], now_s=1.3)
-        recovering = planner.compute(now_s=1.3)
+        # Vehicle has run parallel well past the anchor (odometry-gated pass).
+        planner.update_obstacles([], now_s=5.0)
+        planner.update_pose(11.0, -2.5, 0.0, now_s=5.0)
+        planner.update_nominal_command(self.nominal, now_s=5.0)
+        recovering = planner.compute(now_s=5.0)
         self.assertEqual(recovering.state, PlannerState.RECOVERING)
 
-        planner.update_nominal_command(self.nominal, now_s=3.4)
-        normal = planner.compute(now_s=3.4)
+        # Back on the original line/heading -> NORMAL.
+        planner.update_pose(12.0, 0.0, 0.0, now_s=8.0)
+        planner.update_nominal_command(self.nominal, now_s=8.0)
+        normal = planner.compute(now_s=8.0)
         self.assertEqual(normal.state, PlannerState.NORMAL)
         self.assertEqual(normal.selected_side, AvoidanceSide.NONE)
-        self.assertEqual(normal.command, self.nominal)
 
     def test_stale_obstacle_detections_cause_recovery_and_pass_through(self):
         planner = LocalAvoidancePlanner(self.config)
@@ -152,17 +163,21 @@ class PlannerBehaviorTest(unittest.TestCase):
 
         self.assertEqual(output.command, VelocityCommand())
 
-    def test_selected_avoidance_side_does_not_flip_every_frame(self):
+    def test_committed_side_does_not_flip_every_frame(self):
+        # Once committed to a side, the maneuver holds it even if the detection
+        # jumps to the other side of the image (no oscillation).
         planner = LocalAvoidancePlanner(self.config)
         planner.update_nominal_command(self.nominal, now_s=0.0)
         planner.update_obstacles([_obstacle(center_x=0.2)], now_s=0.0)
-        first = planner.compute(now_s=0.1)
+        planner.compute(now_s=0.1)  # APPROACH
+        first = planner.compute(now_s=0.2)  # commit RIGHT -> AVOIDING_RIGHT
 
-        planner.update_obstacles([_obstacle(center_x=0.8)], now_s=0.2)
-        second = planner.compute(now_s=0.2)
+        planner.update_obstacles([_obstacle(center_x=0.8)], now_s=0.3)
+        second = planner.compute(now_s=0.3)
 
         self.assertEqual(first.selected_side, AvoidanceSide.RIGHT)
         self.assertEqual(second.selected_side, AvoidanceSide.RIGHT)
+        self.assertEqual(second.state, PlannerState.AVOIDING_RIGHT)
 
     def test_generated_twist_commands_are_finite_and_surge_clamped(self):
         planner = LocalAvoidancePlanner(self.config)

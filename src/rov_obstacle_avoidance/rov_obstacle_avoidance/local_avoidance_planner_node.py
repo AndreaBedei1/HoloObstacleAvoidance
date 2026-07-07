@@ -77,6 +77,18 @@ class LocalAvoidancePlannerNode(Node):
         self.declare_parameter("recovery_yaw_tolerance_deg", 5.0)
         self.declare_parameter("recovery_max_time_s", 15.0)
         self.declare_parameter("forward_reference_min_surge", 0.02)
+        # Monocular range estimation (realistic: known target height + camera FOV).
+        self.declare_parameter("camera_vertical_fov_deg", 90.0)
+        self.declare_parameter("target_obstacle_height_m", 3.5)
+        self.declare_parameter("max_range_m", 40.0)
+        # Committed circumnavigation (go around, then return once).
+        self.declare_parameter("engage_distance_m", 9.0)
+        self.declare_parameter("clearance_offset_m", 2.5)
+        self.declare_parameter("pass_margin_m", 4.0)
+        self.declare_parameter("go_around_surge", 0.4)
+        self.declare_parameter("go_around_max_sway", 0.3)
+        self.declare_parameter("offset_reached_tol_m", 0.4)
+        self.declare_parameter("ahead_bearing_deg", 55.0)
         self.declare_parameter("planner_rate_hz", 20.0)
 
     def _planner_config(self) -> PlannerConfig:
@@ -109,6 +121,20 @@ class LocalAvoidancePlannerNode(Node):
             forward_reference_min_surge=float(
                 self.get_parameter("forward_reference_min_surge").value
             ),
+            camera_vertical_fov_deg=float(
+                self.get_parameter("camera_vertical_fov_deg").value
+            ),
+            target_obstacle_height_m=float(
+                self.get_parameter("target_obstacle_height_m").value
+            ),
+            max_range_m=float(self.get_parameter("max_range_m").value),
+            engage_distance_m=float(self.get_parameter("engage_distance_m").value),
+            clearance_offset_m=float(self.get_parameter("clearance_offset_m").value),
+            pass_margin_m=float(self.get_parameter("pass_margin_m").value),
+            go_around_surge=float(self.get_parameter("go_around_surge").value),
+            go_around_max_sway=float(self.get_parameter("go_around_max_sway").value),
+            offset_reached_tol_m=float(self.get_parameter("offset_reached_tol_m").value),
+            ahead_bearing_deg=float(self.get_parameter("ahead_bearing_deg").value),
         )
 
     def _on_nominal_command(self, msg: Twist) -> None:
@@ -146,6 +172,7 @@ class LocalAvoidancePlannerNode(Node):
             self.get_logger().info(
                 f"Avoidance state changed {self._last_logged_state.value} -> {output.state.value} "
                 f"(side={output.selected_side.value}, risk={output.risk:.3f}, "
+                f"range={output.estimated_range_m:.2f}m, "
                 f"cross_track={output.cross_track_error_m:.2f}m, "
                 f"yaw_err={math.degrees(output.yaw_error_rad):.1f}deg)"
             )

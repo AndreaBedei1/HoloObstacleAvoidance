@@ -32,4 +32,17 @@
     recovery_yaw_tolerance_deg: 5.0
     recovery_max_time_s: 15.0
     forward_reference_min_surge: 0.02
+    # Monocular range estimate (realistic: known target height + camera VFOV).
+    camera_vertical_fov_deg: 90.0
+    target_obstacle_height_m: 3.5
+    max_range_m: 40.0
+    # Committed circumnavigation: engage within this range, strafe to a clearing
+    # offset, run parallel PAST the obstacle (odometry-gated), then return once.
+    engage_distance_m: 9.0
+    clearance_offset_m: 2.5
+    pass_margin_m: 4.0
+    go_around_surge: 0.4
+    go_around_max_sway: 0.3
+    offset_reached_tol_m: 0.4
+    ahead_bearing_deg: 55.0
     planner_rate_hz: 20.0
