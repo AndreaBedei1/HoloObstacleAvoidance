@@ -43,10 +43,17 @@ class ClosedLoopCollector:
         self.max_abs_safe_nominal_yaw_delta = 0.0
         self.avoidance_cmd_msgs = 0
         self.pose_msgs = 0
+        # Ground-truth pose (/rov/pose_ground_truth): validation/debug ONLY.
         self.first_pose: tuple[float, float, float, float] | None = None
         self.last_pose: tuple[float, float, float, float] | None = None
         self.max_forward_progress_m = 0.0
         self.max_lateral_deviation_m = 0.0
+        # Estimated odometry (/rov/odom_estimated): the planner's actual input.
+        self.odom_msgs = 0
+        self.first_odom: tuple[float, float, float, float] | None = None
+        self.last_odom: tuple[float, float, float, float] | None = None
+        self.max_odom_position_error_m = 0.0
+        self.max_odom_yaw_error_deg = 0.0
         self.states: list[str] = []
         self.max_risk = 0.0
         self._last_nominal: Twist | None = None
@@ -139,6 +146,44 @@ class ClosedLoopCollector:
         self.max_forward_progress_m = max(self.max_forward_progress_m, forward)
         self.max_lateral_deviation_m = max(self.max_lateral_deviation_m, lateral)
 
+    def on_odom(self, msg: PoseStamped) -> None:
+        odom = (
+            float(msg.pose.position.x),
+            float(msg.pose.position.y),
+            float(msg.pose.position.z),
+            yaw_from_pose(msg),
+        )
+        self.odom_msgs += 1
+        if self.first_odom is None:
+            self.first_odom = odom
+        self.last_odom = odom
+        self._update_odom_error()
+
+    def _odometry_error(self) -> tuple[float, float]:
+        """Odometry drift: |estimated displacement - ground-truth displacement|.
+
+        Returns (position_error_m, yaw_error_deg) comparing the estimated
+        odometry's displacement to the true displacement (frame-independent).
+        """
+        if None in (self.first_pose, self.last_pose, self.first_odom, self.last_odom):
+            return 0.0, 0.0
+        gt_dx = self.last_pose[0] - self.first_pose[0]
+        gt_dy = self.last_pose[1] - self.first_pose[1]
+        gt_dyaw = self.last_pose[3] - self.first_pose[3]
+        od_dx = self.last_odom[0] - self.first_odom[0]
+        od_dy = self.last_odom[1] - self.first_odom[1]
+        od_dyaw = self.last_odom[3] - self.first_odom[3]
+        pos_err = math.hypot(od_dx - gt_dx, od_dy - gt_dy)
+        yaw_err = math.degrees(
+            math.atan2(math.sin(od_dyaw - gt_dyaw), math.cos(od_dyaw - gt_dyaw))
+        )
+        return pos_err, yaw_err
+
+    def _update_odom_error(self) -> None:
+        pos_err, yaw_err = self._odometry_error()
+        self.max_odom_position_error_m = max(self.max_odom_position_error_m, pos_err)
+        self.max_odom_yaw_error_deg = max(self.max_odom_yaw_error_deg, abs(yaw_err))
+
     def _path_relative_final_errors(self) -> tuple[float, float, float, float]:
         """(initial_yaw, final_yaw, final_lateral_error_m, final_yaw_error_deg).
 
@@ -171,6 +216,7 @@ class ClosedLoopCollector:
             and final_lateral_error < 0.5
             and abs(final_yaw_error_deg) < 10.0
         )
+        odom_pos_err, odom_yaw_err = self._odometry_error()
         return {
             "saved_images": self.saved_images,
             "camera_frames": self.camera_frames,
@@ -215,6 +261,24 @@ class ClosedLoopCollector:
             "final_lateral_error_m": round(final_lateral_error, 3),
             "final_yaw_error_deg": round(final_yaw_error_deg, 2),
             "returned_to_original_line": bool(returned_to_original_line),
+            # Estimated odometry the planner actually navigated on, vs ground
+            # truth. Non-zero drift is expected and realistic.
+            "odom_msgs": self.odom_msgs,
+            "planner_uses_estimated_odometry": self.odom_msgs > 0,
+            "first_odom": (
+                [round(v, 3) for v in self.first_odom]
+                if self.first_odom is not None
+                else None
+            ),
+            "last_odom": (
+                [round(v, 3) for v in self.last_odom]
+                if self.last_odom is not None
+                else None
+            ),
+            "odom_final_position_error_m": round(odom_pos_err, 3),
+            "odom_final_yaw_error_deg": round(odom_yaw_err, 2),
+            "odom_max_position_error_m": round(self.max_odom_position_error_m, 3),
+            "odom_max_yaw_error_deg": round(self.max_odom_yaw_error_deg, 2),
         }
 
 
@@ -254,7 +318,14 @@ def main() -> int:
     node.create_subscription(Twist, "/cmd_vel_nominal", collector.on_nominal_cmd, 10)
     node.create_subscription(Twist, "/planner/cmd_vel_safe", collector.on_safe_cmd, 10)
     node.create_subscription(AvoidanceDebug, "/avoidance/debug", collector.on_debug, 10)
-    node.create_subscription(PoseStamped, "/rov/pose", collector.on_pose, 10)
+    # Ground truth: validation/debug only.
+    node.create_subscription(
+        PoseStamped, "/rov/pose_ground_truth", collector.on_pose, 10
+    )
+    # Estimated odometry: the planner's actual pose input (compared to GT).
+    node.create_subscription(
+        PoseStamped, "/rov/odom_estimated", collector.on_odom, 10
+    )
 
     deadline = time.time() + max(1.0, args.duration_s)
     while time.time() < deadline:
@@ -287,7 +358,10 @@ def main() -> int:
         and any(s.startswith("AVOIDING_") for s in result["states"])
         and "RECOVERING" in result["states"]
         and result["recovered_after_avoidance"]
-        # Returned to the ORIGINAL path (position + heading), not just forward.
+        # Planner navigated on the ESTIMATED odometry (not ground truth).
+        and result["planner_uses_estimated_odometry"]
+        # Returned to the ORIGINAL path (position + heading), measured with
+        # ground truth, despite navigating on drifting estimated odometry.
         and result["final_lateral_error_m"] < 0.5
         and abs(result["final_yaw_error_deg"]) < 10.0
         and result["returned_to_original_line"]

@@ -6,8 +6,13 @@ Python 3.9 environment) over a localhost TCP socket and republishes the
 simulator state as standard ROS 2 topics:
 
   * ``/camera/front/image_raw``      sensor_msgs/Image  (rgb8)
-  * ``/rov/pose``                    geometry_msgs/PoseStamped
+  * ``/rov/pose_ground_truth``       geometry_msgs/PoseStamped
+      -- SIMULATION-ONLY ground-truth pose.  For validation / debug only; the
+         runtime planner must NOT consume this.  The planner uses the estimated
+         odometry (``/rov/odom_estimated`` from ``odometry_estimator_node``).
   * ``/rov/velocity``                geometry_msgs/TwistStamped
+      -- BODY-frame velocity (linear) + yaw rate (angular.z) from pose finite
+         difference: the realistic DVL + gyro signal the estimator integrates.
   * ``/rov/depth``                   std_msgs/Float32
   * ``/perception/obstacles_oracle`` rov_obstacle_msgs/Obstacle2DArray
       -- SIMULATION-ONLY ground-truth projection.  This is NOT a real sensor.
@@ -58,6 +63,10 @@ def quaternion_from_yaw(yaw_rad: float) -> Quaternion:
     return q
 
 
+def _wrap_to_pi(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
 class HolooceanBridgeNode(Node):
     def __init__(
         self,
@@ -104,6 +113,8 @@ class HolooceanBridgeNode(Node):
         self._stream: FrameStream | None = None
         self._publish_image = bool(self.get_parameter("publish_image").value)
         self._logged_first_oracle_detection = False
+        # Previous pose sample (x, y, z, yaw, t) for body-velocity finite diff.
+        self._prev_pose: tuple[float, float, float, float, float] | None = None
 
         poll_hz = max(1.0, float(self.get_parameter("poll_rate_hz").value))
         self._timer = self.create_timer(1.0 / poll_hz, self._on_timer)
@@ -119,7 +130,7 @@ class HolooceanBridgeNode(Node):
         self.declare_parameter("world_frame_id", "world")
         self.declare_parameter("camera_frame_id", "front_camera")
         self.declare_parameter("image_topic", "/camera/front/image_raw")
-        self.declare_parameter("pose_topic", "/rov/pose")
+        self.declare_parameter("pose_topic", "/rov/pose_ground_truth")
         self.declare_parameter("velocity_topic", "/rov/velocity")
         self.declare_parameter("depth_topic", "/rov/depth")
         self.declare_parameter("oracle_topic", "/perception/obstacles_oracle")
@@ -209,14 +220,37 @@ class HolooceanBridgeNode(Node):
         pmsg.pose.orientation = quaternion_from_yaw(yaw)
         self._pub_pose.publish(pmsg)
 
-        # Velocity
-        vel = header.get("velocity", {})
+        # Velocity: BODY-frame linear velocity + yaw rate from pose finite
+        # difference.  Under the kinematic teleport model this reproduces the
+        # true motion, and it is the realistic DVL (body velocity) + gyro (yaw
+        # rate) signal the odometry estimator dead-reckons from.  The sim
+        # VelocitySensor reads ~0 under teleport, so it is intentionally unused.
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        px = float(pose.get("x", 0.0))
+        py = float(pose.get("y", 0.0))
+        pz = float(pose.get("z", 0.0))
+        body_vx = body_vy = body_vz = yaw_rate = 0.0
+        if self._prev_pose is not None:
+            xp, yp, zp, yawp, tp = self._prev_pose
+            dt = now_s - tp
+            if dt > 1e-6:
+                wvx = (px - xp) / dt
+                wvy = (py - yp) / dt
+                body_vz = (pz - zp) / dt
+                yaw_rate = _wrap_to_pi(yaw - yawp) / dt
+                cos_y = math.cos(yaw)
+                sin_y = math.sin(yaw)
+                body_vx = cos_y * wvx + sin_y * wvy
+                body_vy = -sin_y * wvx + cos_y * wvy
+        self._prev_pose = (px, py, pz, yaw, now_s)
+
         vmsg = TwistStamped()
         vmsg.header.stamp = stamp
-        vmsg.header.frame_id = self._frame_id_world
-        vmsg.twist.linear.x = float(vel.get("x", 0.0))
-        vmsg.twist.linear.y = float(vel.get("y", 0.0))
-        vmsg.twist.linear.z = float(vel.get("z", 0.0))
+        vmsg.header.frame_id = "base_link"
+        vmsg.twist.linear.x = body_vx
+        vmsg.twist.linear.y = body_vy
+        vmsg.twist.linear.z = body_vz
+        vmsg.twist.angular.z = yaw_rate
         self._pub_vel.publish(vmsg)
 
         # Depth

@@ -1,0 +1,25 @@
+# Realistic dead-reckoning odometry estimator.
+#
+# Integrates the DVL-like body velocity + gyro yaw rate published on
+# /rov/velocity into /rov/odom_estimated, which the planner consumes instead of
+# the simulator ground-truth pose. Bias/scale/noise below model real DVL+gyro
+# sensor error so the estimate accumulates drift; raise them to stress-test.
+/odometry_estimator:
+  ros__parameters:
+    input_velocity_topic: "/rov/velocity"
+    output_odom_topic: "/rov/odom_estimated"
+    frame_id: "odom"
+    initial_x: 0.0
+    initial_y: 0.0
+    initial_z: 0.0
+    initial_yaw: 0.0
+    # Gyro (IMU/AHRS) error.
+    gyro_bias_rad_s: 0.0002
+    gyro_noise_std_rad_s: 0.0015
+    gyro_scale_error: 0.0
+    # DVL (body-velocity) error.
+    dvl_bias_x_ms: 0.004
+    dvl_bias_y_ms: 0.0015
+    dvl_noise_std_ms: 0.01
+    dvl_scale_error: 0.01
+    seed: 12345

@@ -13,7 +13,10 @@ holoocean_bridge:
     camera_frame_id: "front_camera"
 
     image_topic: "/camera/front/image_raw"
-    pose_topic: "/rov/pose"
+    # SIMULATION-ONLY ground-truth pose (validation / debug only). The runtime
+    # planner consumes /rov/odom_estimated instead (odometry_estimator_node).
+    pose_topic: "/rov/pose_ground_truth"
+    # BODY-frame velocity + yaw rate (DVL + gyro source for the estimator).
     velocity_topic: "/rov/velocity"
     depth_topic: "/rov/depth"
     # SIMULATION-ONLY ground-truth obstacle projection (debug / labels / eval).

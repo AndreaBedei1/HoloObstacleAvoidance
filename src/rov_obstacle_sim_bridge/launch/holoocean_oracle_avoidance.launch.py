@@ -5,9 +5,12 @@ Pipeline (the HoloOcean sim server runs separately in the conda ``ocean`` env)::
     holoocean_sim_server (ocean) --TCP--> holoocean_bridge_node (this launch)
         bridge -> /perception/obstacles_oracle (SIM-ONLY oracle projection)
         bridge relay -> /perception/obstacles (planner input)
-        bridge -> /rov/pose /rov/velocity /rov/depth /camera/front/image_raw
+        bridge -> /rov/pose_ground_truth (SIM-ONLY debug/validation)
+        bridge -> /rov/velocity (DVL+gyro) /rov/depth /camera/front/image_raw
+    odometry_estimator_node: /rov/velocity -> /rov/odom_estimated (planner input)
     nominal_cmd_publisher -> /cmd_vel_nominal
     local_avoidance_planner: /perception/obstacles + /cmd_vel_nominal
+                              + /rov/odom_estimated
                               -> /planner/cmd_vel_safe -> bridge -> sim server
 
 Start the sim server first (in another terminal, conda ``ocean`` env).  The
@@ -35,6 +38,9 @@ def generate_launch_description():
     )
     nominal_config = PathJoinSubstitution(
         [FindPackageShare("rov_obstacle_bringup"), "config", "demo.yaml"]
+    )
+    estimator_config = PathJoinSubstitution(
+        [FindPackageShare("rov_obstacle_sim_bridge"), "config", "odometry_estimator.yaml"]
     )
 
     bridge_node = Node(
@@ -65,6 +71,13 @@ def generate_launch_description():
         output="screen",
         parameters=[planner_config],
     )
+    estimator_node = Node(
+        package="rov_obstacle_sim_bridge",
+        executable="odometry_estimator_node",
+        name="odometry_estimator",
+        output="screen",
+        parameters=[estimator_config],
+    )
 
     return LaunchDescription(
         [
@@ -72,6 +85,7 @@ def generate_launch_description():
             DeclareLaunchArgument("port", default_value="47654"),
             planner_node,
             TimerAction(period=1.0, actions=[bridge_node]),
+            TimerAction(period=1.5, actions=[estimator_node]),
             TimerAction(period=2.0, actions=[nominal_node]),
         ]
     )

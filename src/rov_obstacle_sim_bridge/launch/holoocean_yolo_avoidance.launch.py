@@ -4,14 +4,19 @@ Pipeline (the HoloOcean sim server runs separately in the conda ``ocean`` env)::
 
     holoocean_sim_server (ocean) --TCP--> holoocean_bridge_node
         bridge -> /perception/obstacles_oracle (SIM-ONLY debug/validation)
-        bridge -> /rov/pose /rov/velocity /rov/depth /camera/front/image_raw
+        bridge -> /rov/pose_ground_truth (SIM-ONLY debug/validation)
+        bridge -> /rov/velocity (DVL+gyro) /rov/depth /camera/front/image_raw
+    odometry_estimator_node: /rov/velocity -> /rov/odom_estimated (realistic,
+                              drifting; the planner's only pose input)
     yolo_obstacle_detector_node: /camera/front/image_raw -> /perception/obstacles
     nominal_cmd_publisher -> /cmd_vel_nominal (optional)
     local_avoidance_planner: /perception/obstacles + /cmd_vel_nominal
+                              + /rov/odom_estimated
                               -> /planner/cmd_vel_safe -> bridge -> sim server
 
 The oracle relay is intentionally disabled so the planner receives only YOLO
-detections. The oracle topic remains available for validation.
+detections. Ground-truth pose is published only for validation; the planner
+navigates on the estimated odometry.
 """
 
 from launch import LaunchDescription
@@ -35,6 +40,9 @@ def generate_launch_description():
     )
     detector_config = PathJoinSubstitution(
         [FindPackageShare("rov_obstacle_perception"), "config", "yolo_detector.yaml"]
+    )
+    estimator_config = PathJoinSubstitution(
+        [FindPackageShare("rov_obstacle_sim_bridge"), "config", "odometry_estimator.yaml"]
     )
 
     bridge_node = Node(
@@ -86,6 +94,13 @@ def generate_launch_description():
         output="screen",
         parameters=[planner_config],
     )
+    estimator_node = Node(
+        package="rov_obstacle_sim_bridge",
+        executable="odometry_estimator_node",
+        name="odometry_estimator",
+        output="screen",
+        parameters=[estimator_config],
+    )
 
     return LaunchDescription(
         [
@@ -109,6 +124,7 @@ def generate_launch_description():
                 ),
             ),
             bridge_node,
+            TimerAction(period=1.5, actions=[estimator_node]),
             TimerAction(period=2.0, actions=[planner_node]),
             TimerAction(period=4.0, actions=[detector_node]),
             TimerAction(period=5.0, actions=[nominal_node]),

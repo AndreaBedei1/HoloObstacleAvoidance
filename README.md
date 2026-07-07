@@ -524,7 +524,8 @@ This sign convention must be verified against HoloOcean body-frame conventions a
 
 ## Return To Original Path (pose-aware recovery)
 
-The planner subscribes to `/rov/pose` and remembers the *original straight
+The planner subscribes to `/rov/odom_estimated` (the estimated odometry, see
+below — **not** the simulator ground truth) and remembers the *original straight
 path* (position + heading) the vehicle was following before it had to avoid.
 Avoidance is deliberately **lateral first**: it strafes (`linear.y`) with only a
 small, limited yaw drift, so the heading stays close to the original course.
@@ -544,6 +545,26 @@ tolerances are configurable in `local_avoidance_planner.yaml`
 (`recovery_lateral_gain`, `recovery_yaw_gain`, `recovery_max_sway`,
 `recovery_max_yaw_rate`, `recovery_lateral_tolerance_m`,
 `recovery_yaw_tolerance_deg`, `recovery_max_time_s`).
+
+## Estimated Odometry (no ground truth in the runtime planner)
+
+The runtime planner must not consume the simulator's perfect pose. The topics
+are split:
+
+- `/rov/pose_ground_truth` (PoseStamped): simulation-only ground truth, used
+  **only** by the validator/debug tooling.
+- `/rov/velocity` (TwistStamped): body-frame velocity + yaw rate the bridge
+  derives from the pose by finite difference — the realistic **DVL + gyro**
+  signal.
+- `/rov/odom_estimated` (PoseStamped): the `odometry_estimator_node`
+  dead-reckons the DVL+gyro signal into a pose estimate with configurable
+  bias / scale / noise (`config/odometry_estimator.yaml`), so it accumulates
+  realistic drift. **This is the planner's only pose input.**
+
+The validator additionally reports the odometry drift versus ground truth
+(`odom_final_position_error_m`, `odom_max_position_error_m`,
+`odom_final_yaw_error_deg`): the vehicle returns to the true line within
+tolerance despite navigating on the drifting estimate.
 
 ## Messages
 

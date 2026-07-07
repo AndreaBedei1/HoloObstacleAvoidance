@@ -23,6 +23,9 @@ def generate_launch_description():
     nominal_config = PathJoinSubstitution(
         [FindPackageShare("rov_obstacle_bringup"), "config", "demo.yaml"]
     )
+    estimator_config = PathJoinSubstitution(
+        [FindPackageShare("rov_obstacle_sim_bridge"), "config", "odometry_estimator.yaml"]
+    )
     default_scenario = PathJoinSubstitution(
         [
             FindPackageShare("rov_obstacle_sim_bridge"),
@@ -63,6 +66,13 @@ def generate_launch_description():
                 name="nominal_cmd_publisher",
                 output="screen",
                 parameters=[nominal_config],
+            ),
+            Node(
+                package="rov_obstacle_sim_bridge",
+                executable="odometry_estimator_node",
+                name="odometry_estimator",
+                output="screen",
+                parameters=[estimator_config],
             ),
             Node(
                 package="rov_obstacle_avoidance",

@@ -37,20 +37,26 @@ visualizations/custom_anchor_yolo_frame0200.png
 
 ## Return-to-path metrics (YOLO, manual straight command)
 
-| Metric | Before fix | After fix |
-|---|---:|---:|
-| initial yaw (rad) | 0.000 | 0.000 |
-| final yaw (rad) | 1.071 (~61 deg) | 0.000 |
-| final lateral error (m) | ~18.588 | 0.000 |
-| final yaw error (deg) | ~61 | 0.00 |
-| max lateral deviation (m) | 18.588 | 2.847 |
-| max forward progress (m) | 10.755 | 13.084 |
-| returned to original line | false | **true** |
+The planner now navigates on **estimated odometry** (`/rov/odom_estimated`,
+dead-reckoned DVL+gyro with realistic drift), never the simulator ground truth.
+Ground truth (`/rov/pose_ground_truth`) is used only by the validator.
 
-Before the fix the vehicle avoided left and kept the new leftward route (61 deg
-of permanent heading drift, ~18.6 m off the line). After the fix it strafes up
-to ~2.85 m to clear the anchor and comes back to the original line: the final
-pose matches the start line to within 0.0 m and 0.0 deg.
+| Metric | Broken (body-frame) | Pose-aware (ground truth in) | Pose-aware (estimated odom in) |
+|---|---:|---:|---:|
+| final lateral error, GT (m) | ~18.588 | 0.000 | **0.246** |
+| final yaw error, GT (deg) | ~61 | 0.00 | **-0.69** |
+| max lateral deviation (m) | 18.588 | 2.847 | 2.817 |
+| max forward progress (m) | 10.755 | 13.084 | 12.923 |
+| odometry drift vs GT (m) | n/a (used GT) | n/a (used GT) | **0.556** |
+| odometry yaw drift vs GT (deg) | n/a | n/a | **0.79** |
+| returned to original line | false | true | **true** |
+
+The last column is the current architecture: the planner steers on a DVL+gyro
+odometry estimate that accumulates 0.556 m / 0.79 deg of drift over the run
+(mostly along-track), yet the vehicle still returns to within **0.246 m** and
+**0.69 deg** of the true original line (measured with ground truth). The
+cross-track part of the drift bounds the lateral error; the larger along-track
+drift does not affect it.
 
 ## State sequence (after fix)
 
@@ -69,10 +75,16 @@ completes and `NORMAL` line-keeping holds the original path.
 ## Interpretation
 
 The oracle relay was disabled for the YOLO run, so `/perception/obstacles` was
-produced only by the visual detector (1531 planner-input detections). YOLO drove
+produced only by the visual detector (~1489 planner-input detections). YOLO drove
 the planner through approach, avoidance, and recovery, and the pose-aware
 recovery/line-keeping returned the vehicle to the original straight route and
 heading.
+
+The planner's pose input was the estimated odometry (`/rov/odom_estimated`),
+never the simulator ground truth. The estimate drifted 0.556 m from ground
+truth over the run, which is realistic DVL+gyro dead-reckoning error; the return
+still succeeded because the cross-track component of that drift stayed small and
+the along-track component does not affect the lateral error.
 
 `/planner/cmd_vel_safe` differed from `/cmd_vel_nominal` in 1382 of 1723 safe
 messages, confirming the planner actively overrode the straight command during

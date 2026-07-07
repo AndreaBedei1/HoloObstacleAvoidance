@@ -51,7 +51,10 @@ class LocalAvoidancePlannerNode(Node):
         self.declare_parameter("nominal_cmd_topic", "/cmd_vel_nominal")
         self.declare_parameter("safe_cmd_topic", "/planner/cmd_vel_safe")
         self.declare_parameter("debug_topic", "/avoidance/debug")
-        self.declare_parameter("pose_topic", "/rov/pose")
+        # ESTIMATED odometry (dead-reckoned from DVL+gyro), NOT the simulator
+        # ground-truth pose. Ground truth (/rov/pose_ground_truth) is used only
+        # for validation/debug and must never be a runtime planner input.
+        self.declare_parameter("pose_topic", "/rov/odom_estimated")
         self.declare_parameter("debug_frame_id", "front_camera")
         self.declare_parameter("risk_enter_threshold", 0.55)
         self.declare_parameter("risk_exit_threshold", 0.30)

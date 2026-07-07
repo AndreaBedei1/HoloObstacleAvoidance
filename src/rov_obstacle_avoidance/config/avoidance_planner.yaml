@@ -4,7 +4,8 @@
     nominal_cmd_topic: "/cmd_vel_nominal"
     safe_cmd_topic: "/planner/cmd_vel_safe"
     debug_topic: "/avoidance/debug"
-    pose_topic: "/rov/pose"
+    # Estimated odometry (dead-reckoned DVL+gyro), NOT simulator ground truth.
+    pose_topic: "/rov/odom_estimated"
     debug_frame_id: "front_camera"
     risk_enter_threshold: 0.55
     risk_exit_threshold: 0.30

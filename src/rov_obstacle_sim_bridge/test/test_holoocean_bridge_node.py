@@ -44,7 +44,9 @@ class TestBridgeNode(unittest.TestCase):
         self.assertEqual(
             str(node.get_parameter("image_topic").value), "/camera/front/image_raw"
         )
-        self.assertEqual(str(node.get_parameter("pose_topic").value), "/rov/pose")
+        self.assertEqual(
+            str(node.get_parameter("pose_topic").value), "/rov/pose_ground_truth"
+        )
         self.assertEqual(
             str(node.get_parameter("oracle_topic").value),
             "/perception/obstacles_oracle",
