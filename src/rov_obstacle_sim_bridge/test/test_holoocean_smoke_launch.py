@@ -67,6 +67,8 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
         self.assertIn("local_avoidance_planner_node", text)
         self.assertIn('"relay_oracle_topic": ""', text)
         self.assertIn("training/yolo_custom_objects/runs/", text)
+        self.assertIn("nominal_publisher_enabled", text)
+        self.assertIn("IfCondition", text)
         self.assertIn("TimerAction", text)
         self.assertNotIn("mavlink", text.lower())
         self.assertNotIn("thruster", text.lower())

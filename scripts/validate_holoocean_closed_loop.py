@@ -35,14 +35,21 @@ class ClosedLoopCollector:
         self.oracle_anchor_detections = 0
         self.planner_input_msgs = 0
         self.planner_input_detections = 0
+        self.nominal_cmd_msgs = 0
         self.safe_cmd_msgs = 0
+        self.safe_cmd_different_from_nominal_msgs = 0
+        self.max_abs_safe_nominal_surge_delta = 0.0
+        self.max_abs_safe_nominal_sway_delta = 0.0
+        self.max_abs_safe_nominal_yaw_delta = 0.0
         self.avoidance_cmd_msgs = 0
         self.pose_msgs = 0
         self.first_pose: tuple[float, float, float, float] | None = None
         self.last_pose: tuple[float, float, float, float] | None = None
+        self.max_forward_progress_m = 0.0
         self.max_lateral_deviation_m = 0.0
         self.states: list[str] = []
         self.max_risk = 0.0
+        self._last_nominal: Twist | None = None
 
     def on_image(self, msg: Image) -> None:
         self.camera_frames += 1
@@ -76,8 +83,27 @@ class ClosedLoopCollector:
         self.planner_input_msgs += 1
         self.planner_input_detections += len(msg.obstacles)
 
+    def on_nominal_cmd(self, msg: Twist) -> None:
+        self.nominal_cmd_msgs += 1
+        self._last_nominal = msg
+
     def on_safe_cmd(self, msg: Twist) -> None:
         self.safe_cmd_msgs += 1
+        if self._last_nominal is not None:
+            dx = abs(float(msg.linear.x) - float(self._last_nominal.linear.x))
+            dy = abs(float(msg.linear.y) - float(self._last_nominal.linear.y))
+            dz = abs(float(msg.angular.z) - float(self._last_nominal.angular.z))
+            self.max_abs_safe_nominal_surge_delta = max(
+                self.max_abs_safe_nominal_surge_delta, dx
+            )
+            self.max_abs_safe_nominal_sway_delta = max(
+                self.max_abs_safe_nominal_sway_delta, dy
+            )
+            self.max_abs_safe_nominal_yaw_delta = max(
+                self.max_abs_safe_nominal_yaw_delta, dz
+            )
+            if dx > 0.02 or dy > 0.02 or dz > 0.02:
+                self.safe_cmd_different_from_nominal_msgs += 1
         if abs(msg.linear.y) > 0.05 or abs(msg.angular.z) > 0.05:
             self.avoidance_cmd_msgs += 1
 
@@ -108,7 +134,9 @@ class ClosedLoopCollector:
         dy = pose[1] - y0
         forward_x = math.cos(yaw0)
         forward_y = math.sin(yaw0)
+        forward = forward_x * dx + forward_y * dy
         lateral = abs(-forward_y * dx + forward_x * dy)
+        self.max_forward_progress_m = max(self.max_forward_progress_m, forward)
         self.max_lateral_deviation_m = max(self.max_lateral_deviation_m, lateral)
 
     def summary(self) -> dict:
@@ -124,9 +152,33 @@ class ClosedLoopCollector:
             "oracle_anchor_detections": self.oracle_anchor_detections,
             "planner_input_msgs": self.planner_input_msgs,
             "planner_input_detections": self.planner_input_detections,
+            "nominal_cmd_msgs": self.nominal_cmd_msgs,
             "safe_cmd_msgs": self.safe_cmd_msgs,
+            "safe_cmd_different_from_nominal_msgs": (
+                self.safe_cmd_different_from_nominal_msgs
+            ),
+            "max_abs_safe_nominal_surge_delta": round(
+                self.max_abs_safe_nominal_surge_delta, 4
+            ),
+            "max_abs_safe_nominal_sway_delta": round(
+                self.max_abs_safe_nominal_sway_delta, 4
+            ),
+            "max_abs_safe_nominal_yaw_delta": round(
+                self.max_abs_safe_nominal_yaw_delta, 4
+            ),
             "avoidance_cmd_msgs": self.avoidance_cmd_msgs,
             "pose_msgs": self.pose_msgs,
+            "first_pose": (
+                [round(v, 3) for v in self.first_pose]
+                if self.first_pose is not None
+                else None
+            ),
+            "last_pose": (
+                [round(v, 3) for v in self.last_pose]
+                if self.last_pose is not None
+                else None
+            ),
+            "max_forward_progress_m": round(self.max_forward_progress_m, 3),
             "max_lateral_deviation_m": round(self.max_lateral_deviation_m, 3),
             "states": self.states,
             "max_risk": round(self.max_risk, 4),
@@ -167,6 +219,7 @@ def main() -> int:
         collector.on_planner_input,
         10,
     )
+    node.create_subscription(Twist, "/cmd_vel_nominal", collector.on_nominal_cmd, 10)
     node.create_subscription(Twist, "/planner/cmd_vel_safe", collector.on_safe_cmd, 10)
     node.create_subscription(AvoidanceDebug, "/avoidance/debug", collector.on_debug, 10)
     node.create_subscription(PoseStamped, "/rov/pose", collector.on_pose, 10)
@@ -192,7 +245,10 @@ def main() -> int:
         result["camera_frames"] > 0
         and result["oracle_anchor_detections"] > 0
         and result["planner_input_detections"] > 0
+        and result["nominal_cmd_msgs"] > 0
+        and result["safe_cmd_different_from_nominal_msgs"] > 0
         and result["avoidance_cmd_msgs"] > 0
+        and result["max_forward_progress_m"] > 0.05
         and result["max_lateral_deviation_m"] > 0.05
         and "APPROACH_OBSTACLE" in result["states"]
         and any(s.startswith("AVOIDING_") for s in result["states"])

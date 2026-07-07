@@ -6,7 +6,7 @@ Pipeline (the HoloOcean sim server runs separately in the conda ``ocean`` env)::
         bridge -> /perception/obstacles_oracle (SIM-ONLY debug/validation)
         bridge -> /rov/pose /rov/velocity /rov/depth /camera/front/image_raw
     yolo_obstacle_detector_node: /camera/front/image_raw -> /perception/obstacles
-    nominal_cmd_publisher -> /cmd_vel_nominal
+    nominal_cmd_publisher -> /cmd_vel_nominal (optional)
     local_avoidance_planner: /perception/obstacles + /cmd_vel_nominal
                               -> /planner/cmd_vel_safe -> bridge -> sim server
 
@@ -16,6 +16,7 @@ detections. The oracle topic remains available for validation.
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -76,6 +77,7 @@ def generate_launch_description():
         name="nominal_cmd_publisher",
         output="screen",
         parameters=[nominal_config],
+        condition=IfCondition(LaunchConfiguration("nominal_publisher_enabled")),
     )
     planner_node = Node(
         package="rov_obstacle_avoidance",
@@ -98,8 +100,17 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("confidence_threshold", default_value="0.25"),
             DeclareLaunchArgument("inference_stride", default_value="1"),
-            planner_node,
-            TimerAction(period=1.0, actions=[bridge_node]),
-            TimerAction(period=2.0, actions=[detector_node, nominal_node]),
+            DeclareLaunchArgument(
+                "nominal_publisher_enabled",
+                default_value="true",
+                description=(
+                    "Start the built-in nominal command publisher. Set false "
+                    "when publishing /cmd_vel_nominal manually from ROS."
+                ),
+            ),
+            bridge_node,
+            TimerAction(period=2.0, actions=[planner_node]),
+            TimerAction(period=4.0, actions=[detector_node]),
+            TimerAction(period=5.0, actions=[nominal_node]),
         ]
     )
