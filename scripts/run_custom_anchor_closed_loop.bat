@@ -15,7 +15,7 @@ REM   --engine-running   reuse an already-open engine window
 REM   --keep-engine      leave the engine window open afterwards
 REM   --duration-s 60    longer validation window
 REM ---------------------------------------------------------------------------
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 set "REPO_ROOT=%~dp0.."
 
 call "%~dp0source_ros2_windows.bat"
@@ -26,11 +26,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-set "SCENARIO_ARG="
+set "SCENARIO_PATH="
 if not "%~1"=="" (
-  set "SCENARIO_ARG=--scenario %~1"
-  shift
+  set "FIRST_ARG=%~1"
+  if not "!FIRST_ARG:~0,2!"=="--" (
+    set "SCENARIO_PATH=%~1"
+    shift
+  )
 )
 
-"%PIXI_ENV_ROOT%\python.exe" "%REPO_ROOT%\scripts\run_custom_anchor_closed_loop.py" %SCENARIO_ARG% %1 %2 %3 %4 %5 %6
+if defined SCENARIO_PATH (
+  "%PIXI_ENV_ROOT%\python.exe" "%REPO_ROOT%\scripts\run_custom_anchor_closed_loop.py" --scenario "%SCENARIO_PATH%" %*
+) else (
+  "%PIXI_ENV_ROOT%\python.exe" "%REPO_ROOT%\scripts\run_custom_anchor_closed_loop.py" %*
+)
 exit /b %ERRORLEVEL%

@@ -1,9 +1,9 @@
-"""YOLO-based visual obstacle detector (skeleton, simulation-only).
+"""YOLO-based visual obstacle detector (simulation-only).
 
 Subscribes to the simulator camera (``/camera/front/image_raw``), runs YOLO
 inference when the optional ``ultralytics`` package is installed, and
 publishes ``rov_obstacle_msgs/Obstacle2DArray`` on ``/perception/obstacles``
-— the same interface the oracle relay uses, so the planner stays unchanged.
+- the same interface the oracle relay uses, so the planner stays unchanged.
 
 Skeleton behaviour without ``ultralytics``/``torch`` installed: the node
 starts, subscribes and logs a throttled warning, but publishes nothing (it
@@ -14,9 +14,9 @@ When running the YOLO detector against the HoloOcean bridge, disable the
 bridge's oracle relay (``relay_oracle_topic:=''``) so ``/perception/obstacles``
 has a single publisher.
 
-COCO pretrained weights have no ``anchor`` class; a light fine-tune on the
-anchor class is expected (see ``training/yolo_anchor/``).  The ``class_map``
-parameter can meanwhile map look-alike COCO classes to planner classes.
+The default configuration points to the fine-tuned custom-object model in
+``training/yolo_custom_objects/``. The ``class_map`` parameter can still map
+detector names to planner names when testing alternative weights.
 
 Simulation-only: this node never commands any real vehicle hardware.
 """
@@ -184,8 +184,8 @@ class YoloObstacleDetectorNode(Node):
         self.declare_parameter("image_topic", "/camera/front/image_raw")
         self.declare_parameter("output_topic", "/perception/obstacles")
         self.declare_parameter("frame_id", "front_camera")
-        # Any ultralytics-loadable weights: yolov8n.pt (COCO pretrained,
-        # auto-downloaded) or a fine-tuned anchor model path.
+        # Any ultralytics-loadable weights: pretrained YOLO weights or the
+        # fine-tuned custom-object model path.
         self.declare_parameter("model_path", "yolov8n.pt")
         self.declare_parameter("device", "cpu")
         self.declare_parameter("confidence_threshold", 0.25)

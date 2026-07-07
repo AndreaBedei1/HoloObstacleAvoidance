@@ -9,6 +9,7 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
         self.assertTrue((package_dir / "launch" / "holoocean_pose_smoke.launch.py").exists())
         self.assertTrue((package_dir / "launch" / "holoocean_oracle_demo.launch.py").exists())
         self.assertTrue((package_dir / "launch" / "holoocean_anchor_avoidance.launch.py").exists())
+        self.assertTrue((package_dir / "launch" / "holoocean_yolo_avoidance.launch.py").exists())
 
     def test_oracle_demo_uses_simulation_only_nodes(self):
         package_dir = Path(__file__).resolve().parents[1]
@@ -53,6 +54,22 @@ class HoloOceanSmokeLaunchLayoutTest(unittest.TestCase):
 
         self.assertIn("holoocean_bridge_node", text)
         self.assertIn('"relay_oracle_topic": "/perception/obstacles"', text)
+        self.assertIn("TimerAction", text)
+
+    def test_yolo_avoidance_launch_disables_oracle_relay(self):
+        package_dir = Path(__file__).resolve().parents[1]
+        text = (package_dir / "launch" / "holoocean_yolo_avoidance.launch.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("holoocean_bridge_node", text)
+        self.assertIn("yolo_obstacle_detector_node", text)
+        self.assertIn("local_avoidance_planner_node", text)
+        self.assertIn('"relay_oracle_topic": ""', text)
+        self.assertIn("training/yolo_custom_objects/runs/", text)
+        self.assertIn("TimerAction", text)
+        self.assertNotIn("mavlink", text.lower())
+        self.assertNotIn("thruster", text.lower())
 
     def test_custom_anchor_scenarios_are_the_main_path(self):
         package_dir = Path(__file__).resolve().parents[1]

@@ -1,0 +1,14 @@
+model: yolov8n.pt
+dataset: training/yolo_custom_objects/dataset.yaml
+epochs: 15
+imgsz: 512
+batch: 8
+device: cpu
+workers: 0
+project: training/yolo_custom_objects/runs
+name: yolov8n_custom_underwater
+pretrained: true
+classes:
+  0: anchor
+  1: mine
+  2: torpedo

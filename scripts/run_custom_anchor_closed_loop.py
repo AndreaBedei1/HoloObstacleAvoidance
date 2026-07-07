@@ -6,8 +6,8 @@ Orchestrates the full system (all simulation-only, all visible):
   1. HoloOcean sim server (conda ``ocean``) -- it launches the EXTERNAL
      modified engine in a visible window, attaches, spawns the real
      ``/Game/ancora.ancora`` mesh via SpawnAsset, then serves TCP 47654.
-  2. Zenoh router + ROS 2 nodes (bridge, nominal publisher, planner) via
-     ``ros2 launch rov_obstacle_sim_bridge holoocean_oracle_avoidance.launch.py``.
+  2. Zenoh router + ROS 2 nodes via one of the simulation-only launches:
+     oracle relay baseline or YOLO detector pipeline.
   3. Validator that collects metrics, saves camera frames (PNG) into
      ``visualizations/`` and writes a JSON report into ``logs/``.
 
@@ -32,6 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCENARIO = (
     REPO_ROOT / "src" / "rov_obstacle_sim_bridge" / "config"
     / "holoocean_scenarios" / "custom_anchor_visible.yaml"
+)
+DEFAULT_YOLO_WEIGHTS = (
+    REPO_ROOT / "training" / "yolo_custom_objects" / "runs"
+    / "yolov8n_custom_underwater" / "weights" / "best.pt"
 )
 SIM_SERVER = (
     REPO_ROOT / "src" / "rov_obstacle_sim_bridge" / "holoocean_server"
@@ -105,6 +109,14 @@ def main() -> int:
                         help="reuse an engine window that is already open")
     parser.add_argument("--keep-engine", action="store_true",
                         help="leave the engine window open at the end")
+    parser.add_argument("--detector", choices=("oracle", "yolo"), default="oracle",
+                        help="planner input source: oracle relay baseline or YOLO")
+    parser.add_argument("--model-path", default=str(DEFAULT_YOLO_WEIGHTS),
+                        help="YOLO weights path when --detector yolo")
+    parser.add_argument("--confidence-threshold", type=float, default=0.25,
+                        help="YOLO confidence threshold when --detector yolo")
+    parser.add_argument("--inference-stride", type=int, default=1,
+                        help="YOLO inference stride when --detector yolo")
     parser.add_argument("--run-label", default="custom_anchor")
     args = parser.parse_args()
 
@@ -120,6 +132,8 @@ def main() -> int:
     logs = REPO_ROOT / "logs"
     vis = REPO_ROOT / "visualizations"
     label = args.run_label
+    if args.detector == "yolo" and label == "custom_anchor":
+        label = "custom_anchor_yolo"
     report_json = logs / f"{label}_validation.json"
 
     sim_cmd = ocean_python_cmd(args.conda_env) + [
@@ -173,10 +187,25 @@ def main() -> int:
         validator = subprocess.Popen(validate_cmd)
         time.sleep(4.0)
 
+        launch_file = (
+            "holoocean_yolo_avoidance.launch.py"
+            if args.detector == "yolo"
+            else "holoocean_oracle_avoidance.launch.py"
+        )
+        launch_cmd = [
+            "ros2", "launch", "rov_obstacle_sim_bridge", launch_file,
+            f"host:={args.host}", f"port:={args.port}",
+        ]
+        if args.detector == "yolo":
+            launch_cmd.extend(
+                [
+                    f"model_path:={args.model_path}",
+                    f"confidence_threshold:={args.confidence_threshold}",
+                    f"inference_stride:={max(1, args.inference_stride)}",
+                ]
+            )
         launch_proc = start_logged(
-            ["ros2", "launch", "rov_obstacle_sim_bridge",
-             "holoocean_oracle_avoidance.launch.py",
-             f"host:={args.host}", f"port:={args.port}"],
+            launch_cmd,
             logs / f"{label}_ros2_launch.log", "ROS 2 nodes",
         )
 
