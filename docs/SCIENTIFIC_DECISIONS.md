@@ -133,6 +133,35 @@ reason, implications, commit. Newest last. Referenced from
 - **Implication:** 30 fps host-stamped RGB is sufficient for x/y/yaw ground truth;
   timestamp alignment with ROS host clock is straightforward (same machine).
 
+## D-008 — Contribution reordering after the novelty audit
+
+- **Question:** which planned contributions survive the literature?
+- **Evidence:** 63 papers catalogued (35 deep-read), five closest identified
+  (Mari 2026 Sensors; Han 2026 belief-CBF; DUViN 2025; Bergantin 2024;
+  Kadian 2020). Full verdicts in `docs/LITERATURE_AND_NOVELTY.md`.
+- **Chosen:** headline = S0–S3 measured-calibration predictiveness/ranking
+  study (clearly novel); second = calibrated + NIS/coverage-validated adaptive
+  estimator (potentially novel, requires calibrated-vs-heuristic ablations
+  NSA-Kalman & UTrack-style); committed-circumnavigation uncertainty modulation
+  demoted to component (cite Zhang 2022, de Groot 2025, Han 2026); pool
+  protocol and integrated system dropped as claims; open code/data release
+  added as differentiator. SRCC (Kadian) adopted as ranking metric; Truong
+  2022 null-result framing pre-registered.
+- **Implication:** `paper/contributions.md` restructured; experiment design
+  must include the estimator ablation baselines from day one.
+- **Commit:** (this commit).
+
+## D-009 — Classical baseline = underwater-adapted DWA
+
+- **Evidence:** Mari 2026 uses DWA as THE BlueROV2 avoidance baseline; EROAS
+  2024, VADWA 2024, 2025 marine reviews confirm DWA mainstream; Eriksen 2016
+  provides the canonical AUV adaptation. Alternatives assessed in
+  `docs/CLASSICAL_PLANNER_BASELINE.md` (APF optional secondary; VFH/VO/MPC
+  rejected with reasons).
+- **Chosen:** DWA per Eriksen 2016, fed the same estimator mean (no oracle),
+  honestly tuned with a documented procedure.
+- **Commit:** (this commit).
+
 ---
 
 *(Add new decisions below with incrementing IDs.)*

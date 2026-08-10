@@ -38,13 +38,19 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 ## Phase 2 — Literature / novelty
 
-- [~] Structured literature sweep (8 topic clusters, primary sources, 2022–2026)
-- [ ] `docs/LITERATURE_AND_NOVELTY.md` with full comparison table
-- [ ] `paper/references.bib`
-- [ ] Five closest papers identified
-- [ ] Novelty threat analysis (per-contribution verdict)
-- [ ] Classical baseline planner selected and justified
-      (`docs/CLASSICAL_PLANNER_BASELINE.md`)
+- [x] Structured literature sweep (8 topic clusters, primary sources, 2022–2026;
+      63 papers: 35 deep-read + 28 catalogued; `literature/literature_review.json`)
+- [x] `docs/LITERATURE_AND_NOVELTY.md` with full comparison table
+- [x] `paper/references.bib` (63 entries; unverified ones flagged)
+- [x] Five closest papers identified (Mari 2026, Han 2026, DUViN 2025,
+      Bergantin 2024, Kadian 2020)
+- [x] Novelty threat analysis: C1 ladder study clearly novel (headline);
+      C2 calibrated estimator potentially novel (ablations mandatory);
+      planner claim demoted; protocol/system dropped as claims (D-008)
+- [x] Classical baseline planner selected: DWA per Eriksen 2016
+      (`docs/CLASSICAL_PLANNER_BASELINE.md`, D-009)
+- [ ] Full-text verification of 2 aggregator-verified threat papers
+      (Li AOR 2026; Li JMSE 2024) before claim freeze
 
 ## Phase 3 — Safe read-only real hardware inventory (NO actuation)
 
