@@ -1,10 +1,28 @@
 @echo off
 setlocal
 
-if "%ROS2_ROOT%"=="" set "ROS2_ROOT=C:\dev\lyrical"
+rem Machine-specific roots are overridable via environment variables so the same
+rem repo works on the lab machine (pixi at C:\dev\lyrical) and the experiment
+rem machine (binary install at C:\dev\ros2_lyrical + conda env ros2_lyrical).
+if "%ROS2_ROOT%"=="" (
+  if exist "C:\dev\lyrical\local_setup.bat" (
+    set "ROS2_ROOT=C:\dev\lyrical"
+  ) else if exist "C:\dev\ros2_lyrical\local_setup.bat" (
+    set "ROS2_ROOT=C:\dev\ros2_lyrical"
+  ) else (
+    set "ROS2_ROOT=C:\dev\lyrical"
+  )
+)
 if "%ROS_DISTRO_EXPECTED%"=="" set "ROS_DISTRO_EXPECTED=lyrical"
-if "%PIXI_ENV_ROOT%"=="" set "PIXI_ENV_ROOT=%ROS2_ROOT%\.pixi\envs\default"
-if "%COLCON_DEFAULTS_FILE%"=="" set "COLCON_DEFAULTS_FILE=%~dp0..\colcon_defaults_windows.yaml"
+if "%PIXI_ENV_ROOT%"=="" (
+  if exist "%ROS2_ROOT%\.pixi\envs\default\python.exe" (
+    set "PIXI_ENV_ROOT=%ROS2_ROOT%\.pixi\envs\default"
+  ) else if exist "%USERPROFILE%\miniconda3\envs\ros2_lyrical\python.exe" (
+    set "PIXI_ENV_ROOT=%USERPROFILE%\miniconda3\envs\ros2_lyrical"
+  ) else (
+    set "PIXI_ENV_ROOT=%ROS2_ROOT%\.pixi\envs\default"
+  )
+)
 
 if not exist "%ROS2_ROOT%\local_setup.bat" (
   echo [FAIL] ROS 2 setup file not found: %ROS2_ROOT%\local_setup.bat
@@ -12,9 +30,25 @@ if not exist "%ROS2_ROOT%\local_setup.bat" (
 )
 
 if not exist "%PIXI_ENV_ROOT%\python.exe" (
-  echo [FAIL] Pixi Python not found: %PIXI_ENV_ROOT%\python.exe
+  echo [FAIL] Python env not found: %PIXI_ENV_ROOT%\python.exe
   echo Run scripts\setup_ros2_windows.bat first.
   exit /b 1
+)
+
+rem Generate a machine-local colcon defaults file so cmake always receives the
+rem Python interpreter actually present on this machine (the tracked
+rem colcon_defaults_windows.yaml hardcoded the lab machine's pixi path).
+if "%COLCON_DEFAULTS_FILE%"=="" (
+  set "COLCON_DEFAULTS_FILE=%~dp0..\colcon_defaults_local.yaml"
+  > "%~dp0..\colcon_defaults_local.yaml" (
+    echo build:
+    echo   merge-install: true
+    echo   cmake-args:
+    echo     - -DPython3_EXECUTABLE=%PIXI_ENV_ROOT:\=/%/python.exe
+    echo     - -DPYTHON_EXECUTABLE=%PIXI_ENV_ROOT:\=/%/python.exe
+    echo test:
+    echo   merge-install: true
+  )
 )
 
 endlocal & (
