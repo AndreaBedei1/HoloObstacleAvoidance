@@ -1,0 +1,85 @@
+# Sanitized machine-readable snapshot of the real BlueROV2, read-only inventory.
+# Acquired: 2026-08-10 (vehicle dry, disarmed). No credentials/MACs/serials here.
+# Human-readable report: docs/REAL_BLUEROV2_HARDWARE_INVENTORY.md
+
+vehicle:
+  type: BlueROV2
+  frame_config: 2                # SUB_FRAME_VECTORED_6DOF -> Heavy
+  thrusters: 8                   # SERVO1..8_FUNCTION = 33..40 (Motor1..8)
+  mot_pwm_min_us: 1100
+  mot_pwm_max_us: 1900
+  autopilot_board: navigator
+  ardusub_version: "4.1.2"
+  blueos_version: "1.3.1"
+  companion: raspberry_pi_4
+  state_at_inventory:
+    armed: false
+    mode: MANUAL
+    in_water: false              # external pressure ~ambient (1012 hPa)
+
+network:
+  topside_ip: 192.168.2.1
+  vehicle_ip: 192.168.2.2
+  ping_rtt_ms: 4
+  imaging_sonar_ip: 192.168.2.86   # Cerulean Omniscan-class. PROHIBITED DEVICE.
+
+telemetry:
+  transport: mavlink2rest + UDP MAVLink
+  attitude_hz: 10
+  vfr_hud_hz: 10
+  pressure_depth_hz: 2           # SCALED_PRESSURE2 (external, Bar30-class)
+  raw_imu_hz: 2
+  heartbeat_hz: 1
+  note_rates: "default SR0 stream rates; NOT modified during inventory"
+
+navigation_sensors:
+  attitude: true                 # roll/pitch/yaw + rates
+  compass_heading: true
+  pressure_depth: true
+  imu_raw: true
+  dvl: false                     # CONFIRMED ABSENT (no extension, no messages)
+  velocity_over_ground: false
+  rangefinder_stream: false      # no RANGEFINDER/DISTANCE_SENSOR messages (dry)
+  gps_fix: false                 # GPS_RAW_INT NO_FIX, 0 sats
+
+position_locator:
+  injection_path: "NMEA -> BlueOS NMEA Injector UDP 27000 -> GPS_INPUT (component 220)"
+  active_at_inventory: false
+  topside_receiver_detected_on_pc: false
+  model: TODO_ASK_ANDREA
+  runtime_navigation_use: undecided_pending_validation
+
+sonar:
+  imaging_side_scan:
+    model_class: cerulean_omniscan_450_ss
+    status: PROHIBITED_NEVER_USE
+    blueos_extension: "SonarView 1.14.4 (untouched)"
+  ping1d:
+    present: true
+    port: /dev/ttyAMA3
+    firmware: "1.0.0"
+    udp_driver_port: 9090
+    mavlink_driver_enabled: true
+    status: DISABLED_FOR_PROJECT_UNTIL_EXPLICIT_WET_AUTHORIZATION
+
+onboard_camera:
+  source_name: "H264 USB Camera (/dev/video2)"
+  codec: h264
+  width: 1920
+  height: 1080
+  fps: 30
+  stream_endpoint: "udp://192.168.2.1:5600"
+  secondary_stream: "udp://192.168.2.1:5601 (redirect, 'Prova1')"
+  tilt_servo: 16
+  tilt_at_inventory_us: 1500
+  intrinsics: TODO_CALIBRATE
+  underwater_fov: TODO_CALIBRATE_WET
+  latency_ms: TODO_MEASURE
+  camera_to_body_transform: TODO_MEASURE
+
+external_ground_truth_camera:
+  model: intel_realsense_d435
+  rgb_max: 1920x1080@30
+  rgb_measured_fps: 29.81
+  timestamp_domain: system_time
+  details: visualizations/realsense_inventory/realsense_inventory.json

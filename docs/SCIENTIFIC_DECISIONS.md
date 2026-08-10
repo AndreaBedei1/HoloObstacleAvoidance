@@ -1,0 +1,138 @@
+# Scientific Decisions Log
+
+Every important methodological decision: question, alternatives, evidence, choice,
+reason, implications, commit. Newest last. Referenced from
+`docs/SCIENTIFIC_SIM_TO_REAL_ROADMAP.md`.
+
+---
+
+## D-001 — Which commit is the scientific baseline?
+
+- **Question:** the project brief pointed at branch `feature/holoocean-anchor-primitives`;
+  which state is actually the latest stable baseline?
+- **Alternatives:** (a) feature branch tip `85bc041`; (b) `origin/main` `6692f07`.
+- **Evidence:** `git log` shows `main` *contains* `85bc041` plus
+  `1f249f9` (planner navigates on estimated odometry), `5da1a2d` (committed
+  circumnavigation, no oscillation), `778a260` (README for final YOLO demo),
+  `6692f07`. The estimated-odometry and committed-circumnavigation work described
+  as "recent remote work" lives on `main`, not on the feature branch.
+- **Chosen:** baseline = `origin/main` @ `6692f07`; scientific branch
+  `feature/scientific-sim-to-real-obstacle-avoidance` created from it.
+- **Implication:** the feature branch is historical; do not develop on it.
+- **Commit:** branch point `6692f07`.
+
+## D-002 — Repository was not present on this machine
+
+- **Question:** where is the working checkout?
+- **Evidence:** no local clone existed anywhere on this machine (searched Desktop,
+  `source`, `IdeaProjects`, git configs). The machine's `RovTest` repo is a
+  separate real-vehicle MAVLink/ROS 2 project. `HoloObstacleAvoidance` was found on
+  GitHub (`AndreaBedei1/HoloObstacleAvoidance`, last push 2026-07-07).
+- **Chosen:** fresh clone at `C:/Users/Andrea/Desktop/HoloObstacleAvoidance`.
+- **Implication:** all "uncommitted local work" concerns are void — the remote was
+  the only source of truth. Prior sim experiments ran on a different lab machine
+  (`andrea.bedei3` user paths inside tracked configs), which explains missing
+  externals here (see D-004).
+
+## D-003 — Audit conclusions that gate the scientific upgrade
+
+- **Question:** does the baseline really do what the README claims?
+- **Evidence (7-subsystem parallel audit, file:line):**
+  - Vehicle is `HoveringAUV` everywhere (`holoocean_sim_server.py:166,308`;
+    all custom scenario YAMLs). No BlueROV2 usage.
+  - Motion is kinematic teleport at 30 Hz (`holoocean_sim_server.py:1063-1079`),
+    clamps surge/sway 1.5, heave 1.0, yaw_rate 0.8; roll/pitch never integrated;
+    **no collision detection** (vehicle can pass through geometry).
+  - Planner runtime inputs are only `/perception/obstacles`, `/cmd_vel_nominal`,
+    `/rov/odom_estimated` (`local_avoidance_planner_node.py:42-44`) — ground truth
+    separation holds, but only by convention/text-tests.
+  - The "DVL+gyro" odometry input is synthesized: bridge finite-differences
+    ground-truth pose with wall-clock dt (`holoocean_bridge_node.py:223-254`),
+    then `odometry_estimator` adds deterministic bias/noise (seed 12345).
+  - YOLO node stamps detections at publish time, discarding image stamps —
+    perception latency is unmeasurable downstream.
+  - Headline YOLO result is n=1; the committed oracle-baseline JSON is actually a
+    crashed run (0xC0000005, empty state sequence).
+  - Planner correctness debt: `risk_exit_threshold`, `recovery_time_s`,
+    `recovery_max_time_s` declared but unused (no hysteresis, no recovery timeout);
+    `_steer` clamps body sway with `max_surge` not `max_sway`.
+- **Implications:** (1) HoveringAUV→BlueROV2 and teleport→dynamics are confirmed
+  mandatory; (2) timestamping must move to image-stamp propagation before any
+  latency-aware science; (3) the oracle-vs-YOLO A/B must be re-run to have any
+  valid baseline statistics; (4) estimator redesign must not assume DVL (see D-006).
+
+## D-004 — Baseline YOLO closed-loop is not reproducible on this machine (yet)
+
+- **Question:** can we re-run the final YOLO demo 3× here as required?
+- **Evidence:** requires (a) UE 5.3 custom engine world with cooked
+  `/Game/ancora|mina|siluro` assets — only on lab machine; (b) `best.pt` — gitignored,
+  absent; (c) `ocean` conda env — absent (but `holoocean_joystick` env has
+  holoocean 2.3.0); (d) pixi ROS env at `C:/dev/lyrical` — absent (but a ROS 2
+  "lyrical" binary install exists at `C:/dev/ros2_lyrical` with conda env
+  `ros2_lyrical`, Python 3.12.3).
+- **Chosen:** do NOT fake the reproduction. Recorded as blockers B1/B2. Proceed
+  with what this machine can do: unit tests, stock-world BlueROV2 smoke tests, and
+  the scientific migration (which must abandon HoveringAUV anyway). Ask Andrea to
+  transfer the cooked custom world + weights for the paired baseline rerun.
+- **Implication:** "current baseline reproduced 3×" stays open; the scientific
+  claim of baseline reproduction will be made on the lab machine or after asset
+  transfer.
+
+## D-005 — Simulation vehicle: HoloOcean native BlueROV2 agent
+
+- **Question:** how to replace HoveringAUV scientifically?
+- **Alternatives:** (a) keep HoveringAUV + relabel (rejected — vehicle mismatch is
+  a core sim-to-real threat); (b) custom Fossen model bolted onto HoveringAUV;
+  (c) HoloOcean 2.3.0 native `BlueROV2` agent.
+- **Evidence:** holoocean 2.3.0 (installed, env `holoocean_joystick`) ships
+  `BlueROV2` = **BlueROV2 Heavy**: 8 thrusters, vectored-6DOF geometry
+  (`thruster_d/p` match Heavy layout), control schemes 0=8×thruster forces,
+  1=PID, 2=accelerations, plus documented custom/Fossen dynamics hooks.
+  The real vehicle inventory (D-006) confirms FRAME_CONFIG=2 = Vectored-6DOF
+  Heavy → **the sim agent's thruster topology matches the real vehicle**.
+  Smoke test on this machine: BlueROV2 + RGBCamera(512²)/IMU/DVL/Depth/Pose/
+  Velocity spawn and tick in the prebuilt `SimpleUnderwater` Ocean world with
+  scheme-0 commands (60 ticks, all sensor outputs well-formed).
+- **Chosen:** (c) native BlueROV2 agent, control scheme 0 (thruster forces) driven
+  by our own body-velocity controller + allocation (Phase 5), so the same command
+  interface can later map to real thruster/velocity commands.
+- **Implications:** dynamics become engine-side (real hydrodynamic response);
+  teleport demoted to regression-only; step-response identification becomes
+  meaningful and comparable with the real vehicle.
+
+## D-006 — Real vehicle has NO DVL: estimator must not assume one
+
+- **Question:** does the real platform provide the velocity measurement the sim
+  estimator consumes?
+- **Evidence (read-only inventory, 2026-08-10):** BlueOS 1.3.1 extension list has
+  no DVL driver; MAVLink stream (31 message types) contains no
+  `VISION_POSITION_DELTA`/`ODOMETRY`/`LOCAL_POSITION_NED`-style aiding, no
+  RANGEFINDER/DISTANCE_SENSOR; EKF runs on IMU+compass+baro only. Full details in
+  `docs/REAL_BLUEROV2_HARDWARE_INVENTORY.md` and
+  `docs/SIM_REAL_SENSOR_EQUIVALENCE.md`.
+- **Chosen:** the runtime navigation design must be rebuilt around sensors that
+  exist: ATTITUDE/yaw (10 Hz), pressure depth, IMU, commanded-motion dead
+  reckoning, and possibly the position locator (pending identification of its
+  runtime data path and in-water authorization). The sim `DVLSensor` may be used
+  ONLY in a variant explicitly labeled non-transferable, or with noise inflated to
+  emulate dead-reckoning quality; the paired sim-real experiments must use the
+  matched sensor suite.
+- **Implication:** Phase 7 estimator state and the planner's pass-detection logic
+  must be re-derived for a velocity-sensor-less platform. This is now a tracked
+  scientific risk, not a footnote.
+
+## D-007 — RealSense D435 as external ground-truth camera
+
+- **Evidence:** device inventory (`scripts/inspect_realsense.py`): Intel RealSense
+  D435 (RGB module), 1920×1080 RGB measured 29.81 fps sustained (mean frame
+  interval 33.5 ms, σ 2.8 ms, p95 36.1 ms), timestamp domain = system time
+  (host-clock comparable), depth-to-color extrinsics recorded. Depth stream 848×480.
+- **Chosen:** RGB-primary ground truth as planned; depth/IR recorded but untrusted
+  through the air-water interface until validated (see
+  `docs/REALSENSE_GROUND_TRUTH_PLAN.md`).
+- **Implication:** 30 fps host-stamped RGB is sufficient for x/y/yaw ground truth;
+  timestamp alignment with ROS host clock is straightforward (same machine).
+
+---
+
+*(Add new decisions below with incrementing IDs.)*
