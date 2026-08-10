@@ -33,12 +33,14 @@ from __future__ import annotations
 import array
 import math
 
+import json
+
 import rclpy
-from geometry_msgs.msg import PoseStamped, Quaternion, Twist, TwistStamped
+from geometry_msgs.msg import PoseStamped, Quaternion, Twist, TwistStamped, Vector3Stamped
 from rclpy.node import Node
 from rov_obstacle_msgs.msg import Obstacle2D, Obstacle2DArray
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 
 from .oracle_geometry import (
     CameraConfig,
@@ -95,6 +97,18 @@ class HolooceanBridgeNode(Node):
         self._pub_pose = self.create_publisher(PoseStamped, str(self.get_parameter("pose_topic").value), 10)
         self._pub_vel = self.create_publisher(TwistStamped, str(self.get_parameter("velocity_topic").value), 10)
         self._pub_depth = self.create_publisher(Float32, str(self.get_parameter("depth_topic").value), 10)
+        # Measured attitude (roll, pitch, yaw): the simulated counterpart of
+        # the real vehicle's ATTITUDE stream.  RUNTIME-ALLOWED navigation
+        # input (unlike /rov/pose_ground_truth, which is validation-only).
+        self._pub_attitude = self.create_publisher(
+            Vector3Stamped, str(self.get_parameter("attitude_topic").value), 10)
+        # Dynamics/watchdog debug (thruster forces, achieved velocity, ...):
+        # VALIDATOR-ONLY diagnostic stream, JSON-encoded.
+        self._pub_dyn_debug = self.create_publisher(
+            String, str(self.get_parameter("dynamics_debug_topic").value), 10)
+        # Obstacle world positions/radii (VALIDATOR-ONLY, JSON).
+        self._pub_obstacles_world = self.create_publisher(
+            String, str(self.get_parameter("obstacles_world_topic").value), 10)
         self._pub_oracle = self.create_publisher(
             Obstacle2DArray, str(self.get_parameter("oracle_topic").value), 10)
         relay_oracle_topic = str(self.get_parameter("relay_oracle_topic").value)
@@ -133,6 +147,9 @@ class HolooceanBridgeNode(Node):
         self.declare_parameter("pose_topic", "/rov/pose_ground_truth")
         self.declare_parameter("velocity_topic", "/rov/velocity")
         self.declare_parameter("depth_topic", "/rov/depth")
+        self.declare_parameter("attitude_topic", "/rov/attitude_measured")
+        self.declare_parameter("dynamics_debug_topic", "/sim/dynamics_debug")
+        self.declare_parameter("obstacles_world_topic", "/sim/obstacles_world")
         self.declare_parameter("oracle_topic", "/perception/obstacles_oracle")
         self.declare_parameter("relay_oracle_topic", "")
         self.declare_parameter("cmd_vel_topic", "/planner/cmd_vel_safe")
@@ -257,6 +274,32 @@ class HolooceanBridgeNode(Node):
         dmsg = Float32()
         dmsg.data = float(header.get("depth", 0.0))
         self._pub_depth.publish(dmsg)
+
+        # Measured attitude (runtime-allowed; real counterpart: ATTITUDE).
+        att = header.get("attitude") or {}
+        amsg = Vector3Stamped()
+        amsg.header.stamp = stamp
+        amsg.header.frame_id = "base_link"
+        amsg.vector.x = float(att.get("roll", 0.0))
+        amsg.vector.y = float(att.get("pitch", 0.0))
+        amsg.vector.z = float(att.get("yaw", yaw))
+        self._pub_attitude.publish(amsg)
+
+        # Dynamics/watchdog debug (validator-only).
+        dyn = header.get("dynamics")
+        watchdog = bool(header.get("watchdog_active", False))
+        if dyn is not None or watchdog:
+            dbg = String()
+            dbg.data = json.dumps(
+                {"watchdog_active": watchdog, "dynamics": dyn})
+            self._pub_dyn_debug.publish(dbg)
+
+        # Obstacle world geometry (VALIDATOR-ONLY: clearance/collision math).
+        obstacles_world = header.get("obstacles")
+        if obstacles_world:
+            omsg = String()
+            omsg.data = json.dumps(obstacles_world)
+            self._pub_obstacles_world.publish(omsg)
 
         # Camera image
         img_meta = header.get("image")

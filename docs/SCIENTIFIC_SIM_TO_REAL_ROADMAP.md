@@ -108,10 +108,25 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 - [B] Custom anchor/torpedo/mine assets in a BlueROV2 scenario — cooked custom
       world lives on the lab machine; needs asset transfer or re-cook (see Blockers)
 
-## Phase 6 — Reproduce committed avoidance under real dynamics
+## Phase 6 — Reproduce committed avoidance under real dynamics (Scientific Baseline 0)
 
-- [ ] Current planner (Baseline A, `planner_mode:=committed_baseline`) closes the
-      loop with BlueROV2 dynamics — 3 consecutive fresh-process successes
+- [x] Transferable no-DVL runtime odometry (`commanded_odometry_node`):
+      commanded-motion dead reckoning + measured yaw + measured depth;
+      forbidden-input guard; synthetic-DVL estimator NOT in the loop
+- [x] Sim-server command watchdog (`cmd_timeout_s`, default 1 s) + 8 tests
+- [x] Bridge: `/rov/attitude_measured` (runtime), `/sim/dynamics_debug`,
+      `/sim/obstacles_world` (validator-only)
+- [x] Oracle relay with deterministic state-triggered detector dropout
+- [x] Baseline0 validator: physical metrics incl. clearance from known
+      geometry, thruster utilization, odometry error, diagnostic series
+- [x] Physics-time consistency established (D-010): tps=30 mandatory,
+      real-time hybrid pacing; straight-run odo error 4.08 m → 0.117 m
+- [x] Campaign A/B/C × 3 fresh-process runs: **9/9 accepted** (2026-08-11)
+      — no collision, clearance 0.67–0.72 m, single committed maneuver, no
+      side switch, return to line ≤6 cm, dropout survived in all C runs,
+      odometry error ≤0.20 m; attempt-1 failures preserved and analyzed
+      (`docs/SCIENTIFIC_BASELINE_0.md`)
+- [x] Milestone Scientific Baseline 0 ACCEPTED — cleared to start Phase 7
 
 ## Phase 7 — Temporal obstacle estimation
 

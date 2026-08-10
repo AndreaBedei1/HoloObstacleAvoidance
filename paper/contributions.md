@@ -10,8 +10,15 @@ Living document. Updated after the 2026-08-10 novelty audit
   to predict real closed-loop avoidance outcomes and to preserve the ranking
   of estimator/planner stacks (SRCC, per Kadian 2020), underwater, with
   identical code in both domains.
-- **Novelty status:** clearly novel (no underwater analogue found; simulator
-  reviews name this as an open gap).
+- **Novelty status:** clearly novel AS AN UNDERWATER APPLICATION AND PROTOCOL
+  (no underwater analogue found; simulator reviews name this as an open gap).
+  To be explicit: SRCC and the sim-to-real predictivity question are Kadian
+  et al.'s contribution, not ours — our candidate contribution is the
+  underwater obstacle-avoidance instantiation with a progressive
+  MEASURED-calibration ladder (S0–S3) and the quantitative study of whether
+  calibration improves preservation of real safety/performance rankings
+  between HoloOcean and a physical BlueROV2. Claim stays provisional until
+  the remaining threat papers (Li AOR 2026, Li JMSE 2024) are read in full.
 - **Supporting experiments:** S0–S3 paired campaigns (sim ladder + real pool),
   SRCC + per-level predictiveness metric (VEPD-spirit, Mahajan 2024).
 - **Threats:** Kadian 2020 (ground, post-hoc tuning — cite and adopt SRCC);

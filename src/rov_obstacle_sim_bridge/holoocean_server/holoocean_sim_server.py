@@ -193,6 +193,10 @@ class SimConfig:
     # `dynamics:` YAML section (gains/latency), consumed when
     # motion_model == "dynamics"; see bluerov2_dynamics.DynamicsConfig.
     dynamics: dict = field(default_factory=dict)
+    # Command watchdog: if no fresh cmd_vel frame arrives within this many
+    # seconds, the commanded body velocity is zeroed (safe stop).  <= 0
+    # disables the watchdog (legacy regression scenarios only).
+    cmd_timeout_s: float = 1.0
     start_offset: tuple[float, float, float] = (0.0, 0.0, 5.0)  # fwd, right, up
     camera_width: int = 512
     camera_height: int = 512
@@ -299,6 +303,7 @@ def load_config(path: str) -> SimConfig:
         agent_type=str(ho.get("agent_type", "HoveringAUV")),
         camera_socket=str(ho.get("camera_socket", "CameraSocket")),
         dynamics=dict(data.get("dynamics") or {}),
+        cmd_timeout_s=float(sim.get("cmd_timeout_s", 1.0)),
         motion_model=motion_model,
         start_offset=tuple(float(v) for v in sim.get("start_offset", [0.0, 0.0, 5.0])),
         camera_width=int(cam.get("width", 512)),
@@ -950,6 +955,10 @@ class HolooceanSimServer:
         self._last_state: Any = None
         self._dyn_debug: Any = None
 
+        # Command watchdog state.
+        self._last_cmd_time: Optional[float] = None
+        self._watchdog_active: bool = False
+
     def log(self, *args: Any) -> None:
         if self.verbose:
             print("[sim-server]", *args, flush=True)
@@ -1154,7 +1163,7 @@ class HolooceanSimServer:
             self._engine_proc = None
 
     # -- per-tick update -----------------------------------------------------
-    def apply_command(self, header: dict) -> None:
+    def apply_command(self, header: dict, now_s: Optional[float] = None) -> None:
         c = self.cfg
         self.cmd = dict(
             surge=clamp(coerce_float(header.get("surge")), -c.max_surge, c.max_surge),
@@ -1165,6 +1174,32 @@ class HolooceanSimServer:
             yaw_rate=clamp(coerce_float(header.get("yaw_rate")),
                            -c.max_yaw_rate, c.max_yaw_rate),
         )
+        self._last_cmd_time = time.monotonic() if now_s is None else now_s
+        self._watchdog_active = False
+
+    def apply_command_watchdog(self, now_s: Optional[float] = None) -> bool:
+        """Zero the commanded velocity if the last cmd_vel frame is stale.
+
+        Returns True when the watchdog is holding the command at zero.  A
+        server that never received a command stays at the zero default (idle,
+        not counted as a trip).  Timeout <= 0 disables the watchdog.
+        """
+        if self.cfg.cmd_timeout_s <= 0:
+            return False
+        now = time.monotonic() if now_s is None else now_s
+        if self._last_cmd_time is None:
+            return False
+        if now - self._last_cmd_time > self.cfg.cmd_timeout_s:
+            if not self._watchdog_active:
+                self.log(
+                    f"WATCHDOG: no cmd_vel for > {self.cfg.cmd_timeout_s:.2f}s "
+                    "— zeroing command"
+                )
+            self._watchdog_active = True
+            self.cmd = dict(surge=0.0, sway=0.0, heave=0.0,
+                            roll_rate=0.0, pitch_rate=0.0, yaw_rate=0.0)
+            return True
+        return False
 
     def _integrate_and_teleport(self) -> None:
         if self.cfg.motion_model in ("hold", "dynamics"):
@@ -1223,6 +1258,7 @@ class HolooceanSimServer:
 
     def step(self) -> tuple[dict, bytes]:
         """Advance one tick and return a (state_header, image_blob) pair."""
+        self.apply_command_watchdog()
         if self.cfg.motion_model == "dynamics" and self._controller is not None:
             self._act_dynamics()
         else:
@@ -1232,11 +1268,16 @@ class HolooceanSimServer:
 
         # In dynamics mode the pose comes from the engine (real physics), not
         # from the kinematic integrator.
+        roll = pitch = 0.0
         if self.cfg.motion_model == "dynamics" and isinstance(state, dict) \
                 and "PoseSensor" in state:
             P = np.array(state["PoseSensor"])
             self.x, self.y, self.z = float(P[0, 3]), float(P[1, 3]), float(P[2, 3])
             self.yaw = yaw_from_pose_matrix(P)
+            from bluerov2_dynamics import rotation_to_roll_pitch
+            roll, pitch = rotation_to_roll_pitch(P[:3, :3])
+        self._attitude = {"roll": float(roll), "pitch": float(pitch),
+                          "yaw": float(self.yaw)}
 
         # Pose / velocity / depth from sensors when present, else kinematic.
         depth = None
@@ -1280,6 +1321,11 @@ class HolooceanSimServer:
             },
             "image": image_meta,
             "obstacles": self.obstacle_world,
+            "watchdog_active": self._watchdog_active,
+            # Measured attitude: the simulated counterpart of the real
+            # vehicle's ATTITUDE stream (EKF/compass).  Runtime-allowed.
+            "attitude": getattr(self, "_attitude",
+                                {"roll": 0.0, "pitch": 0.0, "yaw": self.yaw}),
         }
         if self._dyn_debug is not None:
             header["dynamics"] = self._dyn_debug
@@ -1319,10 +1365,34 @@ class HolooceanSimServer:
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return FrameStream(conn)
 
+    @staticmethod
+    def _enable_high_res_timer() -> None:
+        """Windows: request 1 ms sleep granularity (default is ~15.6 ms,
+        which destroys real-time pacing at 20-30 Hz loop periods)."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.winmm.timeBeginPeriod(1)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _pace(loop_start: float, period: float) -> None:
+        """Sleep+spin hybrid pacing robust to OS sleep quantization."""
+        while True:
+            remaining = period - (time.perf_counter() - loop_start)
+            if remaining <= 0.0:
+                return
+            if remaining > 0.004:
+                time.sleep(remaining - 0.003)
+            else:
+                time.sleep(0)  # yield, then re-check (sub-ms busy-yield)
+
     def _serve_client(self, stream: FrameStream) -> None:
         period = self._dt if not self.cfg.frames_per_sec else 0.0
+        self._enable_high_res_timer()
         while not stream.closed:
-            loop_start = time.time()
+            loop_start = time.perf_counter()
             # Drain commands, keep only the latest.
             try:
                 latest = stream.read_latest()
@@ -1340,9 +1410,7 @@ class HolooceanSimServer:
                 break
 
             if period > 0.0:
-                elapsed = time.time() - loop_start
-                if elapsed < period:
-                    time.sleep(period - elapsed)
+                self._pace(loop_start, period)
         stream.close()
 
     def selftest(self, seconds: float = 6.0, save_frames: bool = True) -> int:

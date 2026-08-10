@@ -162,6 +162,31 @@ reason, implications, commit. Newest last. Referenced from
   honestly tuned with a documented procedure.
 - **Commit:** (this commit).
 
+## D-010 — Sim must run at 30 ticks/s AND in real time (physics-time consistency)
+
+- **Question:** why did the transferable dead-reckoning odometry show ~4 m
+  drift on a perfectly tracked straight run?
+- **Evidence (diagnostic series, `experiments/simulation/baseline0_diag*`):**
+  (a) With the serve loop paced by plain `time.sleep`, Windows' ~15.6 ms sleep
+  quantization capped the loop at ~16-21 Hz → sim time ran slower than wall
+  time while ROS-side wall-clock estimators kept integrating — apparent
+  "drift" was a clock mismatch. (b) At `ticks_per_sec: 20` the vehicle moved
+  at 0.646× its sensor-reported velocity: **Unreal physics advances at most
+  1/30 s per frame** (Max Physics Delta Time), so dt=50 ms frames silently
+  advance physics only 33 ms — declared sim time and physics time diverge.
+- **Chosen:** `ticks_per_sec: 30` is MANDATORY for scientific scenarios
+  (dt = the UE physics cap ⇒ consistent), and the server paces the loop in
+  real time with a high-resolution timer (`timeBeginPeriod(1)` + sleep/spin
+  hybrid). Render load reduced (no viewport, 256² camera) so 30 Hz holds
+  (tick cost ≈ 22 ms < 33.3 ms).
+- **Result:** straight-run transferable-odometry error dropped from 4.08 m to
+  **0.117 m max (2.2 cm mean)** over 12.2 m — the estimator was correct all
+  along; the sim clock was lying.
+- **Implications:** any future scenario must keep tps=30 and verify
+  real-time pacing (dynamics_debug rate == 30 Hz) before trusting wall-clock
+  estimators; this is also a warning for the S0–S3 latency calibration.
+- **Commit:** (baseline0 commit).
+
 ---
 
 *(Add new decisions below with incrementing IDs.)*

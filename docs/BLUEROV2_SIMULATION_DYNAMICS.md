@@ -70,9 +70,17 @@ parsing (unknown keys rejected); frame helpers.
 
 ## Open items
 
-- [ ] Command watchdog in the server (zero the setpoint if no cmd_vel frame
-      for N ms) — carry-over weakness from the teleport server.
-- [ ] Step-response repeatability: 3 consecutive fresh-process runs
-      (1/3 done; must be repeated after any gain change).
+- [x] Command watchdog in the server: `sim.cmd_timeout_s` (default 1.0 s,
+      `<=0` disables) zeroes the commanded velocity when no fresh cmd_vel
+      frame arrives; smooth stop through the setpoint rate limiter; state in
+      the TCP header (`watchdog_active`); 8 unit tests.
+- [x] Real-time pacing + physics-time consistency: see D-010 in
+      `docs/SCIENTIFIC_DECISIONS.md` — `ticks_per_sec: 30` is mandatory;
+      serve loop paces with a 1 ms-resolution hybrid sleep/spin.
+- [x] Step-response repeatability: 3 consecutive fresh-process runs completed
+      2026-08-10 (17:07, 17:10, 17:11 UTC — separate engine processes) with
+      bit-identical per-axis summaries (`experiments/simulation/
+      step_response_S0{,_run2,_run3}/manifest.json`). Must be repeated after
+      any gain change.
 - [ ] S2: set `command_latency_s` from measured real command-path latency.
 - [ ] S3: gain/drag matching against real step responses (pool phase).

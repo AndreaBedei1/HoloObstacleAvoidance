@@ -1,0 +1,105 @@
+{
+  "campaign": "scientific_baseline_0",
+  "test_type": "simulation dynamics integration baseline",
+  "perception": "oracle relay (primitive stand-in obstacle)",
+  "generated_utc": "2026-08-10T21:53:39Z",
+  "commit_sha": "2b2dd51bf955bd031c0e4194a8117526a8b0bf43",
+  "wall_time_s": 59.9,
+  "scenario_specs": {
+    "A": {
+      "yaml": "bluerov2_baseline0_straight.yaml",
+      "duration_s": 45.0,
+      "dropout": false,
+      "expect_obstacle": false,
+      "desc": "straight transit, no obstacle"
+    },
+    "B": {
+      "yaml": "bluerov2_baseline0_obstacle.yaml",
+      "duration_s": 120.0,
+      "dropout": false,
+      "expect_obstacle": true,
+      "desc": "committed avoidance, oracle perception"
+    },
+    "C": {
+      "yaml": "bluerov2_baseline0_obstacle.yaml",
+      "duration_s": 120.0,
+      "dropout": true,
+      "expect_obstacle": true,
+      "desc": "committed avoidance with deterministic detector dropout"
+    }
+  },
+  "results": [
+    {
+      "scenario": "A",
+      "run": 1,
+      "ok": true,
+      "desc": "straight transit, no obstacle",
+      "metrics": {
+        "label": "baseline0_A_1",
+        "elapsed_s": 42.01,
+        "test_type": "simulation dynamics integration baseline",
+        "perception_source": "oracle relay (NOT a visual result)",
+        "collision": null,
+        "min_center_distance_m": null,
+        "min_clearance_m": null,
+        "min_clearance_point": null,
+        "obstacle_geometry": [],
+        "vehicle_radius_m": 0.3,
+        "forward_progress_m": 8.619,
+        "max_lateral_deviation_m": 0.0,
+        "final_lateral_error_m": 0.0,
+        "final_yaw_error_deg": 0.0,
+        "returned_to_original_line": true,
+        "avoidance_entries": 0,
+        "side_switches": 0,
+        "maneuver_time_s": null,
+        "path_length_m": 8.619,
+        "state_sequence": [
+          {
+            "t": 0.211,
+            "state": "NORMAL",
+            "side": "none"
+          }
+        ],
+        "final_state": "NORMAL",
+        "thruster_peak_n": 2.99,
+        "thruster_peak_utilization": 0.104,
+        "thruster_mean_abs_n": 0.648,
+        "saturation_ticks": 0,
+        "saturation_fraction": 0.0,
+        "watchdog_ticks": 0,
+        "cmd_smoothness_mean_delta": [
+          0.00036,
+          0.0,
+          0.0
+        ],
+        "odo_err_mean_m": 1.729,
+        "odo_err_max_m": 3.556,
+        "odo_err_max_during_maneuver_m": 0.0,
+        "depth_min": -10.0,
+        "depth_max": -10.0,
+        "roll_max_deg": 0.0,
+        "pitch_max_deg": 0.0,
+        "first_detection_t_s": null,
+        "nonempty_detection_msgs": 0,
+        "dropout_events": [],
+        "msg_counts": {
+          "nominal": 418,
+          "safe": 836,
+          "dynamics_debug": 904
+        }
+      },
+      "accepted": false,
+      "problems": [
+        "heading unstable",
+        "roll/pitch instability"
+      ]
+    }
+  ],
+  "summary": {
+    "A": {
+      "runs": 1,
+      "accepted": 0
+    }
+  }
+}
