@@ -1,0 +1,55 @@
+# BlueROV2 + real dynamics smoke/identification scenario (stock prebuilt world).
+#
+# Runs on any machine with the holoocean 2.3.0 Ocean package installed —
+# no custom engine, no UE editor. Vehicle: native HoloOcean BlueROV2 agent
+# (= BlueROV2 Heavy, 8 thrusters, same vectored-6DOF layout as the real
+# vehicle with FRAME_CONFIG=2). Motion: engine-side rigid-body dynamics driven
+# by our body-velocity controller through control scheme 0 (thruster forces).
+#
+# SCIENTIFIC MODE: motion_model MUST be "dynamics" here. Teleport survives
+# only in the legacy regression scenarios.
+
+holoocean:
+  stock_world: SimpleUnderwater
+  stock_package: Ocean
+  agent_type: BlueROV2
+  agent_name: rov0
+  camera_sensor: FrontCamera
+  camera_socket: CameraSocket
+  ticks_per_sec: 30
+  frames_per_sec: false
+  show_viewport: true
+
+sim:
+  motion_model: dynamics
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 512
+  height: 512
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  # Conservative pool-relevant envelope (m/s, rad/s).
+  max_surge: 0.8
+  max_sway: 0.5
+  max_heave: 0.4
+  max_yaw_rate: 0.6
+
+dynamics:
+  # Body-velocity controller (bluerov2_dynamics.DynamicsConfig).
+  command_latency_s: 0.0     # S2 calibration will set the measured value
+  max_lin_accel: 1.0
+  max_yaw_accel: 1.5
+
+obstacles:
+  # Primitive stand-in obstacle for closed-loop tests on machines without the
+  # custom anchor/torpedo assets (spawn_prop works in stock worlds).
+  - name: sphere_obstacle_1
+    class_name: anchor
+    prop_type: sphere
+    relative_position: [12.0, 0.0, 0.0]   # fwd, right, up from start pose
+    radius_m: 1.0
+    scale: 2.0
+    material: gold

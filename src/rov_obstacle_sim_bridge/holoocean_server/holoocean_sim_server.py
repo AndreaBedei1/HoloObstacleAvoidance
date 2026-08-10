@@ -170,6 +170,9 @@ class CustomEngineSpec:
     clear_spawned_on_start: bool = True
 
 
+VALID_MOTION_MODELS = ("teleport", "hold", "dynamics")
+
+
 @dataclass
 class SimConfig:
     scenario: str = "OpenWater-HoveringCamera"
@@ -178,7 +181,18 @@ class SimConfig:
     ticks_per_sec: int = 30
     frames_per_sec: Any = False
     show_viewport: bool = False
-    motion_model: str = "teleport"   # teleport | hold
+    motion_model: str = "teleport"   # teleport | hold | dynamics
+    # Stock-world override: when set, the server builds an explicit
+    # scenario_cfg for this prebuilt world instead of using a named stock
+    # scenario, enabling agent_type selection (e.g. BlueROV2) without the
+    # custom engine.
+    stock_world: str = ""
+    stock_package: str = "Ocean"
+    agent_type: str = "HoveringAUV"  # used by the stock_world path
+    camera_socket: str = "CameraSocket"  # stock_world camera socket
+    # `dynamics:` YAML section (gains/latency), consumed when
+    # motion_model == "dynamics"; see bluerov2_dynamics.DynamicsConfig.
+    dynamics: dict = field(default_factory=dict)
     start_offset: tuple[float, float, float] = (0.0, 0.0, 5.0)  # fwd, right, up
     camera_width: int = 512
     camera_height: int = 512
@@ -266,6 +280,13 @@ def load_config(path: str) -> SimConfig:
             "(the SpawnAsset world command only exists in the modified engine)"
         )
 
+    motion_model = str(sim.get("motion_model", "teleport"))
+    if motion_model not in VALID_MOTION_MODELS:
+        raise ValueError(
+            f"sim.motion_model must be one of {VALID_MOTION_MODELS}, "
+            f"got {motion_model!r}"
+        )
+
     return SimConfig(
         scenario=str(ho.get("scenario", "OpenWater-HoveringCamera")),
         agent_name=str(ho.get("agent_name", "auv0")),
@@ -273,7 +294,12 @@ def load_config(path: str) -> SimConfig:
         ticks_per_sec=int(ho.get("ticks_per_sec", 30)),
         frames_per_sec=ho.get("frames_per_sec", False),
         show_viewport=bool(ho.get("show_viewport", False)),
-        motion_model=str(sim.get("motion_model", "teleport")),
+        stock_world=str(ho.get("stock_world", "") or ""),
+        stock_package=str(ho.get("stock_package", "Ocean")),
+        agent_type=str(ho.get("agent_type", "HoveringAUV")),
+        camera_socket=str(ho.get("camera_socket", "CameraSocket")),
+        dynamics=dict(data.get("dynamics") or {}),
+        motion_model=motion_model,
         start_offset=tuple(float(v) for v in sim.get("start_offset", [0.0, 0.0, 5.0])),
         camera_width=int(cam.get("width", 512)),
         camera_height=int(cam.get("height", 512)),
@@ -823,6 +849,7 @@ def build_custom_scenario_cfg(config: SimConfig) -> dict[str, Any]:
                 "sensors": [
                     {"sensor_type": "PoseSensor", "socket": "IMUSocket"},
                     {"sensor_type": "VelocitySensor", "socket": "IMUSocket"},
+                    {"sensor_type": "IMUSensor", "socket": "IMUSocket"},
                     {"sensor_type": "DepthSensor", "socket": "DepthSocket"},
                     {
                         "sensor_type": "RGBCamera",
@@ -837,6 +864,54 @@ def build_custom_scenario_cfg(config: SimConfig) -> dict[str, Any]:
                 "control_scheme": 0,
                 "location": [float(v) for v in spec.agent_location],
                 "rotation": [0.0, 0.0, float(spec.agent_yaw_deg)],
+            }
+        ],
+    }
+
+
+def build_stock_scenario_cfg(config: SimConfig) -> dict[str, Any]:
+    """HoloOcean ``scenario_cfg`` dict for a PREBUILT (stock) world.
+
+    Unlike named stock scenarios, this lets us choose the agent type
+    (e.g. ``BlueROV2``) and the sensor suite while using the locally
+    installed binary worlds (no custom engine required).  Pure helper so
+    unit tests can validate it.
+    """
+    if not config.stock_world:
+        raise ValueError("build_stock_scenario_cfg requires stock_world")
+    return {
+        "name": "rov_obstacle_stock_world",
+        "world": config.stock_world,
+        "package_name": config.stock_package,
+        "main_agent": config.agent_name,
+        "ticks_per_sec": int(config.ticks_per_sec),
+        "frames_per_sec": (
+            int(config.frames_per_sec) if config.frames_per_sec else False
+        ),
+        "agents": [
+            {
+                "agent_name": config.agent_name,
+                "agent_type": config.agent_type,
+                "sensors": [
+                    # Default sockets: verified working for BlueROV2 in the
+                    # local prebuilt Ocean worlds (camera socket configurable).
+                    {"sensor_type": "PoseSensor"},
+                    {"sensor_type": "VelocitySensor"},
+                    {"sensor_type": "IMUSensor"},
+                    {"sensor_type": "DepthSensor"},
+                    {
+                        "sensor_type": "RGBCamera",
+                        "sensor_name": config.camera_sensor,
+                        "socket": config.camera_socket,
+                        "configuration": {
+                            "CaptureWidth": int(config.camera_width),
+                            "CaptureHeight": int(config.camera_height),
+                        },
+                    },
+                ],
+                "control_scheme": 0,
+                "location": [0.0, 0.0, -10.0],
+                "rotation": [0.0, 0.0, 0.0],
             }
         ],
     }
@@ -870,6 +945,11 @@ class HolooceanSimServer:
         self._seq = 0
         self._dt = 1.0 / max(1, self.cfg.ticks_per_sec)
 
+        # Dynamics mode: body-velocity controller (created in start()).
+        self._controller: Any = None
+        self._last_state: Any = None
+        self._dyn_debug: Any = None
+
     def log(self, *args: Any) -> None:
         if self.verbose:
             print("[sim-server]", *args, flush=True)
@@ -879,6 +959,15 @@ class HolooceanSimServer:
         t0 = time.time()
         if self.cfg.custom_engine is not None and self.cfg.custom_engine.enabled:
             self._start_custom_engine()
+        elif self.cfg.stock_world:
+            import holoocean
+            scenario_cfg = build_stock_scenario_cfg(self.cfg)
+            self.log(f"make(stock world {self.cfg.stock_world}, "
+                     f"agent {self.cfg.agent_type}) ...")
+            self.env = holoocean.make(
+                scenario_cfg=scenario_cfg,
+                show_viewport=self.cfg.show_viewport,
+            )
         else:
             import holoocean
             self.log(f"make({self.cfg.scenario}) ...")
@@ -905,12 +994,29 @@ class HolooceanSimServer:
         self.x, self.y, self.z = spawn_x + ox, spawn_y + oy, spawn_z + oz
         self.yaw = spawn_yaw
         if self.cfg.motion_model != "hold":
+            # Initial placement teleport is legitimate in every mode (it sets
+            # the start pose); in dynamics mode it is the ONLY teleport.
             self.agent.teleport(
                 location=np.array([self.x, self.y, self.z]),
                 rotation=np.array([0.0, 0.0, math.degrees(self.yaw)]),
             )
             for _ in range(5):
-                self.env.tick()
+                self._last_state = self.env.tick()
+
+        if self.cfg.motion_model == "dynamics":
+            here = os.path.dirname(os.path.abspath(__file__))
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            from bluerov2_dynamics import (
+                BodyVelocityController, load_dynamics_config,
+            )
+            dyn_cfg = load_dynamics_config(self.cfg.dynamics)
+            self._controller = BodyVelocityController(dyn_cfg, self._dt)
+            self.log(
+                "dynamics mode: BlueROV2 body-velocity controller "
+                f"(latency={dyn_cfg.command_latency_s:.3f}s, "
+                f"max_thrust={dyn_cfg.max_thrust:.1f}N)"
+            )
 
         # Obstacles are placed relative to the rover's WORKING pose (after the
         # start offset), so they share the rover's height and sit in front of
@@ -1061,7 +1167,7 @@ class HolooceanSimServer:
         )
 
     def _integrate_and_teleport(self) -> None:
-        if self.cfg.motion_model == "hold":
+        if self.cfg.motion_model in ("hold", "dynamics"):
             return
         self.yaw += self.cmd["yaw_rate"] * self._dt
         dx, dy, dz = body_to_world(
@@ -1078,10 +1184,59 @@ class HolooceanSimServer:
             rotation=np.array([0.0, 0.0, math.degrees(self.yaw)]),
         )
 
+    def _act_dynamics(self) -> None:
+        """Apply the body-velocity controller through the agent's thrusters."""
+        from bluerov2_dynamics import rotation_to_roll_pitch, world_to_body
+
+        state = self._last_state if isinstance(self._last_state, dict) else {}
+        R = np.eye(3)
+        if "PoseSensor" in state:
+            P = np.array(state["PoseSensor"])
+            R = P[:3, :3]
+        v_world = np.zeros(3)
+        if "VelocitySensor" in state:
+            v_world = np.array(state["VelocitySensor"]).reshape(3)
+        ang_body = np.zeros(3)
+        if "IMUSensor" in state:
+            imu = np.array(state["IMUSensor"])
+            if imu.shape[0] >= 2:
+                ang_body = imu[1].reshape(3)
+        roll, pitch = rotation_to_roll_pitch(R)
+        v_body = world_to_body(v_world, R)
+
+        target = dict(
+            surge=self.cmd["surge"], sway=self.cmd["sway"],
+            heave=self.cmd["heave"], yaw_rate=self.cmd["yaw_rate"],
+        )
+        forces = self._controller.update(target, v_body, ang_body, roll, pitch)
+        self.agent.act(forces)
+        self._dyn_debug = {
+            "target": target,
+            "setpoint": dict(self._controller.last_setpoint),
+            "achieved_body_velocity": [float(v) for v in v_body],
+            "angular_rates_body": [float(v) for v in ang_body],
+            "roll": float(roll),
+            "pitch": float(pitch),
+            "thruster_forces": [float(f) for f in self._controller.last_forces],
+            "wrench": [float(w) for w in self._controller.last_wrench],
+        }
+
     def step(self) -> tuple[dict, bytes]:
         """Advance one tick and return a (state_header, image_blob) pair."""
-        self._integrate_and_teleport()
+        if self.cfg.motion_model == "dynamics" and self._controller is not None:
+            self._act_dynamics()
+        else:
+            self._integrate_and_teleport()
         state = self.env.tick()
+        self._last_state = state
+
+        # In dynamics mode the pose comes from the engine (real physics), not
+        # from the kinematic integrator.
+        if self.cfg.motion_model == "dynamics" and isinstance(state, dict) \
+                and "PoseSensor" in state:
+            P = np.array(state["PoseSensor"])
+            self.x, self.y, self.z = float(P[0, 3]), float(P[1, 3]), float(P[2, 3])
+            self.yaw = yaw_from_pose_matrix(P)
 
         # Pose / velocity / depth from sensors when present, else kinematic.
         depth = None
@@ -1126,6 +1281,8 @@ class HolooceanSimServer:
             "image": image_meta,
             "obstacles": self.obstacle_world,
         }
+        if self._dyn_debug is not None:
+            header["dynamics"] = self._dyn_debug
         return header, image_blob
 
     # -- run modes -----------------------------------------------------------
