@@ -76,8 +76,11 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 ## Phase 4 — Official HoloOcean ROS 2 bridge audit
 
-- [ ] Compare official bridge vs custom two-process TCP bridge
-- [ ] `docs/HOLOOCEAN_ROS2_BRIDGE_DECISION.md`
+- [x] Compare official bridge vs custom two-process TCP bridge — **retain
+      custom** (official designs need holoocean+rclpy in ONE interpreter;
+      impossible on our Windows py3.9/py3.12 split; bridge is not a claim)
+- [x] `docs/HOLOOCEAN_ROS2_BRIDGE_DECISION.md` (+ convention alignment items:
+      image-stamp propagation, REP-103 naming)
 
 ## Phase 5 — BlueROV2 vehicle + real dynamics in simulation
 
@@ -87,12 +90,21 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 - [x] Smoke test on THIS machine: BlueROV2 + RGBCamera/IMU/DVL/Depth/Pose/Velocity
       sensors spawn and tick in local prebuilt Ocean world (SimpleUnderwater),
       8-thruster command accepted
-- [ ] Scientific scenarios switched from HoveringAUV to BlueROV2
-- [ ] Dynamics-based motion mode (body-velocity controller → thruster allocation),
-      saturation + rate limiting + configurable latency
-- [ ] Teleport demoted to `motion_model:=legacy_teleport` (regression tests only)
-- [ ] Step-response experiments: surge, sway, yaw (+heave) logged
-- [ ] `docs/BLUEROV2_HOLOOCEAN_INTEGRATION.md`, `docs/BLUEROV2_SIMULATION_DYNAMICS.md`
+- [x] Scientific scenario switched to BlueROV2
+      (`bluerov2_dynamics_smoke.yaml`; stock-world path added; custom-engine
+      path accepts `agent_type: BlueROV2` for when the world is transferred)
+- [x] Dynamics-based motion mode: PI body-velocity + PD attitude controller →
+      pseudo-inverse 8-thruster allocation with engine-verified geometry
+      (Python docstring geometry proven WRONG via open-loop probes + C++ source);
+      saturation + setpoint rate limiting + configurable command latency
+- [x] Teleport excluded from dynamics mode (initial placement only);
+      legacy scenarios keep it for regression; `load_config` validates
+- [x] Step-response experiments surge/sway/heave/yaw: all in spec
+      (ss err ≤4.8%, no overshoot), **3/3 consecutive fresh-process runs,
+      bit-identical summaries (deterministic)** —
+      `experiments/simulation/step_response_S0*`
+- [x] `docs/BLUEROV2_HOLOOCEAN_INTEGRATION.md`, `docs/BLUEROV2_SIMULATION_DYNAMICS.md`
+- [ ] Command watchdog in the sim server (zero setpoint on cmd timeout)
 - [B] Custom anchor/torpedo/mine assets in a BlueROV2 scenario — cooked custom
       world lives on the lab machine; needs asset transfer or re-cook (see Blockers)
 
@@ -114,10 +126,14 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 ## Phase 9 — Proposed uncertainty-aware method + safety interlocks
 
-- [ ] Real-control adapter with `vehicle_in_water:=false` AND
-      `allow_real_actuation:=false` defaults; `real_control_mode:=shadow`;
-      interlock unit tests; no launch path can actuate by default
-- [ ] Runtime guard: planner nodes must not subscribe `/ground_truth/*`
+- [x] Real-control adapter package `rov_real_bridge`: fail-closed
+      `SafetyInterlock` (defaults false/shadow; strict bool parsing; unknown
+      mode → shadow; audit trail), shadow mode publishes `/real/shadow_cmd`,
+      transmit layer INTENTIONALLY UNIMPLEMENTED (NotImplementedError +
+      no-mavlink-import test); 12 unit tests green
+- [x] Ground-truth guard helper `forbid_ground_truth_topics` used by the
+      adapter (extend to planner nodes when rov_ground_truth lands)
+- [ ] Extend guard to all control-path nodes at launch level
 - [ ] Uncertainty-aware committed circumnavigation (formulation frozen only after
       novelty audit)
 
@@ -129,12 +145,13 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 ## Phase 11 — Real digital twin / ground truth preparation
 
-- [ ] `config/pool_digital_twin.yaml` (placeholders `TODO_MEASURE_REAL_POOL`)
-- [ ] `docs/POOL_MEASUREMENT_PROTOCOL.md`
+- [x] `config/pool_digital_twin.yaml` (placeholders `TODO_MEASURE_REAL_POOL`;
+      no invented measurements)
+- [x] `docs/POOL_MEASUREMENT_PROTOCOL.md`
 - [ ] `rov_ground_truth` package (`/ground_truth/external/*`, isolated from control)
 - [ ] Multi-depth refraction-aware calibration tooling (desk-testable now)
-- [ ] `docs/REAL_POOL_EXPERIMENT_PROTOCOL.md` (validity criteria pre-registered)
-- [ ] `docs/REAL_WET_TEST_SAFETY_CHECKLIST.md`
+- [x] `docs/REAL_POOL_EXPERIMENT_PROTOCOL.md` (validity criteria pre-registered)
+- [x] `docs/REAL_WET_TEST_SAFETY_CHECKLIST.md`
 
 ## Paper
 

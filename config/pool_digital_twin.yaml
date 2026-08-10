@@ -1,0 +1,59 @@
+# Pool digital twin — configurable model of the REAL test pool.
+# RULE: never invent measurements. Every unmeasured value is the literal
+# string TODO_MEASURE_REAL_POOL and the twin builder must refuse to
+# instantiate a scientific scenario while any required field is TODO.
+# Measurement procedure: docs/POOL_MEASUREMENT_PROTOCOL.md
+
+pool:
+  length_m: TODO_MEASURE_REAL_POOL          # ~8 expected; MEASURE
+  width_m: TODO_MEASURE_REAL_POOL
+  waterline_z_m: TODO_MEASURE_REAL_POOL
+  bottom_profile: v_shaped
+  # Depth samples across the width at several length stations (grid).
+  depth_samples_m: TODO_MEASURE_REAL_POOL   # list of {x, y, depth}
+  wall_material_notes: TODO_MEASURE_REAL_POOL
+
+frames:
+  # Pool frame definition (documented, right-handed):
+  # x = along pool length, y = across width (left of +x), z = up,
+  # origin = TODO_MEASURE_REAL_POOL (pick a physical corner reference).
+  origin_description: TODO_MEASURE_REAL_POOL
+
+obstacles:
+  anchor:
+    position_pool_m: TODO_MEASURE_REAL_POOL      # [x, y, z_base]
+    yaw_deg: TODO_MEASURE_REAL_POOL
+    dimensions_m: TODO_MEASURE_REAL_POOL         # measured bounding box
+    mass_note: TODO_MEASURE_REAL_POOL
+  torpedo:
+    position_pool_m: TODO_MEASURE_REAL_POOL
+    yaw_deg: TODO_MEASURE_REAL_POOL
+    dimensions_m: TODO_MEASURE_REAL_POOL
+
+vehicle:
+  start_points_pool_m: TODO_MEASURE_REAL_POOL    # list of repeatable starts
+  operating_depth_m: TODO_MEASURE_REAL_POOL      # ~constant for paper 1
+  marker_board_offset_body_m: TODO_MEASURE_REAL_POOL
+
+external_camera:
+  model: intel_realsense_d435                    # measured (inventory)
+  pose_pool: TODO_MEASURE_REAL_POOL              # after mounting
+  rgb_profile: 1920x1080@30                      # measured 29.81 fps
+  intrinsics_file: TODO_CALIBRATE_DRY
+  multi_depth_calibration_file: TODO_CALIBRATE_WET
+
+onboard_camera:
+  stream: "H.264 1920x1080@30 UDP 5600"          # measured (inventory)
+  intrinsics_file: TODO_CALIBRATE
+  underwater_fov: TODO_CALIBRATE_WET
+  latency_ms: TODO_MEASURE
+  tilt_deg: TODO_MEASURE
+
+simulation_mapping:
+  # How the twin is instantiated in HoloOcean once measured:
+  # stock Tank/SimpleUnderwater world + spawned wall/bottom primitives at the
+  # measured V profile, or custom world if the lab engine is transferred.
+  world_strategy: TODO_DECIDE_AFTER_MEASUREMENT
+  no_current_note: >
+    The primary paired experiments simulate NO water current because the real
+    pool cannot reproduce currents (scientific scope decision).

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rov_real_bridge</name>
+  <version>0.1.0</version>
+  <description>
+    Real BlueROV2 adapter with a fail-closed safety interlock. Shadow mode by
+    default: perception/planner run, commands are computed and logged, zero
+    actuation. The transmit layer is intentionally unimplemented.
+  </description>
+  <maintainer email="andrea.bedei@example.com">Andrea Bedei</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
