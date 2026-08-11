@@ -181,3 +181,103 @@ def generate_case(case: str, seed: int = 7) -> List[ReplayRecord]:
 
 
 ALL_CASES = [f"D{i}" for i in range(15)]
+
+
+# ---------------------------------------------------------------------------
+# Phase-7B young-track / startup cases (Y0-Y9, S0)
+# ---------------------------------------------------------------------------
+
+def _clean_snippet(seed: int, n: int, t0: float = 0.0,
+                   cx: float = 0.5, rng_m: float = 10.0) -> List[ReplayRecord]:
+    """n clean frames of a static-ish target at range rng_m."""
+    rng = np.random.default_rng(seed)
+    out = []
+    t = t0
+    h = apparent_height(rng_m)
+    for _ in range(n):
+        meas = {"class_name": "anchor",
+                "confidence": float(np.clip(0.85 + rng.normal(0, 0.05),
+                                            0.05, 1.0)),
+                "cx": float(cx + rng.normal(0, 0.008)),
+                "cy": float(0.5 + rng.normal(0, 0.008)),
+                "w": float(h * 0.9 * math.exp(rng.normal(0, 0.03))),
+                "h": float(h * math.exp(rng.normal(0, 0.03)))}
+        out.append(ReplayRecord(t=t, message_present=True,
+                                detection_present=True, meas=meas,
+                                gt={"present": True, "cx": cx, "cy": 0.5,
+                                    "w": h * 0.9, "h": h}))
+        t += DT
+    return out
+
+
+def _giant_outlier(t: float) -> ReplayRecord:
+    h = apparent_height(10.0)
+    return ReplayRecord(t=t, message_present=True, detection_present=True,
+                        meas={"class_name": "anchor", "confidence": 0.7,
+                              "cx": 0.82, "cy": 0.78,
+                              "w": min(0.9, h * 0.9 * 2.5),
+                              "h": min(0.9, h * 2.5)},
+                        gt={"present": True, "cx": 0.5, "cy": 0.5,
+                            "w": h * 0.9, "h": h})
+
+
+def generate_y_case(case: str, seed: int = 11) -> List[ReplayRecord]:
+    """Young-track and startup qualification cases (deterministic)."""
+    if case == "Y0":                      # clean first measurements
+        return _clean_snippet(seed, 90)
+    if case in ("Y1", "Y2", "Y3", "Y4"):  # outlier at update k (1..0..2..3)
+        k = {"Y1": 1, "Y2": 0, "Y3": 2, "Y4": 3}[case]
+        recs = _clean_snippet(seed, 90)
+        recs[k] = _giant_outlier(recs[k].t)
+        return recs
+    if case == "Y5":                      # 3 consistent then outlier
+        recs = _clean_snippet(seed, 90)
+        recs[3] = _giant_outlier(recs[3].t)
+        return recs
+    if case == "Y6":                      # alternating inconsistent
+        recs = []
+        t = 0.0
+        for i in range(60):
+            cx = 0.3 if i % 2 == 0 else 0.7
+            snip = _clean_snippet(seed + i, 1, t0=t, cx=cx)
+            recs.append(snip[0])
+            t += DT
+        return recs
+    if case == "Y7":                      # short false-positive track
+        recs = []
+        t = 0.0
+        while t <= 4.0:
+            if 1.0 <= t < 1.0 + 4 * DT:   # 4 FP frames
+                recs.extend(_clean_snippet(seed, 1, t0=t, cx=0.7))
+            else:
+                recs.append(ReplayRecord(t=t, message_present=True,
+                                         detection_present=False, meas=None,
+                                         gt={"present": False}))
+            t += DT
+        return recs
+    if case == "Y8":                      # sudden legit close-range object
+        recs = [ReplayRecord(t=i * DT, message_present=True,
+                             detection_present=False, meas=None,
+                             gt={"present": False}) for i in range(60)]
+        recs += _clean_snippet(seed, 60, t0=60 * DT, rng_m=4.0)
+        return recs
+    if case == "Y9":                      # very small/far legitimate object
+        return _clean_snippet(seed, 120, rng_m=35.0)
+    if case == "S0":                      # startup garbage then clean
+        recs = []
+        garbage = [(0.9, 0.95, 0.97), (0.1, 0.02, 0.9), (0.7, 0.5, 0.5),
+                   (0.2, 0.85, 0.1)]
+        t = 0.0
+        for cx, w, h in garbage:
+            recs.append(ReplayRecord(
+                t=t, message_present=True, detection_present=True,
+                meas={"class_name": "anchor", "confidence": 0.5,
+                      "cx": cx, "cy": 0.5, "w": w, "h": h},
+                gt={"present": False}))
+            t += DT
+        recs += _clean_snippet(seed, 120, t0=t)
+        return recs
+    raise ValueError(f"unknown Y case {case!r}")
+
+
+Y_CASES = [f"Y{i}" for i in range(10)] + ["S0"]

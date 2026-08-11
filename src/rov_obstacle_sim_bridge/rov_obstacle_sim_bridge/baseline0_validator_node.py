@@ -116,6 +116,12 @@ class Baseline0ValidatorNode(Node):
         self._trk_max_since_meas = 0.0
         self._trk_method = None
         self._raw_det_count = 0
+        # Phase 7B qualification observation
+        self._qual_last = None
+        self._first_raw_det_t = None
+        self._planner_valid_first_t = None
+        self._dist_first_planner_valid = None
+        self._dist_at_commit = None
 
         # Obstacles (world geometry)
         self._obstacles = []
@@ -137,6 +143,8 @@ class Baseline0ValidatorNode(Node):
                                  self._on_dropout, 10)
         self.create_subscription(String, "/tracking/obstacles_debug",
                                  self._on_tracking_debug, 20)
+        self.create_subscription(String, "/tracking/qualification_debug",
+                                 self._on_qual_debug, 20)
         self.create_subscription(Obstacle2DArray, "/perception/obstacles_raw",
                                  self._on_raw_det, 20)
         self.create_subscription(Float32, "/rov/depth", self._on_depth, 10)
@@ -241,6 +249,7 @@ class Baseline0ValidatorNode(Node):
                 self._avoid_entries += 1
                 if self._maneuver_t0 is None:
                     self._maneuver_t0 = t
+                    self._dist_at_commit = self._gt_obstacle_distance()
             if state != "NORMAL" and not self._in_maneuver \
                     and state != "NONE":
                 self._in_maneuver = True
@@ -259,6 +268,11 @@ class Baseline0ValidatorNode(Node):
             self._det_count += 1
             if self._first_det_t is None:
                 self._first_det_t = self._now() - self._t0
+            # With Phase-7B gating, the first nonempty planner-side message
+            # IS the first planner-valid moment.
+            if self._planner_valid_first_t is None:
+                self._planner_valid_first_t = self._now() - self._t0
+                self._dist_first_planner_valid = self._gt_obstacle_distance()
 
     def _on_dyn(self, msg: String) -> None:
         try:
@@ -330,6 +344,21 @@ class Baseline0ValidatorNode(Node):
     def _on_raw_det(self, msg: Obstacle2DArray) -> None:
         if msg.obstacles:
             self._raw_det_count += 1
+            if self._first_raw_det_t is None:
+                self._first_raw_det_t = self._now() - self._t0
+
+    def _on_qual_debug(self, msg: String) -> None:
+        try:
+            self._qual_last = json.loads(msg.data)
+        except json.JSONDecodeError:
+            pass
+
+    def _gt_obstacle_distance(self):
+        if self._gt is None or not self._obstacles:
+            return None
+        x, y = self._gt[0], self._gt[1]
+        return min(math.hypot(x - ob["x"], y - ob["y"])
+                   for ob in self._obstacles)
 
     def _on_depth(self, msg: Float32) -> None:
         self._depth_min = min(self._depth_min, msg.data)
@@ -419,6 +448,19 @@ class Baseline0ValidatorNode(Node):
             "first_detection_t_s": self._first_det_t,
             "nonempty_detection_msgs": self._det_count,
             "raw_nonempty_detection_msgs": self._raw_det_count,
+            "time_to_first_raw_detection_s": self._first_raw_det_t,
+            "planner_valid_first_t_s": self._planner_valid_first_t,
+            "confirmation_delay_s": (
+                round(self._planner_valid_first_t - self._first_raw_det_t, 3)
+                if self._planner_valid_first_t is not None
+                and self._first_raw_det_t is not None else None),
+            "distance_at_first_planner_valid_m": (
+                round(self._dist_first_planner_valid, 3)
+                if self._dist_first_planner_valid is not None else None),
+            "distance_at_commitment_m": (
+                round(self._dist_at_commit, 3)
+                if self._dist_at_commit is not None else None),
+            "qualification": self._qual_last,
             "estimator_method": self._trk_method,
             "estimator_debug_msgs": self._trk_msgs,
             "estimator_prediction_ticks": self._trk_pred_ticks,

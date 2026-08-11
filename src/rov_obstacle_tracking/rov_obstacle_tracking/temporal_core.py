@@ -254,6 +254,12 @@ class KFConfig:
     max_track_age_s: float = 120.0
     # Prediction confidence decay (reported confidence during dropout).
     conf_decay_per_s: float = 0.5
+    # EXPLORATORY (T2b only, development): exponentially damp the velocity
+    # states while predicting through a dropout. Rationale: maneuver-onset
+    # dropouts (D5) showed CV extrapolation overshooting because the
+    # pre-dropout image velocity does not persist through vehicle-motion
+    # changes. 0.0 = registered T2 baseline behavior (never changed).
+    dropout_velocity_damping: float = 0.0
 
 
 def cv_transition(dt: float) -> np.ndarray:
@@ -311,6 +317,10 @@ class Track:
         Q = cv_process_noise(dt, cfg.q_center, cfg.q_logsize)
         self.x = F @ self.x
         self.P = F @ self.P @ F.T + Q
+        # T2b exploratory: damp velocities while in dropout (no fresh meas).
+        if cfg.dropout_velocity_damping > 0.0 and t - self.t_meas > 0.1:
+            decay = math.exp(-cfg.dropout_velocity_damping * dt)
+            self.x[4:] *= decay
         self.t_state = t
 
     def update(self, det: Detection, t: float, R: np.ndarray,
@@ -548,6 +558,10 @@ def make_estimator(method: str,
         return T1HoldEMA()
     if method in ("t2", "t2_fixed_kf", "kf"):
         return T2FixedKalman()
+    if method in ("t2b", "t2b_damped"):
+        est = T2FixedKalman(KFConfig(dropout_velocity_damping=1.5))
+        est.name = "t2b_damped_kf"
+        return est
     if method in ("t3", "t3_adaptive_kf", "adaptive"):
         nm = (AdaptiveNoiseModel.from_file(noise_model_path)
               if noise_model_path else AdaptiveNoiseModel())

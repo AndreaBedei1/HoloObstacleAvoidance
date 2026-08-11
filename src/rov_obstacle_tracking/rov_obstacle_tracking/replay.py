@@ -88,11 +88,15 @@ class TickResult:
 
 
 def run_replay(estimator: TemporalEstimator, records: List[ReplayRecord],
-               output_rate_hz: float = 30.0) -> List[TickResult]:
+               output_rate_hz: float = 30.0,
+               qualifier=None) -> List[TickResult]:
     """Feed records chronologically; tick the estimator at a fixed rate.
 
     Message events and output ticks are interleaved by timestamp exactly as
     the ROS node would experience them (message callback, then timer).
+    With `qualifier` (a PerceptionQualifier), the Phase-7B node behavior is
+    mirrored exactly: rejected input becomes estimator SILENCE, and output is
+    forced to fresh-empty until planner_valid.
     """
     if not records:
         return []
@@ -121,9 +125,18 @@ def run_replay(estimator: TemporalEstimator, records: List[ReplayRecord],
                         w=float(m["w"]), h=float(m["h"]),
                     )]
                     det_since_tick = True
-                estimator.on_message(DetectionEvent(t=rec.t, detections=dets))
+                event = DetectionEvent(t=rec.t, detections=dets)
+                if qualifier is None:
+                    estimator.on_message(event)
+                else:
+                    res = qualifier.feed(event)
+                    if res.deliver_to_estimator and res.event is not None:
+                        estimator.on_message(res.event)
             idx += 1
         out = estimator.tick(t_tick)
+        if qualifier is not None and out.publish \
+                and not qualifier.planner_valid():
+            out = EstimatorOutput(publish=True, obstacles=[])
         results.append(TickResult(
             t=t_tick, output=out, gt=last_gt,
             upstream_message=msg_since_tick,

@@ -149,8 +149,18 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 - [x] `docs/TEMPORAL_ESTIMATOR_RESULTS.md` + decision gate: fix perception
       warm-up gate + track-confirmation rule, rerun n=5, THEN DWA; T3
       calibration only after B1/B2 (negative-result contingency registered)
-- [ ] Perception warm-up gate + track confirmation (next session, pre-DWA)
-- [ ] Tightened E-campaign n=5 (after the two fixes)
+- [x] Phase 7B: COMMON perception qualification layer (warm-up on stream
+      health + physics-bounded coherence + reference lifecycle + M=3 track
+      confirmation), identical for T0–T3; architectural guarantee that
+      nothing is planner-valid before qualification; 70 unit tests incl.
+      Y0–Y9/S0 regressions (W1 startup-transient, W2 young-track outlier)
+- [x] Maneuver-onset analysis: GT image-velocity discontinuity −0.032 u/s at
+      engagement quantified; T1-vs-T2 mechanism explained; exploratory T2b
+      (damped CV) sits between T1 and T2, does not beat hold
+- [x] Parameters frozen (D-012) after closed-loop shakeouts (E0×t0, E4×t2
+      both clean); pre-registered protocol
+      (`docs/PHASE7B_CAMPAIGN_PROTOCOL.md`)
+- [~] Phase-7B n=5 campaign (100 runs) — running
 - [ ] `docs/OBSTACLE_UNCERTAINTY_CALIBRATION.md` (real coefficients — after
       B1/B2 transfer)
 

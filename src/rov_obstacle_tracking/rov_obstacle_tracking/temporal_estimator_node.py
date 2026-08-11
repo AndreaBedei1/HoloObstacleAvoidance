@@ -28,6 +28,10 @@ from rclpy.node import Node
 from rov_obstacle_msgs.msg import Obstacle2D, Obstacle2DArray
 from std_msgs.msg import String
 
+from .perception_qualification import (
+    PerceptionQualifier,
+    QualificationConfig,
+)
 from .temporal_core import (
     Detection,
     DetectionEvent,
@@ -67,6 +71,14 @@ class TemporalEstimatorNode(Node):
         self.declare_parameter("horizontal_fov_deg", 90.0)
         self.declare_parameter("risk_area_gain", 4.0)
         self.declare_parameter("noise_model_path", "")
+        # Phase-7B COMMON perception qualification (identical for t0-t3):
+        # startup warm-up + physics-bounded coherence + track confirmation.
+        self.declare_parameter("qualification_enabled", True)
+        self.declare_parameter("warmup_min_updates", 20)
+        self.declare_parameter("warmup_min_span_s", 1.0)
+        self.declare_parameter("confirm_min_updates", 3)
+        self.declare_parameter("qualification_debug_topic",
+                               "/tracking/qualification_debug")
 
         input_topic = str(self.get_parameter("input_topic").value)
         for bad in FORBIDDEN_INPUT_SUBSTRINGS:
@@ -77,6 +89,16 @@ class TemporalEstimatorNode(Node):
         self._method = str(self.get_parameter("method").value)
         nm_path = str(self.get_parameter("noise_model_path").value) or None
         self._est = make_estimator(self._method, noise_model_path=nm_path)
+        self._qual_enabled = bool(
+            self.get_parameter("qualification_enabled").value)
+        self._qualifier = PerceptionQualifier(QualificationConfig(
+            warmup_min_updates=int(
+                self.get_parameter("warmup_min_updates").value),
+            warmup_min_span_s=float(
+                self.get_parameter("warmup_min_span_s").value),
+            confirm_min_updates=int(
+                self.get_parameter("confirm_min_updates").value),
+        ))
         self._hfov = math.radians(
             float(self.get_parameter("horizontal_fov_deg").value))
         self._gain = float(self.get_parameter("risk_area_gain").value)
@@ -87,6 +109,9 @@ class TemporalEstimatorNode(Node):
             Obstacle2DArray, str(self.get_parameter("output_topic").value), 10)
         self._pub_debug = self.create_publisher(
             String, str(self.get_parameter("debug_topic").value), 10)
+        self._pub_qual_debug = self.create_publisher(
+            String, str(self.get_parameter("qualification_debug_topic").value),
+            10)
 
         rate = max(1.0, float(self.get_parameter("output_rate_hz").value))
         self.create_timer(1.0 / rate, self._on_tick)
@@ -117,7 +142,16 @@ class TemporalEstimatorNode(Node):
         ]
         if not dets:
             self._empty_count += 1
-        self._est.on_message(DetectionEvent(t=self._now_s(), detections=dets))
+        event = DetectionEvent(t=self._now_s(), detections=dets)
+        if not self._qual_enabled:
+            self._est.on_message(event)
+            return
+        res = self._qualifier.feed(event)
+        # Rejected/garbage input is presented to the estimator as SILENCE
+        # (an outlier is not evidence of absence); accepted (possibly
+        # filtered) events flow through normally.
+        if res.deliver_to_estimator and res.event is not None:
+            self._est.on_message(res.event)
 
     def _to_msg(self, est: EstimatedObstacle, stamp) -> Obstacle2D:
         m = Obstacle2D()
@@ -151,8 +185,19 @@ class TemporalEstimatorNode(Node):
         arr = Obstacle2DArray()
         arr.header.stamp = stamp
         arr.header.frame_id = "front_camera"
-        arr.obstacles = [self._to_msg(ob, stamp) for ob in out.obstacles]
+        # ARCHITECTURAL guarantee (Phase 7B): no obstacle becomes
+        # planner-valid before warm-up + confirmation are satisfied. The
+        # estimator keeps its tentative state internally; the planner sees
+        # fresh-empty arrays until qualification passes.
+        if self._qual_enabled and not self._qualifier.planner_valid():
+            arr.obstacles = []
+        else:
+            arr.obstacles = [self._to_msg(ob, stamp) for ob in out.obstacles]
         self._pub.publish(arr)
+
+        qd = String()
+        qd.data = json.dumps({"t": t, **self._qualifier.debug()})
+        self._pub_qual_debug.publish(qd)
 
         dbg = String()
         dbg.data = json.dumps({

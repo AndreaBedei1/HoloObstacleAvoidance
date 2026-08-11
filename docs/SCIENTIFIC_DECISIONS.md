@@ -187,6 +187,30 @@ reason, implications, commit. Newest last. Referenced from
   estimators; this is also a warning for the S0–S3 latency calibration.
 - **Commit:** (baseline0 commit).
 
+## D-012 — Phase-7B parameter freeze (perception qualification)
+
+- **Question:** which qualification parameters run the n=5 campaign?
+- **Development evidence (never the final campaign):** unit tests (70),
+  Y0–Y9/S0 replay cases, D-series, and two closed-loop shakeouts
+  (`experiments/simulation/temporal_estimators_phase7b/shakeout*`).
+- **Frozen values:** warm-up = 20 stream-healthy updates AND ≥1.0 s span
+  (empty messages count as stream health; rejected garbage resets the
+  streak); coherence bounds physics-derived: center rate ≤1.2 units/s
+  (abs floor 0.25/msg), |Δlog size| ≤0.5/msg; reference lifecycle: max age
+  1.0 s, reset after 5 consecutive rejections (majority evidence);
+  confirmation M=3 accepted coherent updates, window 1.5 s, empty-streak
+  3 clears; source-restart silence 4.0 s (> the 2.5 s estimator horizon so a
+  bridged dropout can NEVER trigger a mid-maneuver re-warm-up); estimator
+  horizons unchanged from Phase 7 (hold/prediction 2.5 s).
+- **Shakeout acceptance measured:** E0×t0 clean (commit only after
+  qualification; distance at first planner-valid 11.97 m vs ~12.0 m visible
+  — negligible engagement-distance loss; confirmation delay 0.63 s in
+  validator clock, warm-up 1.02 s in estimator clock); E4×t2 clean (young-
+  track outlier no longer reaches the planner; no collision).
+- **Rule:** these parameters are FROZEN for the entire n=5 campaign; any
+  change would require a full rerun and a new decision entry.
+- **Commit:** (Phase-7B commit).
+
 ---
 
 *(Add new decisions below with incrementing IDs.)*
