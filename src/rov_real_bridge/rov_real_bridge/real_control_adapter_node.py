@@ -65,7 +65,7 @@ class RealControlAdapterNode(Node):
             f"may_actuate={decision.may_actuate} ({decision.reason})"
         )
         if decision.may_actuate:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "LIVE actuation nominally enabled — but the transmit layer is "
                 "not implemented; commands will still not be sent."
             )

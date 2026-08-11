@@ -144,8 +144,13 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
       validated by smoke test; real residual data pending B1/B2
 - [x] Offline D-case evaluation
       (`experiments/simulation/temporal_estimators/replay_eval/`)
-- [~] Closed-loop campaign E0–E4 × T0–T3 × 3 fresh-process reps — running
-- [ ] `docs/TEMPORAL_ESTIMATOR_RESULTS.md` + decision gate before DWA
+- [x] Closed-loop campaign E0–E4 × T0–T3 × 3 fresh-process reps (60 runs +
+      3 patch reruns after the t3 node fix) — all failures analyzed
+- [x] `docs/TEMPORAL_ESTIMATOR_RESULTS.md` + decision gate: fix perception
+      warm-up gate + track-confirmation rule, rerun n=5, THEN DWA; T3
+      calibration only after B1/B2 (negative-result contingency registered)
+- [ ] Perception warm-up gate + track confirmation (next session, pre-DWA)
+- [ ] Tightened E-campaign n=5 (after the two fixes)
 - [ ] `docs/OBSTACLE_UNCERTAINTY_CALIBRATION.md` (real coefficients — after
       B1/B2 transfer)
 

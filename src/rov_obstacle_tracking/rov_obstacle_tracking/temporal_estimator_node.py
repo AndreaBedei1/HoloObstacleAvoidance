@@ -97,7 +97,7 @@ class TemporalEstimatorNode(Node):
             f"{input_topic} -> {self.get_parameter('output_topic').value}")
         if self._method.startswith("t3"):
             nm = getattr(self._est, "noise_model", None)
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"T3 noise model: calibrated={getattr(nm, 'calibrated', False)} "
                 f"source={getattr(nm, 'source', '?')}")
 
