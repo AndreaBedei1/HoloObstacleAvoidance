@@ -29,7 +29,7 @@ Living document. Updated after the 2026-08-10 novelty audit
   ≥20 valid sim runs per condition; real campaign; ranking statistics.
 - **Status:** infrastructure in progress (dynamics mode done on stock worlds).
 
-## C2 — Calibrated, consistency-validated adaptive visual obstacle estimator
+## C2 — Candidate calibrated probabilistic obstacle estimator — UNDER EVALUATION
 
 - **Claim:** measurement-noise model calibrated OFFLINE from residual
   statistics (sim oracle; separate real calibration trials), validated for
@@ -44,7 +44,15 @@ Living document. Updated after the 2026-08-10 novelty audit
   UncertaintyTrack 2024 (learned covariance, no filter-consistency check, no
   robot); Li AOR 2026 (sonar confidence-adaptive tracking → avoidance, real
   lake); NCT 2023 (documents confidence-driven-R gain chatter — motivation).
-- **Status:** not started (Phase 7).
+- **Status (Phase 7, 2026-08-11):** T0–T3 framework implemented under a
+  common interface with deterministic replay; T3 = adaptive framework with
+  θ=0 (≡ T2) until real residual calibration data exists (B1/B2) — NOT
+  claimed as a contribution yet. Early honest evidence, offline D-cases:
+  T1 (simple hold) matches or beats T2 prediction accuracy during
+  maneuver-onset dropouts (CV extrapolation overshoots); T2 wins on outlier
+  rejection (χ² gating). If T1 ends up performing as well as T2/T3 in closed
+  loop, that negative result will be reported and the C2 claim re-examined
+  at the decision gate (docs/TEMPORAL_ESTIMATOR_RESULTS.md).
 
 ## C3 (component, NOT headline) — Calibrated-uncertainty-modulated committed circumnavigation
 

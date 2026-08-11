@@ -130,10 +130,24 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 ## Phase 7 — Temporal obstacle estimation
 
-- [ ] T0 raw (existing), T1 hold/EMA, T2 fixed KF, T3 calibrated adaptive estimator
-- [ ] Deterministic replay harness + synthetic-sequence unit tests
-- [ ] Residual-statistics calibration vs sim oracle (offline only)
-- [ ] `docs/OBSTACLE_UNCERTAINTY_CALIBRATION.md` + machine-readable calibration
+- [x] Common interface: `/perception/obstacles_raw` → estimator (t0–t3) →
+      `/perception/obstacles`; planner UNCHANGED; T0 inside the same framework
+      (`rov_obstacle_tracking`, 29 unit tests)
+- [x] Three upstream conditions explicit (fresh / fresh-empty / silence) —
+      the C_3 lesson, unit- and case-tested
+- [x] T0 raw, T1 hold/EMA (2.5 s), T2 fixed KF (CV image-space, χ² gating,
+      2.5 s horizon), T3 adaptive framework (θ=0 default ≡ T2,
+      calibrated=false — no fake coefficients; pending B1/B2)
+- [x] Deterministic replay harness + controlled cases D0–D14 + metrics
+      (NIS, coverage, ghost time, availability, reacquisition)
+- [x] Calibration pipeline scripts (fit + consistency eval) — framework
+      validated by smoke test; real residual data pending B1/B2
+- [x] Offline D-case evaluation
+      (`experiments/simulation/temporal_estimators/replay_eval/`)
+- [~] Closed-loop campaign E0–E4 × T0–T3 × 3 fresh-process reps — running
+- [ ] `docs/TEMPORAL_ESTIMATOR_RESULTS.md` + decision gate before DWA
+- [ ] `docs/OBSTACLE_UNCERTAINTY_CALIBRATION.md` (real coefficients — after
+      B1/B2 transfer)
 
 ## Phase 8 — Classical planner baseline
 

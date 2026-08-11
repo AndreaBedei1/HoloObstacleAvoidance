@@ -958,6 +958,8 @@ class HolooceanSimServer:
         # Command watchdog state.
         self._last_cmd_time: Optional[float] = None
         self._watchdog_active: bool = False
+        # UE sleep-guard state (see _act_dynamics).
+        self._frozen_ticks: int = 0
 
     def log(self, *args: Any) -> None:
         if self.verbose:
@@ -1244,6 +1246,33 @@ class HolooceanSimServer:
             heave=self.cmd["heave"], yaw_rate=self.cmd["yaw_rate"],
         )
         forces = self._controller.update(target, v_body, ang_body, roll, pitch)
+
+        # --- UE sleep guards -------------------------------------------------
+        # UE puts a resting rigid body to sleep and AddForceAtLocation does
+        # NOT wake it: after a watchdog stop the vehicle froze permanently
+        # while thrusters wound up to saturation (Phase-7 shakeout E1_t2_1).
+        # (1) A tiny alternating vertical dither (±0.02 N ≈ 1.7e-3 m/s²,
+        # physically negligible, zero mean) keeps the body awake.
+        forces = np.asarray(forces, dtype=float)
+        forces[0] += 0.02 if (self._seq % 2 == 0) else -0.02
+        # (2) Backstop: if large forces meet zero velocity for ~0.5 s the
+        # body is asleep anyway — wake it with a same-pose teleport (NOT a
+        # motion cheat) and drain the wound-up integrators.
+        speed = float(np.linalg.norm(v_world))
+        if float(np.max(np.abs(forces))) > 5.0 and speed < 0.005:
+            self._frozen_ticks += 1
+        else:
+            self._frozen_ticks = 0
+        if self._frozen_ticks >= 15:
+            self.log("SLEEP GUARD: body frozen under load — waking with "
+                     "same-pose teleport and resetting controller integrators")
+            self.agent.teleport(
+                location=np.array([self.x, self.y, self.z]),
+                rotation=np.array([0.0, 0.0, math.degrees(self.yaw)]),
+            )
+            self._controller.reset()
+            self._frozen_ticks = 0
+
         self.agent.act(forces)
         self._dyn_debug = {
             "target": target,

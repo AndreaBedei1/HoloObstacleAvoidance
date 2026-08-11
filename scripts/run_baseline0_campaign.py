@@ -194,8 +194,12 @@ def run_once(scenario_key: str, run_idx: int, out_root: str) -> dict:
 
     # 5. Collect validator output.
     if os.path.isfile(validator_out):
-        with open(validator_out) as f:
-            result["metrics"] = json.load(f)
+        try:
+            with open(validator_out) as f:
+                result["metrics"] = json.load(f)
+        except json.JSONDecodeError as exc:
+            result["ok"] = False
+            result["error"] = f"validator output corrupt: {exc}"
     else:
         result["ok"] = False
         result["error"] = "validator output missing"

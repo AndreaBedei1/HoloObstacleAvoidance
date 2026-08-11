@@ -47,6 +47,11 @@ def generate_launch_description():
         DeclareLaunchArgument("dropout_enabled", default_value="false"),
         DeclareLaunchArgument("dropout_delay_s", default_value="3.0"),
         DeclareLaunchArgument("dropout_duration_s", default_value="2.0"),
+        DeclareLaunchArgument("dropout_mode", default_value="single"),
+        DeclareLaunchArgument("outlier_at_s", default_value="0.0"),
+        # Temporal estimator between the relay and the planner (Phase 7).
+        DeclareLaunchArgument("estimator_method", default_value="t0"),
+        DeclareLaunchArgument("noise_model_path", default_value=""),
         DeclareLaunchArgument("validator_output",
                               default_value="logs/baseline0_validation.json"),
         DeclareLaunchArgument("label", default_value="baseline0"),
@@ -76,6 +81,20 @@ def generate_launch_description():
                 "dropout_enabled": LaunchConfiguration("dropout_enabled"),
                 "dropout_delay_s": LaunchConfiguration("dropout_delay_s"),
                 "dropout_duration_s": LaunchConfiguration("dropout_duration_s"),
+                "dropout_mode": LaunchConfiguration("dropout_mode"),
+                "outlier_at_s": LaunchConfiguration("outlier_at_s"),
+                # Relay feeds the temporal estimator, not the planner.
+                "output_topic": "/perception/obstacles_raw",
+            }],
+        ),
+        Node(
+            package="rov_obstacle_tracking",
+            executable="temporal_estimator_node",
+            name="temporal_estimator",
+            output="screen",
+            parameters=[{
+                "method": LaunchConfiguration("estimator_method"),
+                "noise_model_path": LaunchConfiguration("noise_model_path"),
             }],
         ),
         Node(

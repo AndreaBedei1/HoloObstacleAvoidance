@@ -55,6 +55,17 @@ class OracleDropoutRelayNode(Node):
         # addressed by the Phase 7 temporal estimators, not hidden here.
         self.declare_parameter("dropout_delay_s", 3.0)
         self.declare_parameter("dropout_duration_s", 2.0)
+        # dropout_mode: 'single' = one window (delay/duration above);
+        # 'repeated' = after the trigger+delay, alternate
+        # repeat_on_s visible / repeat_off_s silent for repeat_total_s.
+        self.declare_parameter("dropout_mode", "single")
+        self.declare_parameter("repeat_on_s", 1.0)
+        self.declare_parameter("repeat_off_s", 0.5)
+        self.declare_parameter("repeat_total_s", 6.0)
+        # Outlier injection: corrupt ONE relayed message this many seconds
+        # after the FIRST relayed detection (<=0 disables). Tests innovation
+        # gating in closed loop.
+        self.declare_parameter("outlier_at_s", 0.0)
         # Graph-liveness gate: do not feed the planner until the runtime
         # navigation inputs are alive (prevents pose-less engagement races
         # seen as baseline0 run B_2).
@@ -64,6 +75,13 @@ class OracleDropoutRelayNode(Node):
         self._prefix = str(self.get_parameter("trigger_state_prefix").value)
         self._delay = float(self.get_parameter("dropout_delay_s").value)
         self._duration = float(self.get_parameter("dropout_duration_s").value)
+        self._mode = str(self.get_parameter("dropout_mode").value)
+        self._rep_on = float(self.get_parameter("repeat_on_s").value)
+        self._rep_off = float(self.get_parameter("repeat_off_s").value)
+        self._rep_total = float(self.get_parameter("repeat_total_s").value)
+        self._outlier_at = float(self.get_parameter("outlier_at_s").value)
+        self._first_det_time: float | None = None
+        self._outlier_done = False
 
         self._trigger_time: float | None = None
         self._dropout_done = False
@@ -132,6 +150,14 @@ class OracleDropoutRelayNode(Node):
         dt = self._now_s() - self._trigger_time
         if dt < self._delay:
             return False
+        if self._mode == "repeated":
+            rel = dt - self._delay
+            if rel >= self._rep_total:
+                self._dropout_done = True
+                return False
+            period = self._rep_on + self._rep_off
+            return (rel % period) >= self._rep_on
+        # single window
         if dt < self._delay + self._duration:
             return True
         self._dropout_done = True
@@ -148,6 +174,25 @@ class OracleDropoutRelayNode(Node):
         })
         self._pub_debug.publish(msg)
 
+    def _maybe_inject_outlier(self, msg: Obstacle2DArray) -> Obstacle2DArray:
+        if self._outlier_at <= 0.0 or self._outlier_done:
+            return msg
+        if msg.obstacles and self._first_det_time is None:
+            self._first_det_time = self._now_s()
+        if self._first_det_time is None:
+            return msg
+        if self._now_s() - self._first_det_time >= self._outlier_at \
+                and msg.obstacles:
+            self._outlier_done = True
+            for ob in msg.obstacles:
+                ob.center_x = min(0.95, ob.center_x + 0.30)
+                ob.center_y = min(0.95, ob.center_y + 0.25)
+                ob.width = min(1.0, ob.width * 2.5)
+                ob.height = min(1.0, ob.height * 2.5)
+            self._emit_debug("outlier_injected")
+            self.get_logger().info("OUTLIER injected into one message")
+        return msg
+
     def _on_obstacles(self, msg: Obstacle2DArray) -> None:
         if not self._nav_live():
             return
@@ -158,7 +203,7 @@ class OracleDropoutRelayNode(Node):
                 "dropout START (relay silent)" if dropping else "dropout END")
             self._was_dropping = dropping
         if not dropping:
-            self._pub.publish(msg)
+            self._pub.publish(self._maybe_inject_outlier(msg))
 
 
 def main(args=None) -> None:

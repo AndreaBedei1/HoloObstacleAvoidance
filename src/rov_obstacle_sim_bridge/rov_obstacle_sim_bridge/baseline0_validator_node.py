@@ -110,6 +110,13 @@ class Baseline0ValidatorNode(Node):
         self._first_det_t = None
         self._dropout_events = []
 
+        # Temporal estimator observation (Phase 7)
+        self._trk_msgs = 0
+        self._trk_pred_ticks = 0
+        self._trk_max_since_meas = 0.0
+        self._trk_method = None
+        self._raw_det_count = 0
+
         # Obstacles (world geometry)
         self._obstacles = []
 
@@ -128,6 +135,10 @@ class Baseline0ValidatorNode(Node):
                                  self._on_obstacles, 10)
         self.create_subscription(String, "/sim/dropout_debug",
                                  self._on_dropout, 10)
+        self.create_subscription(String, "/tracking/obstacles_debug",
+                                 self._on_tracking_debug, 20)
+        self.create_subscription(Obstacle2DArray, "/perception/obstacles_raw",
+                                 self._on_raw_det, 20)
         self.create_subscription(Float32, "/rov/depth", self._on_depth, 10)
         self.create_subscription(Vector3Stamped, "/rov/attitude_measured",
                                  self._on_att, 10)
@@ -302,6 +313,24 @@ class Baseline0ValidatorNode(Node):
         except json.JSONDecodeError:
             pass
 
+    def _on_tracking_debug(self, msg: String) -> None:
+        try:
+            d = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        self._trk_msgs += 1
+        self._trk_method = d.get("method", self._trk_method)
+        for tr in d.get("tracks", []):
+            if tr.get("is_predicted"):
+                self._trk_pred_ticks += 1
+            self._trk_max_since_meas = max(
+                self._trk_max_since_meas,
+                float(tr.get("time_since_meas_s", 0.0)))
+
+    def _on_raw_det(self, msg: Obstacle2DArray) -> None:
+        if msg.obstacles:
+            self._raw_det_count += 1
+
     def _on_depth(self, msg: Float32) -> None:
         self._depth_min = min(self._depth_min, msg.data)
         self._depth_max = max(self._depth_max, msg.data)
@@ -389,6 +418,12 @@ class Baseline0ValidatorNode(Node):
             "pitch_max_deg": round(math.degrees(self._pitch_max), 2),
             "first_detection_t_s": self._first_det_t,
             "nonempty_detection_msgs": self._det_count,
+            "raw_nonempty_detection_msgs": self._raw_det_count,
+            "estimator_method": self._trk_method,
+            "estimator_debug_msgs": self._trk_msgs,
+            "estimator_prediction_ticks": self._trk_pred_ticks,
+            "estimator_max_time_since_meas_s": round(
+                self._trk_max_since_meas, 3),
             "dropout_events": self._dropout_events,
             "msg_counts": {"nominal": self._nominal_count,
                            "safe": self._safe_count,
@@ -399,8 +434,12 @@ class Baseline0ValidatorNode(Node):
 
     def _write(self) -> None:
         os.makedirs(os.path.dirname(self._out) or ".", exist_ok=True)
-        with open(self._out, "w") as f:
+        # Atomic write: a hard kill mid-write must never leave a truncated
+        # JSON (it corrupted a campaign run before this fix).
+        tmp = self._out + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(self._report(), f, indent=2)
+        os.replace(tmp, self._out)
 
 
 def main(args=None) -> None:
