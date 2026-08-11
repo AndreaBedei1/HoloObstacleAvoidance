@@ -198,6 +198,7 @@ class SimConfig:
     # disables the watchdog (legacy regression scenarios only).
     cmd_timeout_s: float = 1.0
     start_offset: tuple[float, float, float] = (0.0, 0.0, 5.0)  # fwd, right, up
+    start_yaw_deg: float = 0.0     # initial heading offset (F9 scenarios)
     camera_width: int = 512
     camera_height: int = 512
     horizontal_fov_deg: float = 90.0
@@ -304,6 +305,7 @@ def load_config(path: str) -> SimConfig:
         camera_socket=str(ho.get("camera_socket", "CameraSocket")),
         dynamics=dict(data.get("dynamics") or {}),
         cmd_timeout_s=float(sim.get("cmd_timeout_s", 1.0)),
+        start_yaw_deg=float(sim.get("start_yaw_deg", 0.0)),
         motion_model=motion_model,
         start_offset=tuple(float(v) for v in sim.get("start_offset", [0.0, 0.0, 5.0])),
         camera_width=int(cam.get("width", 512)),
@@ -960,6 +962,9 @@ class HolooceanSimServer:
         self._watchdog_active: bool = False
         # UE sleep-guard state (see _act_dynamics).
         self._frozen_ticks: int = 0
+        self._wake_tickle_count: int = 0
+        self._frozen_tick_total: int = 0
+        self._prev_guard_pos: Optional[Tuple[float, float, float]] = None
 
     def log(self, *args: Any) -> None:
         if self.verbose:
@@ -1003,7 +1008,7 @@ class HolooceanSimServer:
         off = self.cfg.start_offset
         ox, oy, oz = body_to_world(off[0], off[1], off[2], spawn_yaw)
         self.x, self.y, self.z = spawn_x + ox, spawn_y + oy, spawn_z + oz
-        self.yaw = spawn_yaw
+        self.yaw = spawn_yaw + math.radians(self.cfg.start_yaw_deg)
         if self.cfg.motion_model != "hold":
             # Initial placement teleport is legitimate in every mode (it sets
             # the start pose); in dynamics mode it is the ONLY teleport.
@@ -1259,13 +1264,23 @@ class HolooceanSimServer:
         # body is asleep anyway — wake it with a same-pose teleport (NOT a
         # motion cheat) and drain the wound-up integrators.
         speed = float(np.linalg.norm(v_world))
+        pos_delta = 0.0
+        if self._prev_guard_pos is not None:
+            pos_delta = math.sqrt(
+                (self.x - self._prev_guard_pos[0]) ** 2
+                + (self.y - self._prev_guard_pos[1]) ** 2
+                + (self.z - self._prev_guard_pos[2]) ** 2)
+        self._prev_guard_pos = (self.x, self.y, self.z)
         if float(np.max(np.abs(forces))) > 5.0 and speed < 0.005:
             self._frozen_ticks += 1
+            self._frozen_tick_total += 1
         else:
             self._frozen_ticks = 0
         if self._frozen_ticks >= 15:
+            self._wake_tickle_count += 1
             self.log("SLEEP GUARD: body frozen under load — waking with "
-                     "same-pose teleport and resetting controller integrators")
+                     f"same-pose teleport (tickle #{self._wake_tickle_count}) "
+                     "and resetting controller integrators")
             self.agent.teleport(
                 location=np.array([self.x, self.y, self.z]),
                 rotation=np.array([0.0, 0.0, math.degrees(self.yaw)]),
@@ -1283,6 +1298,15 @@ class HolooceanSimServer:
             "pitch": float(pitch),
             "thruster_forces": [float(f) for f in self._controller.last_forces],
             "wrench": [float(w) for w in self._controller.last_wrench],
+            # Infra-freeze instrumentation (Phase 8): objective signature
+            # material for the machine-detectable freeze rule.
+            "sleep_guard": {
+                "frozen_ticks_current": self._frozen_ticks,
+                "frozen_tick_total": self._frozen_tick_total,
+                "wake_tickle_count": self._wake_tickle_count,
+                "speed_world": speed,
+                "pos_delta": pos_delta,
+            },
         }
 
     def step(self) -> tuple[dict, bytes]:

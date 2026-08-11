@@ -43,6 +43,7 @@ setup(
         "console_scripts": [
             "local_avoidance_planner_node = rov_obstacle_avoidance.local_avoidance_planner_node:main",
             "nominal_cmd_publisher_node = rov_obstacle_avoidance.nominal_cmd_publisher_node:main",
+            "dwa_planner_node = rov_obstacle_avoidance.dwa_planner_node:main",
         ],
     },
 )

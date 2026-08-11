@@ -57,6 +57,12 @@ class CommandedOdometryNode(Node):
         self.declare_parameter("tau_sway_s", 1.15)
         self.declare_parameter("tau_heave_s", 0.8)
         self.declare_parameter("cmd_timeout_s", 1.0)
+        # Clock source: "attitude_messages" integrates one step per attitude
+        # message with dt = sensor_period_s (sensor-clocked dead reckoning,
+        # standard on real vehicles and immune to sim-time dilation when the
+        # engine falls below real time); "wall" uses the node timer.
+        self.declare_parameter("clock_source", "attitude_messages")
+        self.declare_parameter("sensor_period_s", 1.0 / 30.0)
 
         topics = [
             str(self.get_parameter("cmd_topic").value),
@@ -73,6 +79,10 @@ class CommandedOdometryNode(Node):
         )
         self._odo = CommandedOdometry(config=cfg)
         self._last_update_s: float | None = None
+        self._sensor_clocked = (str(
+            self.get_parameter("clock_source").value) == "attitude_messages")
+        self._sensor_period = float(
+            self.get_parameter("sensor_period_s").value)
 
         self.create_subscription(Twist, topics[0], self._on_cmd, 10)
         self.create_subscription(Vector3Stamped, topics[1], self._on_attitude, 10)
@@ -96,15 +106,21 @@ class CommandedOdometryNode(Node):
 
     def _on_attitude(self, msg: Vector3Stamped) -> None:
         self._odo.set_measured_yaw(msg.vector.z)
+        if self._sensor_clocked:
+            # One integration step per sensor message at the nominal sensor
+            # period: sim-time-consistent under engine load, wall-time-
+            # consistent on the real vehicle.
+            self._odo.update(dt=self._sensor_period, now_s=self._now_s())
 
     def _on_depth(self, msg: Float32) -> None:
         self._odo.set_measured_depth(msg.data)
 
     def _on_timer(self) -> None:
         now = self._now_s()
-        if self._last_update_s is not None:
-            self._odo.update(dt=now - self._last_update_s, now_s=now)
-        self._last_update_s = now
+        if not self._sensor_clocked:
+            if self._last_update_s is not None:
+                self._odo.update(dt=now - self._last_update_s, now_s=now)
+            self._last_update_s = now
 
         pose = self._odo.pose()
         msg = PoseStamped()

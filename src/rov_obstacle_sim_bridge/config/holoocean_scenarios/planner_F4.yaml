@@ -1,0 +1,52 @@
+# Scientific Baseline 0 — scenarios B/C: one deterministic obstacle ahead.
+# BlueROV2 Heavy + engine dynamics, stock prebuilt world, oracle perception
+# (custom anchor assets are on the lab machine — this is the primitive
+# stand-in; results are labeled `simulation dynamics integration baseline`,
+# NOT a visual obstacle avoidance result).
+#
+# Obstacle sizing: radius_m 1.75 gives an oracle bounding diameter of 3.5 m,
+# matching the planner's monocular-range assumption
+# (target_obstacle_height_m: 3.5) so the oracle-bbox-derived range estimate
+# is geometrically consistent. Visual sphere scale is cosmetic.
+
+holoocean:
+  stock_world: SimpleUnderwater
+  stock_package: Ocean
+  agent_type: BlueROV2
+  agent_name: rov0
+  camera_sensor: FrontCamera
+  camera_socket: CameraSocket
+  ticks_per_sec: 30   # MUST be 30: UE physics advances max 1/30 s per frame, so dt=1/30 keeps physics time == declared sim time; 30 Hz real-time sustained via high-res pacing + 256x256 camera
+  frames_per_sec: false
+  show_viewport: false   # keep engine below real-time budget for baseline0
+
+sim:
+  motion_model: dynamics
+  cmd_timeout_s: 1.0
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 256   # camera unused by oracle baseline0; small render keeps real-time
+  height: 256
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 0.8
+  max_sway: 0.5
+  max_heave: 0.4
+  max_yaw_rate: 0.6
+
+dynamics:
+  command_latency_s: 0.0
+  max_lin_accel: 1.0
+  max_yaw_accel: 1.5
+
+obstacles:
+  - name: f_obstacle
+    class_name: anchor
+    prop_type: sphere
+    relative_position: [12.0, -3.0, 0.0]
+    radius_m: 1.75
+    scale: 3.5
+    material: gold

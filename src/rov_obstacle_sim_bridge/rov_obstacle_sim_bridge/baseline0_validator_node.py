@@ -116,6 +116,11 @@ class Baseline0ValidatorNode(Node):
         self._trk_max_since_meas = 0.0
         self._trk_method = None
         self._raw_det_count = 0
+        # Phase 8 infra-freeze detector state
+        self._freeze_window_ticks = 0
+        self._infra_freeze = False
+        self._infra_freeze_t = None
+        self._sg_last = None
         # Phase 7B qualification observation
         self._qual_last = None
         self._first_raw_det_t = None
@@ -291,6 +296,25 @@ class Baseline0ValidatorNode(Node):
             self._thr_mean_n += 1
             if peak >= self._max_thrust - 0.05:
                 self._sat_ticks += 1
+        # Infra-freeze objective signature (Phase 8, pre-registered): a
+        # sustained window where the controller SETPOINT commands motion but
+        # the engine-side world speed stays ~zero under significant thrust.
+        sg = dyn.get("sleep_guard") or {}
+        sp_now = dyn.get("setpoint") or {}
+        cmd_speed = abs(float(sp_now.get("surge", 0.0))) \
+            + abs(float(sp_now.get("sway", 0.0)))
+        if cmd_speed > 0.1 and float(sg.get("speed_world", 1.0)) < 0.01 \
+                and (dyn.get("thruster_forces")
+                     and max(abs(f) for f in dyn["thruster_forces"]) > 2.0):
+            self._freeze_window_ticks += 1
+        else:
+            self._freeze_window_ticks = 0
+        if self._freeze_window_ticks >= 150 and not self._infra_freeze:
+            # ~5 s at 30 Hz of commanded-but-motionless under thrust.
+            self._infra_freeze = True
+            self._infra_freeze_t = self._now() - self._t0
+        self._sg_last = sg
+
         if self._dyn_ticks % 8 == 0:
             sp = dyn.get("setpoint") or {}
             ach = dyn.get("achieved_body_velocity") or [0, 0, 0]
@@ -461,6 +485,10 @@ class Baseline0ValidatorNode(Node):
                 round(self._dist_at_commit, 3)
                 if self._dist_at_commit is not None else None),
             "qualification": self._qual_last,
+            "infra_freeze_detected": self._infra_freeze,
+            "infra_freeze_t_s": (round(self._infra_freeze_t, 2)
+                                 if self._infra_freeze_t is not None else None),
+            "sleep_guard_last": self._sg_last,
             "estimator_method": self._trk_method,
             "estimator_debug_msgs": self._trk_msgs,
             "estimator_prediction_ticks": self._trk_pred_ticks,

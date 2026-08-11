@@ -26,7 +26,12 @@ dropout_duration_s, validator_output, label.
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -52,6 +57,17 @@ def generate_launch_description():
         # Temporal estimator between the relay and the planner (Phase 7).
         DeclareLaunchArgument("estimator_method", default_value="t0"),
         DeclareLaunchArgument("noise_model_path", default_value=""),
+        # Planner selection (Phase 8): committed | dwa. Both consume the SAME
+        # topics and publish the same /planner/cmd_vel_safe Twist.
+        DeclareLaunchArgument("planner", default_value="committed"),
+        DeclareLaunchArgument("nominal_surge", default_value="0.3"),
+        DeclareLaunchArgument("dwa_safety_margin_m", default_value="0.80"),
+        DeclareLaunchArgument("dwa_w_clearance", default_value="1.0"),
+        DeclareLaunchArgument("dwa_w_progress", default_value="1.0"),
+        DeclareLaunchArgument("dwa_w_speed", default_value="0.3"),
+        DeclareLaunchArgument("dwa_w_route", default_value="0.5"),
+        DeclareLaunchArgument("dwa_w_smooth", default_value="0.1"),
+        DeclareLaunchArgument("dwa_horizon_s", default_value="3.0"),
         DeclareLaunchArgument("validator_output",
                               default_value="logs/baseline0_validation.json"),
         DeclareLaunchArgument("label", default_value="baseline0"),
@@ -108,7 +124,8 @@ def generate_launch_description():
             executable="nominal_cmd_publisher_node",
             name="nominal_cmd_publisher",
             output="screen",
-            parameters=[nominal_config],
+            parameters=[nominal_config,
+                        {"surge": LaunchConfiguration("nominal_surge")}],
         ),
         Node(
             package="rov_obstacle_avoidance",
@@ -116,6 +133,25 @@ def generate_launch_description():
             name="local_avoidance_planner",
             output="screen",
             parameters=[planner_config],
+            condition=IfCondition(PythonExpression(
+                ["'", LaunchConfiguration("planner"), "' == 'committed'"])),
+        ),
+        Node(
+            package="rov_obstacle_avoidance",
+            executable="dwa_planner_node",
+            name="dwa_planner",
+            output="screen",
+            parameters=[{
+                "safety_margin_m": LaunchConfiguration("dwa_safety_margin_m"),
+                "w_clearance": LaunchConfiguration("dwa_w_clearance"),
+                "w_progress": LaunchConfiguration("dwa_w_progress"),
+                "w_speed": LaunchConfiguration("dwa_w_speed"),
+                "w_route": LaunchConfiguration("dwa_w_route"),
+                "w_smooth": LaunchConfiguration("dwa_w_smooth"),
+                "horizon_s": LaunchConfiguration("dwa_horizon_s"),
+            }],
+            condition=IfCondition(PythonExpression(
+                ["'", LaunchConfiguration("planner"), "' == 'dwa'"])),
         ),
         Node(
             package="rov_obstacle_sim_bridge",
