@@ -1,0 +1,37 @@
+%==============================================================================
+% Phase-7B closed-loop temporal ablation.  Source: docs/PHASE7B_RESULTS.md,
+% experiments/simulation/temporal_estimators_phase7b/closedloop/aggregate.json
+% (100/100 runs, parameters frozen per D-012, protocol pre-registered).
+% Status: READY.  Oracle perception.
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Closed-loop temporal-estimation ablation: successes out of five
+fresh-process runs per cell, under the pre-registered success definition
+(no collision, clearance $>0.3$\,m, exactly one avoidance entry, no side
+switch, no abort, returned to line). T3 is identical to T2 here ($\theta=0$).
+All separation is in E4; E0--E3 are flat.}
+\label{tab:phase7b}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{34mm} c c c c@{}}
+\toprule
+\textbf{Scenario} & \textbf{T0} & \textbf{T1} & \textbf{T2} & \textbf{T3} \\
+\midrule
+E0 clean                        & 5/5 & 5/5 & 5/5 & 5/5 \\
+E1 early 2\,s silence           & 5/5 & 4/5 & 5/5 & 5/5 \\
+E2 mid-maneuver 2\,s silence    & 4/5 & 5/5 & 5/5 & 5/5 \\
+E3 repeated silences            & 5/5 & 5/5 & 5/5 & 5/5 \\
+E4 young-track outlier          & 3/5$^{\dagger}$ & 3/5$^{\dagger\dagger}$ & \textbf{5/5} & 4/5 \\
+\midrule
+\textbf{Total}                  & 22/25 & 22/25 & \textbf{25/25} & 24/25 \\
+\bottomrule
+\end{tabular}
+\vspace{0.5mm}
+\raggedright\scriptsize
+$^{\dagger}$ one collision. $^{\dagger\dagger}$ two collisions. All three E4
+collisions are grazing passes at 0.288--0.297\,m against the 0.30\,m
+threshold, all in the hold family, none in the Kalman family. T3's single
+shortfall is an infrastructure freeze, not a method difference.
+\end{table}

@@ -1,0 +1,129 @@
+\section{Introduction}
+\label{sec:intro}
+
+Underwater robots are still evaluated mostly in simulation, because the
+physical alternative is expensive and hard to repeat. A single wet trial with
+a small remotely operated vehicle (ROV) consumes pool or vessel time, requires
+an operator and a safety procedure, and yields a handful of runs whose
+conditions --- turbidity, lighting, tether load, thermal drift --- are only
+partly under the experimenter's control. Simulation removes those constraints
+and has become the default instrument for developing and comparing underwater
+perception and control: modern marine simulators provide vehicle dynamics,
+camera and acoustic sensor models, and robot-middleware
+interfaces~\cite{potokar2024holoocea,potokar2022holoocea}, and are routinely
+used to produce the bulk of the evidence in underwater autonomy papers.
+
+Obstacle avoidance is the task where this substitution is least safe. Whether
+a vehicle passes an obstacle without contact is decided jointly by how the
+obstacle is perceived, how long the perception-to-command path takes, how the
+vehicle actually responds to a commanded velocity, and how well its state is
+known --- and every one of those four factors is modeled approximately. A
+detector that fires half a second later in reality than in simulation, or a
+vehicle whose sway response is slower than modeled, changes the clearance at
+which a maneuver is committed. Small, individually plausible modeling errors
+therefore compose into an outcome difference exactly on the metric that
+matters, namely whether the vehicle hits the obstacle.
+
+Prior work has largely answered the transfer question and left the prediction
+question open. Underwater controllers trained or tuned in simulation have been
+shown to work on physical vehicles: a high-fidelity vehicle model supports
+reinforcement-learning avoidance that transfers to pool
+trials~\cite{zhang2025simtoreal}, a photogrammetric digital twin supports
+policy validation on a physical BlueROV2 in a
+harbor~\cite{mari2026deeprein}, and hardware-in-the-loop configurations let a
+real vehicle computer run against a simulated
+world~\cite{meyers2025testinga}. These results establish that a stack
+developed in simulation \emph{can} work in water. They do not establish the
+stronger property an evaluation instrument needs: that the simulator's verdict
+about which method is safer, and by how much, survives contact with the
+physical vehicle. A simulator can transfer a working controller and still
+rank two candidate controllers in the wrong order.
+
+Simulator predictivity is the sharper concept, and it is not new. Kadian et
+al.~\cite{kadian2020simrealp} formalized it for indoor ground navigation:
+run identical code in a simulator and in the corresponding real space,
+correlate the per-method outcomes, and report a Sim-vs-Real Correlation
+Coefficient (SRCC) that measures whether the simulator preserves the
+\emph{ranking} of methods; they further showed that tuning simulator
+parameters raises that correlation substantially. Truong et
+al.~\cite{truong2022rethinki} then showed the converse is not automatic ---
+higher-fidelity simulation does not necessarily improve sim-to-real behavior
+--- which makes ``we added fidelity'' an unsupported argument until it is
+measured. To our knowledge this measurement has not been carried out for
+underwater obstacle avoidance, where the mismatch sources (underwater optics,
+video transport latency, hydrodynamic response, absence of velocity aiding)
+differ qualitatively from the indoor ground case.
+
+This paper takes the predictivity question underwater and makes the mismatch
+sources separable. We run one implementation of a camera-driven avoidance
+stack --- detection, temporal obstacle estimation, local planning, body-velocity
+command --- against two plants behind an identical ROS~2 interface: the
+HoloOcean simulator with a native BlueROV2 Heavy vehicle, and a physical
+BlueROV2 Heavy avoiding physical obstacles in a pool under independent
+overhead ground truth. Rather than comparing a default simulator against
+reality once, we evaluate a \emph{progressive calibration ladder}: \SZERO{}
+is the uncalibrated practical model; \SONE{} matches the measured camera;
+\STWO{} additionally matches the measured end-to-end timing; \STHREE{}
+additionally matches the measured vehicle response and sensor behavior. Each
+rung states explicitly what it calibrates and what it deliberately leaves
+uncalibrated, so a change in predictivity can be attributed to a class of
+mismatch instead of to fidelity in general.
+
+The evaluation is designed to answer four questions:
+\begin{itemize}
+  \item[\textbf{RQ1}] How accurately does HoloOcean predict the physical
+    safety and trajectory metrics of camera-driven obstacle avoidance on a
+    BlueROV2?
+  \item[\textbf{RQ2}] How does progressive calibration of perception, timing,
+    and vehicle dynamics change that predictivity?
+  \item[\textbf{RQ3}] Does simulation preserve the relative ranking of
+    different avoidance strategies after physical deployment?
+  \item[\textbf{RQ4}] How do simple temporal persistence and constant-velocity
+    Kalman estimation differ under detector dropout, abrupt ego-motion, and
+    outlier corruption?
+\end{itemize}
+RQ1--RQ3 are the primary questions; RQ4 is a controlled ablation of one stack
+component, reported here because it is already complete and because it
+supplies the method variants the ranking analysis needs.
+
+Our provisional contributions are the following.
+\begin{enumerate}
+  \item A matched ROS~2 experimental architecture in which a HoloOcean
+    BlueROV2 Heavy and a physical BlueROV2 Heavy are driven by the same
+    perception, temporal-estimation, and local-planning code behind identical
+    message interfaces, with an audited separation between runtime
+    information and validation-only ground truth
+    (Sec.~\ref{sec:system}). We present this as enabling methodology: paired
+    pool/simulator testbeds with external ground truth already
+    exist~\cite{yang2025duvindif,alineipoiana2024abluerov,meyers2025testinga}.
+  \item A progressive \SZERO--\STHREE{} calibration methodology that isolates
+    camera, system-timing, and vehicle-response contributions to the
+    underwater simulation-to-reality gap, with each level's calibrated and
+    uncalibrated quantities declared in advance
+    (Sec.~\ref{sec:calibration}).
+  \item A quantitative simulator-predictivity evaluation for underwater
+    obstacle avoidance, combining absolute physical safety/performance error
+    with preservation of method rankings across simulation and physical
+    experiments, following the predictivity framing of
+    Kadian et al.~\cite{kadian2020simrealp}
+    (Sec.~\ref{sec:predictivity}).
+  \item A controlled temporal-estimation ablation showing complementary
+    behavior between simple temporal persistence and constant-velocity Kalman
+    filtering: persistence predicts better through maneuver-induced
+    image-motion changes, whereas the Kalman filter's gating is what confers
+    outlier robustness (Sec.~\ref{sec:results}).
+\end{enumerate}
+
+We state explicitly what is \emph{not} claimed. The predictivity question,
+the SRCC metric, and the idea of improving predictivity by tuning a simulator
+are due to Kadian et al.~\cite{kadian2020simrealp}. HoloOcean, its ROS~2
+interface, and its hardware-in-the-loop usage are due to the BYU
+FRoStLab~\cite{potokar2022holoocea,potokar2024holoocea,meyers2025testinga}.
+Camera-based underwater collision avoidance with filtered relative-distance
+estimation on a real ROV is due to Bergantin et
+al.~\cite{bergantin2024realtime}, and belief-space and
+covariance-aware safety formulations are
+established~\cite{han2025riskaware,han2026riskawar,li2024anobstac}. Neither
+the Kalman filter nor the dynamic-window planner used here is offered as a
+novel algorithm; both are deliberately standard so that the object of study
+remains the simulator.

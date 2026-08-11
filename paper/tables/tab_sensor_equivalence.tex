@@ -1,0 +1,33 @@
+%==============================================================================
+% Sim/real sensing equivalence.  Source: docs/SIM_REAL_SENSOR_EQUIVALENCE.md,
+% docs/REAL_BLUEROV2_HARDWARE_INVENTORY.md.  Status: READY (real side is a
+% completed read-only inventory; the "closed at" column is a plan, not a
+% result).
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Sensing equivalence audit between the simulated and physical
+BlueROV2 Heavy, and the calibration level at which each residual mismatch is
+closed. The absence of velocity aiding on the physical vehicle is a design
+constraint, not a calibration target.}
+\label{tab:sensors}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{16mm} p{20mm} p{20mm} p{9mm}@{}}
+\toprule
+\textbf{Quantity} & \textbf{Simulation} & \textbf{Physical vehicle} &
+\textbf{Closed at} \\
+\midrule
+RGB image      & HoloOcean camera, configurable resolution/FOV & H.264 USB camera, $1920{\times}1080$@30\,fps over UDP & \SONE \\
+Image timing   & Tick-synchronous & Encode + transport + decode latency & \STWO \\
+Attitude       & Pose sensor (noise-free) & \textsc{attitude} at 10\,Hz (EKF, IMU + compass) & \STHREE \\
+Depth          & Depth sensor (noise-free) & External pressure sensor & \STHREE \\
+Body velocity  & Velocity sensor (simulated plant only) & \textbf{none --- no DVL} & n/a \\
+Position $x,y$ & Pose sensor (validation only) & \textbf{none at runtime} & n/a \\
+Vehicle response & PI velocity loop + 8-thruster allocation & ArduSub body-velocity control, 8 thrusters & \STHREE \\
+Contact        & Rigid-body collision & Physical contact & n/a \\
+External GT    & Simulator pose (validation) & Overhead RealSense D435 (validation) & n/a \\
+\bottomrule
+\end{tabular}
+\end{table}

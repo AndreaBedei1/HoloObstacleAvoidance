@@ -1,0 +1,80 @@
+\section{Simulated Vehicle and Transferable Navigation}
+\label{sec:vehicle}
+
+\subsection{BlueROV2 Heavy in Simulation}
+
+The simulated vehicle is the simulator's native BlueROV2 agent, which is the
+Heavy configuration: eight thrusters in a vectored six-degree-of-freedom
+layout matching the physical vehicle's frame configuration, with a
+neutrally-buoyant 11.5\,kg rigid body, a centre of buoyancy 5\,cm above the
+centre of mass, and a per-thruster force limit of $\pm 28.75$\,N. Motion is
+produced by engine rigid-body physics under commanded thruster forces; the
+kinematic teleport used by the pre-scientific version of this stack is
+excluded from all scientific scenarios, which restores physical contact as an
+observable event. Because the physical vehicle's frame configuration is the
+same vectored layout, the actuation topology is matched by construction
+rather than by tuning.
+
+One implementation detail is worth recording because it invalidated an
+earlier controller. The thruster geometry documented in the simulator's
+Python agent interface is inconsistent with the engine implementation, and
+using it produced inverted surge, absent heave, and spurious yaw. Open-loop
+force probes together with the engine source established the correct
+client-frame geometry: four vertical thrusters at $(\pm 0.12, \pm 0.2181,
++0.0809)$\,m and four horizontal $45^{\circ}$ pods at $(\pm 0.1562, \pm
+0.0988, 0)$\,m, in a body frame with $x$ forward, $y$ left, $z$ up. The
+corrected geometry reproduces every probe observation.
+
+\subsection{Command Path and Low-Level Control}
+
+The planner's output is a body-velocity command, and everything between that
+command and the water is deliberately modeled as a chain of separately
+calibratable stages (Fig.~\ref{fig:control}). A commanded twist passes
+through a configurable command-latency buffer, a setpoint rate limiter, a
+proportional--integral body-velocity controller for surge, sway, and heave, a
+proportional--integral yaw-rate loop, and a proportional--derivative
+roll/pitch stabilizer; the resulting body wrench is mapped to eight thruster
+forces by a pseudo-inverse allocation with direction-preserving saturation. A
+server-side watchdog zeroes the commanded velocity when no fresh command
+arrives within 1\,s, mirroring the vehicle-side failsafe. The latency buffer
+is the mechanism by which calibration level \STWO{} injects measured
+command-path delay, and the controller gains and rate limits are what
+\STHREE{} adjusts.
+
+\input{figures/fig_control}
+
+Step responses of this simulated chain are reported in
+Table~\ref{tab:stepresponse}. We stress what these numbers are and are not:
+they characterize the \emph{simulated} vehicle and its controller at the
+uncalibrated level \SZERO{}, and they are the reference against which the
+measured physical responses will later be compared. They are not a
+simulation-versus-reality result, and no such comparison exists yet.
+
+\input{tables/tab_step_response}
+
+\subsection{Transferable Navigation Without a Velocity Sensor}
+\label{sec:navigation}
+
+Because the physical vehicle has no Doppler velocity log, runtime navigation
+must be reconstructed from signals that exist on both sides, and it is this
+constraint --- not a modeling preference --- that fixes the estimator's form.
+The runtime odometry propagates the \emph{commanded} body velocity through a
+first-order vehicle-response model, with time constants $\tau_u = 1.2$\,s,
+$\tau_v = 1.15$\,s, and $\tau_w = 0.8$\,s taken from the step-response
+identification, and integrates it using the \emph{measured} yaw; the vertical
+channel is the measured pressure depth rather than an integrated quantity.
+When commands go stale beyond 1\,s the modeled velocity decays to zero,
+mirroring the vehicle watchdog. The estimator is therefore a dead-reckoning
+filter whose inputs are available identically in simulation and in water.
+
+The corresponding restriction is enforced in code: the simulator's velocity
+sensor feeds only the simulated low-level controller, where it plays the role
+of the physical thruster loop's internal feedback, and never reaches the
+navigation estimator, which refuses ground-truth-like topics at
+construction. The cost of this design is drift, which we measure rather than
+assume: over the accepted integration campaign the maximum dead-reckoning
+error was 0.117\,m on straight runs and $\leq 0.20$\,m during avoidance
+maneuvers (Sec.~\ref{sec:results}). The benefit is that the navigation
+solution transfers without modification, so a sim-to-real difference in
+avoidance outcome cannot be explained away by a navigation input that exists
+only in simulation.

@@ -1,0 +1,92 @@
+\section{Results Available at This Stage}
+\label{sec:results}
+
+This section reports the two blocks that are complete. Both were obtained
+with \emph{simulator-oracle} obstacle perception rather than the visual
+detector, and both are labelled accordingly throughout: they validate the
+simulated plant and isolate the temporal estimator, and they are not visual
+obstacle-avoidance results. The planner comparison (block C), the calibration
+ladder (block D), and the physical campaign (block E) are not reported here.
+
+\subsection{Simulation Integration Baseline}
+
+The integration campaign accepted 9 of 9 runs across its three scenarios
+under pre-registered criteria (Table~\ref{tab:baseline0}). Every avoidance
+run produced the same state sequence with exactly one maneuver and no side
+reversal, no collision occurred, minimum clearance to the obstacle surface
+stayed in 0.672--0.715\,m, the vehicle returned to within 6\,cm of its
+original line, and the transferable dead-reckoning error stayed at or below
+0.20\,m. In the dropout scenario a deterministic 2\,s silence injected
+mid-maneuver was survived in all three runs with no premature recovery, no
+side switch, and no collision. Repeatability across fresh processes is tight
+rather than exact --- 4\,cm spread in clearance, 0.3\,s in maneuver time ---
+which is the expected consequence of distributed wall-clock scheduling.
+
+\input{tables/tab_baseline0}
+
+Three failures from an earlier attempt are retained on record because two of
+them are integration lessons that the physical stack will also face: a
+middleware session that started isolated and produced a vehicle that never
+moved, and a startup race in which the planner engaged before the navigation
+estimator was publishing, producing a pose-less maneuver that diverged. Both
+are now prevented by a graph-liveness gate and by gating perception on
+navigation liveness. The third is a genuine weakness of the committed policy
+under an early detection silence, and it is the motivating failure for the
+temporal-estimation block rather than something the estimators were credited
+with fixing after the fact.
+
+\subsection{Temporal-Estimation Ablation}
+
+The closed-loop ablation ran 100 runs with frozen parameters
+(Table~\ref{tab:phase7b}). Two observations dominate. First, the methods are
+\emph{indistinguishable on every continuous metric under nominal conditions}:
+median clearance spans 0.708--0.713\,m, final lateral error 0.014--0.019\,m,
+maneuver time 69.5--69.7\,s, and confirmation delay 1.01--1.03\,s across all
+four variants. Second, all of the separation lives in the outlier scenario
+E4, where the Kalman family scores 5/5 and 4/5 against 3/5 for both
+non-probabilistic variants. The three grazing collisions in E4 occurred at
+0.288--0.297\,m minimum clearance against a 0.30\,m threshold, with maneuvers
+of normal shape but roughly 0.4\,m smaller lateral amplitude; all three fall
+in the hold family and none in the Kalman family. Aggregate success is
+therefore 25/25 for T2, 24/25 for T3, and 22/25 for both T0 and T1, and the
+single T3 shortfall is an infrastructure freeze rather than a method
+difference --- T3 is identical to T2 by construction here.
+
+\input{tables/tab_phase7b}
+
+The prediction result runs in the opposite direction, and we report it as a
+first-class finding rather than a caveat. During the dropout that begins at
+maneuver onset, the simple hold predicts the obstacle's image-space position
+substantially better than the constant-velocity filter: prediction-only
+centre RMSE is 0.038 versus 0.084 in the early-dropout case and 0.036 versus
+0.071 in the mid-maneuver case (Table~\ref{tab:onset},
+Fig.~\ref{fig:onset}). The mechanism is measurable in the reference signal:
+the obstacle's image-space centre velocity is zero before the vehicle
+commits and $-0.032$\,units/s afterwards, so the constant-velocity model
+extrapolates a velocity that the maneuver has just invalidated, while the
+hold makes no velocity assumption at all. An exploratory damped
+constant-velocity variant lands between the two (0.055 and 0.043) and does
+not beat the hold; it was discarded as a benchmark method and is recorded
+only as a direction for a maneuver-aware model.
+
+\input{tables/tab_onset}
+\input{figures/fig_onset}
+
+Taken together, these two results say something more specific than ``the
+Kalman filter helps''. The Kalman machinery earns its place through
+$\chi^2$-gated outlier rejection, not through prediction accuracy: it is
+outlier armour rather than a better predictor. That distinction matters for
+the sim-to-real study, because outlier robustness and prediction accuracy are
+stressed by different physical phenomena, and a simulator that reproduces one
+faithfully need not reproduce the other.
+
+\subsection{Noise Floor}
+
+The residual failure rate is approximately one non-success per 25 runs from
+single-run tail events, plus a roughly 2\% infrastructure mode in which the
+vehicle remains pinned near its start. Both are counted as failures under the
+pre-registered rules rather than reclassified. This floor is low enough to
+compare planners on aggregate success and clearance, and it bounds what the
+subsequent blocks can resolve: per-scenario differences smaller than about
+two runs in five are not resolvable at this sample size, which is the reason
+the planner campaign uses ten repetitions per cell.

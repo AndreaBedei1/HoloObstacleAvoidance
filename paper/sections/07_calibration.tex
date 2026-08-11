@@ -1,0 +1,82 @@
+\section{Progressive Calibration Ladder}
+\label{sec:calibration}
+
+\subsection{Why a Ladder Rather Than a Switch}
+
+Comparing an uncalibrated simulator against a calibrated one answers a
+question nobody asked: it reports that fidelity changed something, without
+saying which mismatch mattered. Since the goal is to make the simulator
+usable as an evaluation instrument, the useful question is which \emph{class}
+of mismatch controls its predictivity, because that identifies where
+modelling effort should go. We therefore define four levels in which each
+rung adds one class of measured calibration and explicitly leaves the
+remaining classes untouched (Table~\ref{tab:calibration}). Declaring what is
+left uncalibrated is as important as declaring what is calibrated: it is what
+licenses attributing a change in predictivity to the rung that changed.
+
+\subsection{Levels}
+
+\textbf{\SZERO{} --- baseline simulation.} The default practical model: the
+simulator's own camera configuration, no injected latency, and vehicle
+controller gains and limits chosen for stable simulated behaviour rather than
+measured against hardware. The step responses in
+Table~\ref{tab:stepresponse} characterize this level. \SZERO{} is not a straw
+man; it is what a competent practitioner obtains before any measurement
+campaign, and it is the level most published underwater simulation results
+implicitly occupy.
+
+\textbf{\SONE{} --- camera and perception.} The simulated camera is matched
+to the measured physical camera: resolution, frame rate, field of view and
+intrinsics, and such image statistics as can be measured and reproduced.
+Timing, vehicle response, and sensor noise remain at \SZERO{}. Following
+Elmquist and Negrut~\cite{elmquist2022aperform}, the camera model is
+validated by the response of the downstream detector rather than at pixel
+level, because the detector's behavior is what the avoidance stack actually
+consumes. \CALIB
+
+\textbf{\STWO{} --- camera plus system timing.} Everything from \SONE{},
+plus the measured end-to-end delay budget: acquisition, encoding and
+transport, detector latency, and command-path latency, together with the
+measured frame-rate and frame-drop behavior. The simulator injects these
+through the command-latency buffer and the image path rather than through a
+lumped constant, so the individual contributions remain separable. Vehicle
+response and sensor noise remain at \SZERO{}. This level is the reason the
+simulation clock had to be made honest (Sec.~\ref{sec:system}): injecting a
+50\,ms delay is meaningless if simulated time and physics time already
+disagree. \CALIB
+
+\textbf{\STHREE{} --- camera, timing, and vehicle response.} Everything from
+\STWO{}, plus the measured surge, sway, and yaw responses of the physical
+vehicle --- time constants, steady-state gains, deadbands, and rate limits ---
+and measured noise and update-rate models for attitude and depth. The
+identification uses the same step-response script that produced
+Table~\ref{tab:stepresponse}, so the two domains are characterized by an
+identical procedure. Hydrodynamic identification of BlueROV2-class vehicles
+is itself well
+established~\cite{benzon2022anopenso,orjales2025towardsa}; the contribution
+here is not the identification but its placement as one isolated rung of a
+predictivity experiment. \CALIB
+
+\input{tables/tab_calibration_levels}
+
+\subsection{What the Ladder Deliberately Does Not Do}
+
+Three exclusions keep the interpretation clean. First, no level tunes the
+simulator against \emph{avoidance outcomes}: every calibrated quantity is
+measured independently against its physical counterpart, which distinguishes
+this design from post-hoc parameter search against the target
+metric~\cite{kadian2020simrealp} and prevents the ladder from fitting the
+answer. Second, no level changes the autonomy code, so a change in outcome
+cannot come from a re-tuned controller. Third, the underwater optical medium
+is calibrated only to the extent that it is measured at \SONE{}; scattering
+and turbidity models are outside the scope of this study and remain a
+declared limitation.
+
+We also pre-register the interpretation of a negative result. Truong et
+al.~\cite{truong2022rethinki} showed that added fidelity can degrade
+sim-to-real behavior, so ``calibration at level $S_k$ did not improve
+predictivity'' is a reportable finding of this experiment and not a failure of
+it. The prediction being tested is directional, not guaranteed: we expect
+timing and vehicle response to matter more than nominal camera geometry for
+a commitment-based avoidance policy, and the experiment is designed to be
+able to contradict that expectation.

@@ -1,0 +1,65 @@
+\section{Discussion}
+\label{sec:discussion}
+
+% Status: partial DRAFT.  Only the evidence-supported themes are written.
+% Everything depending on Phase 8, the calibration ladder, or the pool
+% campaign is marked and must not be written before the data exist.
+
+\subsection{Model Complexity Does Not Imply Better Prediction}
+
+The estimator ablation supports a claim that is narrower and more useful than
+the one usually made for Kalman filtering in tracking pipelines. Adding a
+constant-velocity motion model did not improve prediction where prediction
+was hardest. During the dropout at maneuver onset the hold was roughly twice
+as accurate as the constant-velocity filter, and the reason is visible in the
+reference signal rather than inferred: the vehicle's own commitment
+introduces a step in the obstacle's image-space velocity, so the filter
+extrapolates a velocity that has just ceased to hold, while the hold's
+implicit zero-velocity assumption happens to be closer to the truth
+immediately after the step. The Kalman filter nonetheless produced the only
+clean outlier scenario, because $\chi^2$ gating rejects a corrupted
+measurement that the smoothing variant partially absorbs.
+
+The generalizable point is that prediction accuracy and outlier robustness
+are separate benefits that are routinely conflated. A filter can be the
+better choice for one and the worse choice for the other, and reporting a
+single aggregate success rate hides the trade. For the present study this has
+a concrete methodological consequence: the two benefits are stressed by
+different physical phenomena --- ego-motion dynamics and detector failure
+modes respectively --- so a simulator could reproduce one faithfully while
+misrepresenting the other, and the calibration ladder is instrumented to tell
+those cases apart.
+
+\subsection{What an Ego-Motion-Aware Model Would Have to Do}
+
+The mechanism above suggests, but does not establish, that the useful
+correction is to inform the motion model about the vehicle's own commanded
+maneuver. An exploratory damped variant sat between the hold and the
+constant-velocity filter without beating the hold, which is consistent with
+damping addressing the symptom rather than the cause. We flag this as a
+hypothesis: a model that predicts image-space motion from the commanded body
+velocity should dominate both, and testing it is future work rather than a
+result of this paper.
+
+\subsection{Fidelity Is Not Predictivity}
+
+The framing of this paper rests on a distinction that the underwater
+literature currently under-uses. High simulator fidelity is a property of the
+model; predictivity is a property of the model \emph{as an evaluation
+instrument}, and the second does not follow from the first. Truong et
+al.~\cite{truong2022rethinki} demonstrated the gap in the training regime,
+and Kadian et al.~\cite{kadian2020simrealp} demonstrated that predictivity
+can be improved deliberately in the evaluation regime. Underwater work has
+concentrated on the first property --- richer hydrodynamics, richer sensor
+models, photogrammetric
+scenes~\cite{benzon2022anopenso,orjales2025towardsa,mari2026deeprein} --- and
+reports transfer success as evidence of it. The claim that our ladder
+improves predictivity is not yet supported by data and is deliberately not
+made here; what this paper fixes is the instrumentation that can decide it.
+\SREAL
+
+\subsection{Planner Comparison}
+
+% TODO_PHASE8_FINAL_RESULT: written only after the Phase-8 campaign and the
+% D-013 freeze.  Do not anticipate the outcome, in either direction.
+\PEIGHT

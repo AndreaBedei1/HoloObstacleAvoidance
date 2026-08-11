@@ -1,0 +1,114 @@
+\section{Experimental Design}
+\label{sec:design}
+
+The evaluation is built from six blocks, arranged so that each one
+establishes the noise floor for the next. Every block has pre-registered
+validity criteria and a machine-checkable technical-invalid list, written
+before the corresponding runs; a run is either a valid outcome or a
+technically invalid one, and algorithm failures are never re-run.
+
+\subsection{Simulation Model Validation}
+
+The first block establishes that the simulated plant and its command path
+behave reproducibly, which is a precondition rather than a result. It
+comprises the per-axis step responses of Table~\ref{tab:stepresponse},
+repeated from fresh engine processes, and a closed-loop integration campaign
+over three scenarios --- straight transit, a single obstacle ahead, and the
+same obstacle with an injected detector dropout --- each repeated from fresh
+processes with pre-registered acceptance criteria. Obstacle perception in
+this block is the simulator oracle, not the visual detector, so the block
+validates physics, control, navigation, and safety plumbing and nothing
+about vision.
+
+\subsection{Temporal-Estimation Ablation}
+
+The second block isolates the estimator (RQ4) by holding everything else
+fixed. Offline, the deterministic replay harness runs all variants over the
+controlled cases D0--D14. In closed loop, the design is
+$\{$T0, T1, T2, T3$\} \times \{$E0--E4$\}$ with five fresh-process
+repetitions per cell, where E0 is nominal, E1 an early silence shortly after
+commitment, E2 a mid-maneuver silence, E3 repeated short silences, and E4 a
+large outlier injected shortly after first detection. Success is defined
+before the campaign as no collision, minimum clearance above 0.3\,m, exactly
+one avoidance entry, no side switch, no abort, and return to the nominal
+line. Results are in Sec.~\ref{sec:results}.
+
+\subsection{Planner Benchmark}
+
+The third block compares the two avoidance policies of
+Sec.~\ref{sec:planners} on identical perception, using the T2 estimator with
+the qualification layer for both. The pre-registered design pairs the
+planners by scenario across a long-range set that varies obstacle offset,
+obstacle extent, available lateral clearance, mid-maneuver dropout, outlier
+injection, initial heading error, and approach speed, plus a pool-scale set
+matched to the physical pool geometry. Primary outcomes are collision and
+success; secondary outcomes include minimum clearance, maximum lateral
+deviation, path length, maneuver time, side switches, thruster effort,
+command smoothness, odometry error, and, for the dynamic window, the count of
+no-admissible-candidate events. Analysis is by exact collision counts,
+success proportions with Wilson intervals, and paired descriptive comparison
+of continuous metrics. \textbf{This campaign is in progress and no result
+from it appears in this paper:} \PEIGHT
+
+\subsection{Progressive Simulation Calibration}
+
+The fourth block instantiates the ladder of Sec.~\ref{sec:calibration}. Each
+level requires an independent measurement campaign against the physical
+system --- camera characterization at \SONE{}, a latency budget at \STWO{},
+and step-response identification plus sensor-noise characterization at
+\STHREE{} --- followed by re-running the simulation conditions of block C at
+that level. The measurement procedures are specified; the measurements
+themselves require the physical vehicle and the pool. \CALIB
+
+\subsection{Physical Pool Experiments}
+
+The fifth block runs the matched conditions on the physical vehicle. The
+pool is rectangular, roughly 8\,m long, shallow, with a V-shaped floor and no
+controlled currents; exact dimensions, the bottom profile, obstacle
+dimensions and positions, and the start points are to be surveyed by a
+written measurement protocol before any run, and are deliberately not
+assumed here. Two physical obstacles are used, an anchor and a torpedo.
+Because the pool is short, the scenarios are pool-scale by construction:
+reduced speed, shorter initial obstacle distance, a compact avoidance
+maneuver at approximately constant depth, horizontal avoidance using surge,
+sway and yaw, and physical safety boundaries with the avoidance side
+constrained never to point into the nearer wall. The long-range trajectories
+of block A are therefore \emph{not} representative of the physical
+experiment, and the matched simulation conditions use the pool-scale profile
+on both sides.
+
+Validity criteria are pre-registered: start pose within a fixed tolerance,
+all logs recording, ground-truth marker visible for at least 95\% of the run,
+and no operator input after the start signal. Collision, near collision,
+successful avoidance, successful recovery, and operator intervention each
+have explicit definitions, and technically invalid runs are archived with
+their reason and counted in the report rather than silently dropped.
+Condition order is randomized within blocks and the operator does not see the
+algorithm identity during a run. \POOL
+
+\subsection{External Ground Truth}
+
+The sixth block is the measurement instrument for block E. An Intel
+RealSense D435 provides validation-only pose: the inventoried device
+sustains $1920{\times}1080$ RGB at a measured 29.81\,fps with host-clock
+timestamps, which removes cross-device clock transfer since it shares the
+experiment machine. It is to be mounted rigidly near nadir over the test
+area, with at least four measured non-collinear perimeter references defining
+the pool frame and a high-contrast fiducial board on the vehicle providing
+$x$, $y$, and yaw; depth comes from the vehicle's pressure sensor.
+
+Depth measured through the air--water interface is \emph{not} trusted as
+ground truth. Refraction makes the pixel-to-pool mapping depth-dependent, so
+the planned procedure is a dry intrinsic calibration, extrinsics from the
+above-water perimeter markers, and a multi-plane submerged calibration at
+several surveyed depths interpolated by the vehicle's measured depth, with an
+explicit flat-refraction model as the fallback if residuals require it. The
+instrument is usable only after its own error report --- position and yaw
+RMSE, 95th percentiles, error versus depth, timestamp uncertainty --- is
+documented. No ground-truth accuracy figure is claimed until then. \POOL
+
+Comparable external references exist in this literature and set the rigor
+bar~\cite{winkel2023designim,yang2025duvindif}; the distinguishing constraint
+here is that the reference is validation-only and never enters estimation,
+unlike overhead cameras used as a measurement source inside the
+filter~\cite{alineipoiana2024abluerov}.

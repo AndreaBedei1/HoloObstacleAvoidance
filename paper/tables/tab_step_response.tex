@@ -1,0 +1,29 @@
+%==============================================================================
+% S0 simulated step responses.  Source: docs/BLUEROV2_SIMULATION_DYNAMICS.md,
+% experiments/simulation/step_response_S0{,_run2,_run3}/manifest.json
+% (3 fresh-process runs, bit-identical summaries).  Status: READY.
+% NOTE: simulation-internal controller validation.  NOT a sim-vs-real result.
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Step responses of the \emph{simulated} BlueROV2 Heavy at the
+uncalibrated level \SZERO{}, from three consecutive fresh-process runs with
+bit-identical summaries. These validate the simulated command path; they are
+\emph{not} a simulation-versus-reality comparison, which requires the
+measured physical responses acquired at \STHREE{}.}
+\label{tab:stepresponse}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+\textbf{Axis} & \textbf{Amplitude} & \textbf{Rise 10--90\%} &
+\textbf{SS error} & \textbf{Overshoot} \\
+\midrule
+Surge    & 0.40\,m/s   & 3.03\,s & 4.8\,\% & none \\
+Sway     & 0.25\,m/s   & 2.90\,s & 4.5\,\% & none \\
+Heave    & $-0.20$\,m/s& 2.03\,s & 3.2\,\% & none \\
+Yaw rate & 0.30\,rad/s & 0.20\,s & 0.6\,\% & none \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,45 @@
+%==============================================================================
+% Figure 2 --- BlueROV2 simulation/control architecture.  Status: READY.
+% Source: docs/BLUEROV2_SIMULATION_DYNAMICS.md (architecture block),
+% docs/BLUEROV2_HOLOOCEAN_INTEGRATION.md (thruster geometry, limits).
+%==============================================================================
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  b/.style={draw, rounded corners=1pt, align=center, minimum height=5.4mm,
+            text width=21mm, inner xsep=1.5pt},
+  cal/.style={b, fill=yellow!20},
+  ar/.style={-{Latex[length=1.5mm]}, thick},
+  node distance=2.1mm,
+]
+\node[b] (cmd) {Planner twist\\$(u,v,w,r)_{\mathrm{cmd}}$};
+\node[cal, below=of cmd] (lat) {Command latency\\buffer \textbf{(\STWO)}};
+\node[cal, below=of lat] (rl)  {Setpoint rate\\limiter \textbf{(\STHREE)}};
+\node[cal, below=of rl]  (pi)  {PI body-velocity\\+ PI yaw rate\\+ PD roll/pitch \textbf{(\STHREE)}};
+\node[b, below=of pi]    (al)  {Pseudo-inverse\\8-thruster alloc.};
+\node[b, below=of al]    (sat) {Direction-preserving\\saturation $\pm 28.75$\,N};
+\node[b, below=of sat]   (ph)  {Rigid-body physics\\(BlueROV2 Heavy)};
+
+\foreach \a/\b in {cmd/lat, lat/rl, rl/pi, pi/al, al/sat, sat/ph}
+  \draw[ar] (\a) -- (\b);
+
+% feedback
+\draw[ar] (ph.east) -- ++(4mm,0) |- node[pos=0.25, right, font=\tiny,
+  text width=16mm, align=left]
+  {body velocity,\\rates, roll/pitch\\(simulated plant\\feedback only)} (pi.east);
+
+% watchdog
+\node[b, left=6mm of pi, text width=15mm, fill=red!8] (wd)
+  {Watchdog\\(1\,s) $\rightarrow 0$};
+\draw[ar] (wd) -- (pi);
+
+\end{tikzpicture}
+\caption{Simulated command path. Shaded stages are the ones the calibration
+ladder adjusts: transport and processing delay at \STWO{}, and vehicle
+response (rate limits, controller gains) at \STHREE{}. The velocity feedback
+closing the inner loop belongs to the simulated \emph{plant}, standing in for
+the physical vehicle's own thruster-loop behavior; it is not available to the
+navigation estimator.}
+\label{fig:control}
+\end{figure}

@@ -1,0 +1,103 @@
+\section{Sim-to-Real Predictivity Analysis}
+\label{sec:predictivity}
+
+This section fixes the analysis before the data exist, so that the reported
+outcome cannot be a consequence of metric selection. Two questions are kept
+separate throughout: how close simulated values are to physical ones, and
+whether simulation orders methods the way water does. They can dissociate ---
+a simulator can be biased and still rank correctly, or unbiased on average
+and still invert an ordering --- and only the second bears on the simulator's
+use as an evaluation instrument.
+
+\subsection{Matched Conditions and Outcome Metrics}
+
+A \emph{condition} is a tuple of avoidance method, obstacle, approach
+geometry, and calibration level, run in both domains with the same nominal
+route and speed. For each condition we record: success, collision, minimum
+clearance, maximum lateral deviation, path length, maneuver duration,
+recovery error to the nominal line, and control effort. These are the same
+quantities the simulation campaigns already produce
+(Sec.~\ref{sec:design}), so the comparison needs no domain-specific metric.
+
+\subsection{Absolute Predictivity}
+
+For a metric $m$ under condition $i$ at calibration level $S_k$, absolute
+predictivity is the discrepancy between the simulated and physical values,
+\begin{equation}
+  e_{m}(i, S_k) \;=\; \bigl| \bar{m}^{\mathrm{sim}}(i, S_k)
+                     - \bar{m}^{\mathrm{real}}(i) \bigr| ,
+  \label{eq:abserr}
+\end{equation}
+aggregated over conditions and reported per level, with a scale-normalized
+variant where metrics have different units. Since each side is a mean over
+repetitions, both carry sampling uncertainty, and we report the gap with a
+bootstrap interval rather than as a point value; a gap smaller than the
+combined run-to-run spread is reported as indistinguishable from zero rather
+than as agreement. Bounded outcomes such as success are compared as
+proportions with Wilson intervals. This per-level, per-metric view is in the
+spirit of judging sensor-model fidelity by its downstream
+effect~\cite{mahajan2024quantify}.
+
+\subsection{Ranking Predictivity and Its Statistical Requirements}
+
+Rank preservation is the Kadian et al.\ question~\cite{kadian2020simrealp},
+and adopting their Sim-vs-Real Correlation Coefficient is the natural choice
+--- but adopting it uncritically would be a mistake in our design, and we
+state the reason explicitly rather than reporting a number that cannot carry
+weight. Their study correlates outcomes across nine navigation policies. Our
+comparison contains two planners. A rank correlation over two items is
+degenerate: it takes one of two values and has no meaningful null
+distribution, so an SRCC computed over the planner pair alone would be
+theatre.
+
+Three defensible options exist, and we pre-commit to the following
+resolution. \emph{First}, enlarge the ranked set along an axis we already
+have: the ranked units are method \emph{stacks}, that is
+estimator--planner combinations, since the estimator variants are
+independently meaningful and already characterized (Sec.~\ref{sec:results}).
+This yields a set large enough for a rank statistic without inventing methods
+for the sole purpose of populating one. \emph{Second}, report
+\emph{pairwise direction agreement} as the primary ranking result: for every
+pair of stacks and every metric, whether simulation and reality agree on the
+sign of the difference, with an exact binomial interval over pairs. This
+statistic is well defined for two methods, degrades gracefully with ties, and
+answers the question a practitioner actually asks --- if the simulator says A
+is safer than B, is it? \emph{Third}, report rank correlation (Spearman or
+Kendall, chosen by the tie structure) \emph{only} when the ranked set reaches
+a pre-declared minimum size, and report it with its exact permutation
+$p$-value rather than an asymptotic one.
+
+We explicitly reject two temptations. We will not expand the experiment
+solely to raise the item count for a correlation coefficient, because a
+method added only to be ranked contributes noise, not evidence. And we will
+not select, after unblinding, the metric on which ranking happens to be
+preserved: the analysis reports every metric in
+Sec.~\ref{sec:predictivity}\,A for every level, and the primary ranking
+metric --- minimum clearance --- is declared here.
+
+\subsection{Per-Level Attribution}
+
+The ladder's payoff is the difference between adjacent levels. For each
+metric we report absolute predictivity and ranking agreement at \SZERO{},
+\SONE{}, \STWO{}, and \STHREE{}, and attribute any change between $S_{k-1}$
+and $S_k$ to the class of mismatch that rung calibrated --- an attribution
+that is only licensed because every other class is held fixed
+(Table~\ref{tab:calibration}). A flat or adverse trajectory across levels is
+a reportable outcome~\cite{truong2022rethinki}, and the pre-registration of
+that interpretation is what keeps it reportable.
+
+\subsection{Threats to Validity}
+
+Three threats are anticipated. \emph{Confounding by repetition count}: the
+physical campaign will have fewer repetitions than the simulated one, so
+physical means are noisier; the bootstrap intervals of
+Eq.~\eqref{eq:abserr} carry that asymmetry explicitly instead of hiding it.
+\emph{Ceiling effects}: if every stack succeeds in both domains, ranking is
+undefined on success and the analysis rests on continuous metrics ---
+which is why the scenario set deliberately includes conditions that stress
+clearance. \emph{Instrument error}: the external ground truth has its own
+error budget, and a sim-to-real gap smaller than that budget is not a
+measurement; the ground-truth error report (Sec.~\ref{sec:design}\,F) is
+therefore a precondition for this analysis, not an appendix to it.
+
+\SREAL

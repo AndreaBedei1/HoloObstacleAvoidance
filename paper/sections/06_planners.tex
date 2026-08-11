@@ -1,0 +1,153 @@
+\section{Avoidance Policies}
+\label{sec:planners}
+
+Two local planners are compared. Both consume the same estimated obstacle
+stream, the same monocular range model, and the same dead-reckoned pose, and
+both emit a body-velocity twist onto the same downstream command path, so the
+variable under study is the internal representation of the avoidance decision
+and nothing else. Neither planner is offered as a contribution: they exist to
+give the predictivity study two behaviorally distinct methods to rank.
+
+\subsection{Obstacle Geometry from a Monocular Detection}
+
+Both planners recover metric geometry from an image-space detection under the
+same known-height assumption, so any bias in that model is shared and cannot
+favour either method. Bearing follows from the horizontal image coordinate,
+$\beta = (c_x - 0.5)\,\mathrm{HFOV}$, and range from the apparent height
+under a pinhole model,
+\begin{equation}
+  \hat{d} \;=\; \frac{H_{\mathrm{ref}}}{2\,h_{\mathrm{bbox}}
+                \tan(\mathrm{VFOV}/2)},
+  \label{eq:monorange}
+\end{equation}
+with a class-reference height $H_{\mathrm{ref}}$ and a corresponding
+class-reference radius. This model is optimistic when the bounding box is
+clipped by the image border, which both planners must absorb through their
+safety margins rather than through a privileged measurement.
+
+\subsection{Planner \PC{}: Committed Circumnavigation}
+
+The first planner encodes the avoidance decision as a commitment, which is
+the property that makes it robust to perception gaps. On detecting an
+obstacle ahead within the engagement range, it selects a side, executes a
+lateral displacement using the vehicle's sway authority while continuing
+past the obstacle, and returns toward the original route once the obstacle
+has been passed. The commitment is the mechanism of interest: a momentary
+loss of detection is not evidence that the obstacle is gone, so the maneuver
+is not abandoned when the detection stream falls silent, and the side
+selection is not revisited mid-maneuver. This is a state-machine policy with
+implicit memory, and it is close in shape to published committed-bypass
+maneuvers~\cite{zhang2022binocula}; we therefore treat it as a system
+component rather than a claim.
+
+\subsection{Planner \PD{}: Holonomic Dynamic Window Baseline}
+
+The classical comparator is a Dynamic Window Approach following the
+principle of Fox et al.~\cite{fox1997thedynam} --- sample dynamically
+reachable commands, forward-simulate them over a short horizon, discard
+inadmissible candidates, and maximize a small normalized objective ---
+adapted where the vehicle demands it, in the spirit of Eriksen et al.'s
+adaptation to AUV dynamics~\cite{eriksen2016amodifie}. The adaptation is not
+claimed as novel; it is a fairness requirement, and we state each departure
+from the textbook formulation together with the reason it exists.
+
+\subsubsection{Holonomic search space}
+The BlueROV2 Heavy produces lateral thrust natively and the committed planner
+uses it heavily, so restricting the baseline to the classical
+$(v,\omega)$ differential-drive space would handicap it rather than test it.
+The sampled command is therefore $\mathbf{c} = [u, v, r]$ in body surge, sway,
+and yaw rate.
+
+\subsubsection{Window and response-aware rollout}
+Surge is restricted to what is reachable within one control interval,
+$u \in [\max(0, u_0 - a\Delta t),\; \min(u_{\max}, u_0 + a\Delta t)]$ with
+$\Delta t$ equal to the replanning period, which is the classical definition;
+sway and yaw rate span their full authority because the rollout already
+enforces how quickly they are physically attained. That rollout is
+response-aware: velocities relax first-order toward the candidate command
+during integration, using the same time constants as the navigation model.
+Constant-command rollouts, which assume commands are states, over-predicted
+clearance by 0.3--0.5\,m under a response lag of order 1\,s and produced
+grazing passes; this is a genuine underwater-adaptation requirement rather
+than an implementation detail, and it mirrors the reason Eriksen et al.\
+introduce second-order dynamics into the window.
+
+\subsubsection{Directional stoppability}
+Admissibility retains the classical requirement that the vehicle be able to
+stop before contact, but applies it directionally. Writing $c(\cdot)$ for
+clearance to the inflated obstacle, a candidate is admissible if its path
+clearance stays positive and, \emph{when it is still closing at the end of
+the horizon}, its terminal clearance satisfies
+\begin{equation}
+  c_{\mathrm{end}} \;\geq\; \lVert \mathbf{v} \rVert\, t_{\mathrm{react}}
+    \;+\; \frac{\lVert \mathbf{v} \rVert^{2}}{2\,a_{\mathrm{brake}}} .
+  \label{eq:stop}
+\end{equation}
+A candidate whose clearance is increasing has already escaped and is not
+required to carry braking distance. The omnidirectional form of this test ---
+requiring stopping distance from every candidate, including those moving away
+--- makes every lateral escape inadmissible whenever the vehicle is near the
+safety boundary, because the path-minimum clearance is dominated by the
+shared starting position; the planner then stalls in front of the obstacle.
+A separate escape rule applies inside the inflated zone, where the admissible
+set is the candidates that increase clearance, so the vehicle cannot be
+trapped in a permanent stop within its own margin.
+
+\subsubsection{Mission-paced objective}
+The objective keeps Fox's structure --- clearance, progress, speed, heading,
+smoothness, all normalized --- with one substantive change. Rewarding raw
+forward speed makes the baseline cruise at its maximum surge while the
+committed planner holds the mission speed, which is a speed mismatch rather
+than a planning difference and which also inflates dead-reckoning drift. The
+speed term therefore rewards tracking the nominal mission speed, and the
+progress term rewards closing the distance to a receding route goal at
+exactly the nominal pace, so that both racing and parking score below
+mission-paced motion. This pairing of a dynamic-window search with
+line-of-sight guidance at cruise speed is standard marine
+practice~\cite{eriksen2016amodifie}. Clearance is scored at the rollout end
+state and saturated at a fixed distance, because response-limited rollouts
+share a long common prefix that makes path-minimum clearance nearly constant
+across candidates.
+
+\subsubsection{Bounded obstacle memory}
+A camera obstacle leaves the field of view during the pass while remaining
+physically relevant, and a memoryless dynamic window consequently turns back
+through the obstacle position once it can no longer see it. The node
+therefore maintains a bounded rolling obstacle memory in the odometry frame,
+holding only past perception and no ground truth. This is the classical
+deployment practice of pairing a dynamic window with a persistent rolling
+costmap, and it is an information-parity requirement: the committed planner's
+state machine already carries equivalent memory. It is not claimed as novel.
+
+When no candidate is admissible the planner publishes a zero twist and logs a
+first-class \texttt{no\_admissible\_candidate} event, which is counted as an
+outcome rather than hidden.
+
+\subsection{Input Equivalence}
+
+Fairness was audited against the actual subscriptions and parameters of both
+nodes rather than asserted. Both planners receive the same obstacle topic,
+compute bearing with the same formula, use identical monocular constants,
+read the same dead-reckoned pose, capture the route by the same convention,
+apply the same nominal-command staleness rule, and operate under the same
+speed limits; neither subscribes to ground truth, and the dynamic window's
+planning acceleration bound does not exceed the downstream controller's rate
+limit. The dynamic window additionally maintains an internal body-velocity
+estimate, but it derives that estimate from its own past commands through the
+same first-order model used by the navigation filter, so it consumes no
+sensor the committed planner lacks.
+
+The parameters of planner \PC{} are unchanged from the original baseline and
+were never tuned on the comparison scenarios. Planner \PD{} is tuned by a
+pre-declared grid on development scenarios only, under a lexicographic
+objective --- zero collisions first, then success, then clearance above
+threshold, then efficiency --- with every tuning run archived. Two pre-freeze
+amendments to the declared ranges are recorded with their reasons in the
+implementation protocol; both strictly improve the baseline's own safety and
+success. \textbf{The frozen parameter set is Phase-8 decision D-013, which
+has not been recorded at the time of writing, so the parameter table is
+deliberately empty:} \PEIGHT
+
+% TODO_PHASE8_FINAL_RESULT: insert tables/tab_dwa_parameters.tex once D-013 is
+% recorded in docs/SCIENTIFIC_DECISIONS.md.  Do not transcribe development
+% defaults here --- they are not the frozen configuration.

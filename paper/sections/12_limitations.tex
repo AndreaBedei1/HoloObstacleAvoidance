@@ -1,0 +1,35 @@
+\section{Limitations}
+\label{sec:limitations}
+
+The scope of the physical evidence is narrow and we state it plainly. The
+experiments take place in a controlled pool of roughly 8\,m length with
+clear, shallow water, a V-shaped floor, and no controlled currents, against
+static obstacles of known classes drawn from a small physical set; avoidance
+is primarily horizontal at approximately constant depth. Nothing here
+supports claims about open water, turbid water, currents, moving obstacles,
+or unknown object classes.
+
+The perception and navigation design carries its own constraints. Sensing is
+camera-only, so obstacle range comes from a monocular known-size model whose
+assumptions are violated when a bounding box is clipped by the image border;
+the vehicle has no Doppler velocity log, so runtime navigation is
+commanded-motion dead reckoning that drifts by design, and the drift figures
+reported here are simulated ones. The external ground truth requires
+refraction-aware calibration through the air--water interface before any of
+its numbers may be used, and no accuracy figure for it is claimed yet.
+
+Several components are deliberately incomplete. The adaptive-covariance
+estimator T3 remains uncalibrated and is identical to T2 in every experiment
+reported here, so no adaptive-estimation claim is made. The physical
+vehicle's dynamics have not been identified, which means the \STHREE{} rung
+of the ladder is specified but not measured, and the earlier rungs likewise
+await their measurement campaigns. The planner comparison is running and its
+outcome is not anticipated in this paper.
+
+Finally, the results reported in Sec.~\ref{sec:results} use simulator-oracle
+obstacle perception rather than the visual detector. They are therefore
+evidence about the simulated plant, the navigation design, and the temporal
+estimators, and they are not evidence about visual detection performance.
+Reproducing the full visual pipeline requires assets and trained weights that
+reside on a separate machine, and that dependency is recorded rather than
+worked around.

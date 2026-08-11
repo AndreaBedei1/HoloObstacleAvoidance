@@ -1,0 +1,89 @@
+%==============================================================================
+% Figure 1 --- matched sim/real architecture.  Status: READY.
+% Source of truth: docs/SCIENTIFIC_BASELINE_0.md (architecture block),
+% docs/PLANNER_INPUT_EQUIVALENCE.md, docs/SIM_REAL_SENSOR_EQUIVALENCE.md.
+%==============================================================================
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  node distance=2.6mm,
+  box/.style={draw, rounded corners=1pt, align=center, minimum height=6.2mm,
+              inner xsep=2pt, text width=17mm},
+  shared/.style={box, fill=blue!8, very thick},
+  simb/.style={box, fill=gray!7},
+  realb/.style={box, fill=orange!8},
+  valb/.style={box, fill=green!7, densely dashed},
+  ar/.style={-{Latex[length=1.6mm]}, thick},
+  arv/.style={-{Latex[length=1.6mm]}, densely dashed, gray!70!black},
+]
+
+% ---------------- shared autonomy column (center) -------------------------
+\node[shared] (det)  {Object\\detector};
+\node[shared, right=of det] (est) {Temporal\\estimator\\T0--T3};
+\node[shared, right=of est] (pl)  {Local planner\\\PC{} or \PD{}};
+\node[shared, right=of pl]  (tw)  {\texttt{cmd\_vel\_safe}\\(Twist)};
+
+\node[above=1.2mm of est, font=\scriptsize\bfseries, text width=40mm,
+      align=center] (sharedlab)
+      {IDENTICAL ROS~2 CODE IN BOTH DOMAINS};
+
+\draw[ar] (det) -- (est);
+\draw[ar] (est) -- (pl);
+\draw[ar] (pl)  -- (tw);
+
+% ---------------- simulation row (top left / top right) -------------------
+\node[simb, left=6mm of det, yshift=8.5mm] (simcam) {HoloOcean\\RGB camera};
+\node[simb, left=of simcam] (simenv) {HoloOcean\\world +\\obstacle};
+\node[simb, right=6mm of tw, yshift=8.5mm] (simctl)
+      {Latency buffer,\\rate limit, PI\\vel.\ control};
+\node[simb, right=of simctl] (simdyn)
+      {8-thruster alloc.\\$\rightarrow$ BlueROV2\\rigid-body physics};
+
+\draw[ar] (simenv) -- (simcam);
+\draw[ar] (simcam) -- ++(0,-4.2mm) -| (det);
+\draw[ar] (tw) -- ++(0,8.5mm) -- (simctl);
+\draw[ar] (simctl) -- (simdyn);
+\draw[ar] (simdyn.north) -- ++(0,3mm) -| node[pos=0.25, above, font=\tiny]
+      {pose, attitude, depth (runtime subset)} (simenv.north);
+
+% ---------------- real row (bottom left / bottom right) -------------------
+\node[realb, left=6mm of det, yshift=-8.5mm] (realcam)
+      {BlueROV2 camera\\H.264 1080p30};
+\node[realb, left=of realcam] (realenv) {Pool +\\physical\\obstacle};
+\node[realb, right=6mm of tw, yshift=-8.5mm] (realctl)
+      {Safety interlock\\$\rightarrow$ ArduSub\\body-velocity};
+\node[realb, right=of realctl] (realdyn)
+      {8 thrusters\\$\rightarrow$ BlueROV2\\Heavy};
+
+\draw[ar] (realenv) -- (realcam);
+\draw[ar] (realcam) -- ++(0,4.2mm) -| (det);
+\draw[ar] (tw) -- ++(0,-8.5mm) -- (realctl);
+\draw[ar] (realctl) -- (realdyn);
+\draw[ar] (realdyn.south) -- ++(0,-3mm) -| node[pos=0.88, below, font=\tiny]
+      {\textsc{attitude}, pressure depth} (realenv.south);
+
+% ---------------- validation-only lane ------------------------------------
+\node[valb, below=12mm of pl, text width=34mm] (val)
+      {\textbf{Validation only} --- never in the control path:\\
+       simulator ground truth $\;\vert\;$ overhead RealSense};
+\draw[arv] (simdyn.east) -- ++(3mm,0) |- (val.east);
+\draw[arv] (realdyn.east) -- ++(3mm,0) |- (val.east);
+
+\node[left=1mm of simenv, font=\scriptsize\bfseries, rotate=90,
+      anchor=south] {SIM};
+\node[left=1mm of realenv, font=\scriptsize\bfseries, rotate=90,
+      anchor=south] {REAL};
+
+\end{tikzpicture}
+\caption{Matched architecture. The autonomy path (blue) is one
+implementation executed unchanged in both domains; only the plant and its
+sensing differ. Validation information (green, dashed) reaches the offline
+validator and never the control path --- a property enforced by a
+forbidden-topic guard in the estimator and by a fixed planner subscription
+set, both unit-tested. The simulation-to-reality mismatches that the
+calibration ladder of Sec.~\ref{sec:calibration} addresses live exactly on
+the two vertical boundaries: camera and timing on the left, vehicle response
+and sensing on the right.}
+\label{fig:architecture}
+\end{figure*}

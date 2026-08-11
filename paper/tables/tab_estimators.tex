@@ -1,0 +1,25 @@
+%==============================================================================
+% Temporal estimator ladder.  Source: docs/TEMPORAL_OBSTACLE_ESTIMATION.md,
+% src/rov_obstacle_tracking.  Status: READY.
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Temporal estimator variants. Each rung adds exactly one mechanism.
+T3 ships with $\theta=0$ and is therefore \emph{identical} to T2 in every
+experiment reported here; it is listed as implemented framework, not as an
+evaluated method.}
+\label{tab:estimators}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}l p{20mm} p{17mm} p{22mm}@{}}
+\toprule
+& \textbf{Mechanism} & \textbf{Behavior in silence} & \textbf{Status} \\
+\midrule
+\textbf{T0} & Passthrough              & Silent            & Control baseline; deliberately not improved \\
+\textbf{T1} & Hold + EMA ($\alpha=0.4$)& Hold, bounded 2.5\,s & Evaluated \\
+\textbf{T2} & CV Kalman on $[c_x,c_y,\log w,\log h]$ + derivatives; $\chi^2$ gate & Predict, bounded 2.5\,s & Evaluated \\
+\textbf{T3} & $R = R_0\exp(\theta^\top\varphi)$ over detection features & As T2 & \textbf{Framework only}: $\theta=0 \Rightarrow$ T3 $\equiv$ T2; calibration pending \\
+\bottomrule
+\end{tabular}
+\end{table}

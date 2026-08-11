@@ -1,0 +1,78 @@
+\section{Matched Simulation and Physical Architecture}
+\label{sec:system}
+
+\subsection{Design Principle: One Stack, Two Plants}
+
+The experiment requires that any difference between simulated and physical
+outcomes be attributable to the plant and its sensing, never to the autonomy
+code. We therefore run a single implementation of the autonomy pipeline and
+swap only what sits below it. Detection, temporal obstacle estimation, local
+planning, and the body-velocity command interface are the same ROS~2 nodes
+in both domains; the simulated plant is HoloOcean driving a native BlueROV2
+Heavy agent, and the physical plant is a BlueROV2 Heavy with an ArduSub
+autopilot. Fig.~\ref{fig:architecture} shows the two paths and the boundary
+at which they diverge.
+
+\input{figures/fig_architecture}
+
+\subsection{Runtime Information versus Validation Information}
+
+A predictivity study is only meaningful if the simulated stack cannot see
+anything its physical counterpart lacks, so the separation between runtime
+and validation information is enforced rather than assumed. Runtime topics
+carry quantities with a real counterpart: measured attitude, pressure depth,
+the commanded body velocity, the image-space obstacle stream, and the
+estimated odometry described in Sec.~\ref{sec:navigation}. Validation topics
+--- simulator ground-truth pose, world-frame obstacle geometry, per-tick
+dynamics traces in simulation, and the external overhead camera in the pool
+--- are consumed only by the offline validator. The estimator node rejects
+ground-truth-like input topics at construction, the planner subscription set
+is fixed to three runtime topics, and unit tests assert both properties, so
+a violation fails the build rather than silently improving a result.
+
+\subsection{Sensing Equivalence and the Missing Velocity Sensor}
+
+Matching the two domains required first auditing where they genuinely differ,
+which surfaced one mismatch severe enough to change the system design. A
+read-only inventory of the physical vehicle found no Doppler velocity log and
+no velocity or position aiding of any kind in its telemetry: the available
+runtime signals are attitude and rates, heading, external pressure depth, and
+raw inertial measurements. The simulator, by contrast, offers a velocity
+sensor and exact pose. Table~\ref{tab:sensors} records the resulting
+equivalence audit. Two decisions follow. First, the simulator's velocity
+sensor is confined to the simulated low-level controller, where it stands in
+for the physical vehicle's own thruster-loop behavior, and is forbidden to
+the navigation estimator. Second, runtime navigation is rebuilt around
+signals that exist on both sides (Sec.~\ref{sec:navigation}). The remaining
+entries in Table~\ref{tab:sensors} --- camera resolution and field of view,
+transport latency, depth and attitude noise and rate --- are precisely the
+quantities the calibration ladder of Sec.~\ref{sec:calibration} closes one
+level at a time.
+
+\input{tables/tab_sensor_equivalence}
+
+\subsection{Simulation Interface and Timing}
+
+Because the study measures latency and response, the simulator must advance
+physics at the rate it claims to. Two timing defects were found and corrected
+during integration and are reported here because they invalidate wall-clock
+estimators silently. First, the host operating system's sleep quantization
+capped the simulator serve loop below its nominal tick rate, so simulated
+time ran slower than wall-clock time while ROS-side estimators kept
+integrating; the loop now paces with a high-resolution timer and a
+sleep/spin hybrid. Second, the underlying game engine advances physics by at
+most $1/30$\,s per frame, so a nominal 20\,Hz tick rate advanced physics only
+two thirds as far as declared and the vehicle moved at $0.646\times$ its
+reported velocity. Scientific scenarios consequently run at exactly 30
+ticks/s with verified real-time pacing. After both fixes, dead-reckoning
+error on a straight 12.2\,m run fell from 4.08\,m to 0.117\,m maximum, which
+confirms the estimator had been correct and the simulation clock had not.
+This is a precondition for the timing calibration level \STWO{} and, more
+generally, for any latency-aware sim-to-real claim.
+
+The bridge between the simulator and ROS~2 is a two-process localhost
+connection rather than the in-process bridge distributed with the
+simulator, because the simulator and the ROS~2 distribution used here require
+different Python interpreters on the experiment platform. This is an
+infrastructure choice with no scientific content; it is documented for
+reproducibility and is not claimed as a contribution.

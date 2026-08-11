@@ -1,0 +1,97 @@
+\section{Perception and Temporal Obstacle Estimation}
+\label{sec:estimation}
+
+\subsection{Common Interface and Qualification Layer}
+
+Comparing temporal estimators fairly requires that they be interchangeable
+without changing anything else, so all variants live behind one interface and
+inside one node. A detection source publishes raw image-space obstacles; the
+temporal estimator consumes them and republishes a planner-facing stream on
+which bearing, apparent area, and risk are recomputed by a single shared
+formula; the planner is unchanged across variants. The passthrough variant T0
+runs inside the same node and launch as the filtered variants, so runtime
+differences cannot bias the comparison.
+
+Three upstream conditions must be distinguished, and conflating two of them
+caused a documented closed-loop failure before the distinction was made
+explicit. A \emph{fresh detection} is new information and updates the state.
+A \emph{fresh empty message} is evidence of absence: the detector ran and saw
+nothing, which increments a miss counter and eventually deletes the track.
+\emph{Silence} is the absence of information: no message arrived at all,
+which is bridged by prediction up to a bounded horizon. Treating silence as
+absence caused a planner to abandon a committed maneuver and recover onto a
+wrongly recaptured route; treating absence as silence produces ghost
+obstacles. Both failure modes are avoided by handling the three cases
+separately, and the distinction is tested at unit and replay level.
+
+A common qualification layer precedes all estimator variants, so that no
+variant can benefit from unqualified detections. It admits a track only after
+a warm-up of 20 stream-healthy updates spanning at least 1.0\,s, applies
+physics-derived coherence bounds (image-centre rate $\leq 1.2$\,units/s,
+$|\Delta \log \text{size}| \leq 0.5$ per message), maintains a reference with
+a 1.0\,s maximum age reset after five consecutive rejections, and confirms a
+track only after $M=3$ accepted coherent updates within a 1.5\,s window. The
+source-restart silence threshold is 4.0\,s, deliberately longer than the
+2.5\,s estimator horizon so that a bridged dropout can never trigger a
+mid-maneuver re-warm-up. These parameters were frozen before the reported
+campaign and were not changed during it.
+
+\subsection{Estimator Variants}
+
+The four variants form a complexity ladder in which each rung adds exactly
+one mechanism (Table~\ref{tab:estimators}). \textbf{T0} is a passthrough
+control: one output per input, silent during silence, deliberately not
+improved so that it reproduces the untreated failure modes. \textbf{T1} holds
+the last valid estimate with exponential smoothing ($\alpha = 0.4$) for a
+bounded hold duration, emits at a fixed rate, and expires into an explicit
+empty output rather than a lingering track. \textbf{T2} is a linear
+constant-velocity Kalman filter on the state $[c_x, c_y, \log w, \log h]$ and
+its first derivatives, with measurement $z = [c_x, c_y, \log w, \log h]$,
+timestamp-derived $\Delta t$, discrete white-acceleration process noise
+($q = 0.30$), fixed measurement noise ($\sigma_c = 0.015$, $\sigma_s =
+0.05$), and $\chi^2$ innovation gating at the 99\% level with four degrees of
+freedom; rejected measurements do not stop prediction. Track expiry is
+deterministic: prediction horizon, empty-message streak, exit from the image,
+or maximum age. The logarithmic size parameterization keeps the scale
+positive and makes the growth of apparent size approximately linear during a
+straight approach.
+
+\textbf{T3} is an adaptive-covariance framework in which the measurement
+noise is modulated by detection features, $R = R_0 \exp(\theta^\top
+\varphi)$, with $\varphi$ comprising inverse confidence, inverse square root
+of apparent area, border proximity, and frame interval. \emph{We report T3 as
+a framework, not as a result.} Its coefficients must be fitted to
+synchronized detector-versus-reference residuals, which do not yet exist for
+this platform; the shipped default is $\theta = 0$, under which T3 is exactly
+T2, and a unit test asserts this identity. Consequently every T3 number in
+this paper is a T2 number obtained through a second code path, and the
+adaptive mechanism is neither validated nor claimed. The calibration
+machinery itself was verified negatively: applied to synthetic homoscedastic
+data it correctly recovers approximately zero feature dependence rather than
+inventing structure.
+
+\input{tables/tab_estimators}
+
+\subsection{Deterministic Replay and Controlled Disturbances}
+
+Closed-loop runs alone cannot separate an estimator's behavior from the
+planner's reaction to it, so the estimators are additionally evaluated on a
+deterministic replay harness. Records carry the three upstream conditions as
+first-class fields, and the harness interleaves message events with
+fixed-rate ticks exactly as the online node does, so the same input file
+yields bit-identical output. Reference values are consumed only by the
+metrics layer, never by the estimator. Fifteen controlled cases D0--D14 span
+clean tracking, silences of 0.25--2\,s, a silence beginning shortly after
+maneuver commitment, a mid-maneuver silence, repeated silences, the
+fresh-empty counterpart of the early silence, a single large outlier, a noise
+burst, confidence collapse followed by dropout, timestamp jitter, a brief
+false positive, and a legitimate disappearance. Metrics include overall and
+prediction-only centre RMSE, availability, longest gap, reacquisition delay,
+ghost-track time, normalized innovation squared, and empirical $1\sigma /
+2\sigma$ coverage.
+
+Hold duration and prediction horizon were both set to 2.5\,s using only the
+development cases, whose longest dropout is 2.0\,s, and nothing was tuned on
+the closed-loop evaluation scenarios. Dropouts longer than the horizon still
+defeat T1 and T2 by construction, which is the intended behavior: the
+estimators bridge gaps, they do not conjure obstacles.

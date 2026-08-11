@@ -1,0 +1,121 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Underwater Obstacle Perception and Avoidance}
+
+Reactive avoidance on physical underwater vehicles is established across
+both sensing modalities, and the modality largely determines the failure
+mode the method must absorb. Acoustic pipelines exploit direct range: recent
+forward-looking-sonar systems combine a learned detector with temporal
+association and line-of-sight guidance, and are validated in lake
+trials~\cite{li2026underwat}, while sonar-based planners have long served as
+the reference solution for turbid water~\cite{mane2024eroasdef}. Optical
+pipelines instead recover geometry indirectly and must cope with the
+resulting scale ambiguity: monocular optic-flow divergence supports
+autonomous braking and safe-distance keeping on a real ROV across a range of
+visibility conditions~\cite{bergantin2024realtime}; stereo geometry supports
+a committed semicircular bypass around located obstacles with return to a
+predefined line in a pool~\cite{zhang2022binocula}; omnidirectional visual
+SLAM supports potential-field evasion on a real
+AUV~\cite{ochoa2022collisio}; and learned end-to-end policies map monocular
+imagery, optionally fused with a single-beam echo sounder, directly to
+motion commands on BlueROV2-class vehicles in
+pools~\cite{yang2022monocula,lin2024uivnavun,yang2025duvindif}. The common
+limitation for our purposes is not capability but evidence structure: each
+of these systems demonstrates that its own controller works on its own
+vehicle, so the reported numbers characterize a method, not the simulator
+that might have predicted it. We therefore adopt a deliberately conventional
+optical avoidance stack, because the object under study here is the
+simulator rather than the avoidance algorithm.
+
+\subsection{Temporal Estimation and Risk-Aware Avoidance}
+
+Filtering detections over time, and letting the resulting uncertainty shape
+the safety decision, is likewise a mature idea. In multi-object tracking the
+measurement-noise covariance is routinely made responsive to detector
+output: a linear confidence scaling of the measurement noise originated in
+NSA-Kalman~\cite{du2021giaotrac} and was popularized by
+StrongSORT~\cite{du2023strongso}, while later work derives the covariance
+from the empirical spread of candidate boxes~\cite{solanocarrillo2024utrackmu}
+or from a learned regression head whose output distribution is scored for
+quality~\cite{lee2024uncertai}. Underwater, the same instinct appears as
+confidence-driven adaptation of tracker parameters to suppress acoustic
+false positives~\cite{li2026underwat}, as an extended Kalman filter on an
+optic-flow-derived relative distance~\cite{bergantin2024realtime}, and as
+covariance-inflated collision-risk zones feeding a potential-field
+planner~\cite{li2024anobstac}. On the control side, uncertainty is
+propagated into the safety constraint itself: belief control barrier
+functions bound collision risk under a sampled environment
+belief~\cite{han2025riskaware,han2026riskawar}, and scenario-based model
+predictive control bounds collision probability jointly over a planned
+trajectory~\cite{groot2025scenario}. Two consequences follow for this paper.
+First, neither ``we filter detections with a Kalman filter'' nor ``our
+planner accounts for uncertainty'' can be offered as a contribution. Second,
+what remains genuinely under-reported is the \emph{comparative} behavior of
+these estimators under the specific disturbances a closed-loop avoidance run
+produces --- detector dropout at maneuver onset, abrupt ego-motion, and
+young-track outliers --- which is what our ablation isolates.
+
+\subsection{Underwater Simulation and Sim-to-Real Transfer}
+
+Marine simulators have matured to the point where the same autonomy stack can
+address a simulated and a physical vehicle without modification. HoloOcean
+provides vehicle dynamics, optical and acoustic sensor models, and a ROS~2
+interface~\cite{potokar2022holoocea,potokar2024holoocea,romrell2025apreview},
+and has been used in software- and hardware-in-the-loop configurations in
+which a real vehicle computer runs against the simulator and the resulting
+behavior is compared against field trials of the same
+vehicle~\cite{meyers2025testinga}. Transfer results follow the same pattern
+elsewhere: a high-fidelity vehicle model supports reinforcement-learning
+avoidance that transfers to pool experiments with a reported 94\% simulated
+success rate~\cite{zhang2025simtoreal}; a photogrammetric digital twin
+supervises a policy on a physical BlueROV2 in a harbor, with a dynamic-window
+planner as the comparator~\cite{mari2026deeprein,mari2025digitalt}; and
+instrumented facilities pair a pool with a digital
+twin~\cite{torroba2026marinari,buche2026lotusimm}. Complementary work
+calibrates the simulator itself rather than the policy, by identifying
+BlueROV2 hydrodynamics against measured
+responses~\cite{benzon2022anopenso,orjales2025towardsa}. What these studies
+report is transfer or model agreement: the trajectory matched, the controller
+survived, the coefficients improved. What they do not report is whether the
+simulator, used as an evaluation instrument, would have ordered competing
+avoidance methods the way the water does. It is also worth noting how the
+physical evidence is constituted: in the closest BlueROV2 study the obstacles
+avoided during the sea trials exist only inside the digital twin, and
+obstacle sensing is computed from the twin rather than from onboard
+perception~\cite{mari2026deeprein}.
+
+\subsection{Simulator Predictivity and the Remaining Gap}
+
+The distinction we need is between successful transfer and predictive
+simulation, and it has a precise formulation outside marine robotics. Kadian
+et al.~\cite{kadian2020simrealp} run identical navigation code in a simulator
+and in a scanned replica of the same physical space, and quantify predictivity
+by the correlation between simulated and real per-method outcomes, using the
+Sim-vs-Real Correlation Coefficient to ask whether the \emph{ranking} of
+methods is preserved; tuning simulator parameters raised that correlation
+from 0.18 to 0.844, which is the strongest available evidence that
+predictivity is a property one can deliberately engineer. Related work
+outside navigation ranks sensor-model fidelity by its effect on a downstream
+estimator judged against replicated real
+runs~\cite{mahajan2024quantify}, and validates camera models by the response
+of a downstream detector rather than at pixel
+level~\cite{elmquist2022aperform}. The counterweight is
+Truong et al.~\cite{truong2022rethinki}: higher simulation fidelity produced
+\emph{worse} transfer for learned navigation policies, so added fidelity is
+an empirical question, not a monotone improvement.
+
+Taken together, prior work establishes underwater visual and acoustic
+obstacle avoidance on physical vehicles, probabilistic temporal filtering of
+obstacle state, uncertainty-aware collision avoidance, BlueROV2
+experimentation with external ground truth, high-fidelity underwater
+simulation, HoloOcean-based software- and hardware-in-the-loop testing,
+underwater sim-to-real transfer, and simulator-predictivity analysis in
+ground robotics. The question that remains is not whether an avoidance
+controller transfers. It is whether progressively calibrating an underwater
+simulator makes it quantitatively more predictive of physical safety and
+performance, and of the relative ranking of obstacle-avoidance methods, on a
+real ROV. Table~\ref{tab:related} places the most directly comparable studies
+against the axes that question requires.
+
+\input{tables/tab_related_work}

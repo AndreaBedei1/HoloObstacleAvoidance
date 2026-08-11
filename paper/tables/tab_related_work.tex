@@ -1,0 +1,79 @@
+%==============================================================================
+% Related-work positioning table.  Every cell is sourced from
+% docs/LITERATURE_AND_NOVELTY.md (deep-read set) or from the closed-list
+% verification recorded in paper/STATUS.md.  Status: READY.
+% Full-width table*: column widths are fixed so the row text wraps instead of
+% overflowing the text block.
+%==============================================================================
+\begin{table*}[t]
+\centering
+\caption{Positioning against the most directly comparable studies.
+``Phys.\ obst.'' means the avoided obstacle physically existed in the water.
+``Sim--real calibration'' means the simulator was deliberately adjusted to
+measured reality. ``Predictivity / ranking'' means the study quantified how
+well simulation predicts real outcomes or preserves the ordering of methods.}
+\label{tab:related}
+\tiny
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}
+  p{0.56in} p{0.54in} p{0.80in} p{0.66in} p{0.62in}
+  p{0.66in} p{0.92in} p{0.72in} p{0.70in}@{}}
+\toprule
+\textbf{Work} & \textbf{Vehicle} & \textbf{Perception} &
+\textbf{Temporal est.} & \textbf{Avoidance} & \textbf{Simulator} &
+\textbf{Physical validation} & \textbf{Sim--real calibration} &
+\textbf{Predictivity / ranking} \\
+\midrule
+Bergantin \cite{bergantin2024realtime}
+  & BlueBee ROV & Mono.\ optic flow & EKF (rel.\ distance)
+  & Reactive braking & --- & Pool/harbour/lake, phys.\ obst.\ & --- & --- \\
+Yang \cite{yang2022monocula}
+  & BlueROV2 & Mono.\ + echo sounder & ---
+  & End-to-end RL & Unity & Pool, phys.\ obst.\ & Domain random.\ & --- \\
+UIVNAV \cite{lin2024uivnavun}
+  & BlueROV2 Hv.\ & Mono.\ RGB & ---
+  & Imitation policy & OysterSim & Tank, phys.\ obst.\ & --- & --- \\
+DUViN \cite{yang2025duvindif}
+  & BlueROV2 Hv.\ & Mono.\ RGB, depth feat.\ & ---
+  & Diffusion policy & Unity & Tank, phys.\ obst., mocap GT & --- & --- \\
+Alinei-Poian\u{a} \cite{alineipoiana2024abluerov}
+  & BlueROV2 & Mono.\ RGB (YOLO) & 15-state EKF
+  & --- (mapping) & --- & Pool, overhead cam.\ inside filter & --- & --- \\
+Li \cite{li2026underwat}
+  & AUV & Forward-looking sonar & Confidence-adaptive
+  & RA-LOS guidance & --- & Lake, phys.\ obst.\ & --- & --- \\
+Li \cite{li2024anobstac}
+  & AUV & Abstracted detections & KF + covariance risk
+  & Improved APF & Numerical & --- (simulation only) & --- & --- \\
+Han \cite{han2025riskaware}
+  & Underwater (sim.) & --- & Sampled belief
+  & Belief CBF & Numerical & --- (simulation only) & --- & --- \\
+Han \cite{han2026riskawar}
+  & BlueROV2 & 3D sonar & SMC-PHD (RFS)
+  & BCBF-QP filter & PyBullet & Tank, phys.\ obst., mocap GT & --- & --- \\
+Mari \cite{mari2026deeprein}
+  & BlueROV2 & Twin-derived occup.\ grid & ---
+  & PPO vs.\ DWA & Unity twin & Harbor, \emph{virtual} obst.\
+  & Photogramm.\ twin & --- \\
+Zhang \cite{zhang2025simtoreal}
+  & Underwater robot & --- & ---
+  & RL & High-fidelity model & Pool, phys.\ obst.\
+  & Model / I-O alignment & --- \\
+Meyers \cite{meyers2025testinga}
+  & CougUV & Simulated sensors & Vehicle nav.\ filter
+  & Waypoints & HoloOcean 2.0, SIL/HIL & Field trials
+  & Single fidelity & Descriptive comparison \\
+Kadian \cite{kadian2020simrealp}
+  & Ground robot & RGB-D & ---
+  & 9 learned policies & Habitat & Scanned real lab
+  & Post-hoc param.\ tuning & \textbf{SRCC ranking} \\
+\midrule
+\textbf{This work}
+  & BlueROV2 Hv.\ & Mono.\ RGB detection & \textbf{T0--T3 ablation}
+  & Committed + DWA & HoloOcean & Pool, phys.\ obst., overhead GT
+  & \textbf{Progressive \SZERO--\STHREE, measured}
+  & \textbf{Absolute error + ranking} \\
+\bottomrule
+\end{tabular}
+\end{table*}

@@ -1,0 +1,26 @@
+%==============================================================================
+% S0-S3 calibration ladder.  Status: DRAFT (methodology fixed; the measured
+% values that populate each level do not exist yet -- see paper/STATUS.md).
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Calibration ladder. Each level adds one class of \emph{measured}
+calibration; the ``left uncalibrated'' column is what licenses attributing a
+change in predictivity to the rung that changed. No level is tuned against
+avoidance outcomes.}
+\label{tab:calibration}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}l p{27mm} p{27mm}@{}}
+\toprule
+\textbf{Level} & \textbf{Calibrated against measurement} &
+\textbf{Deliberately left uncalibrated} \\
+\midrule
+\SZERO   & --- (default practical model) & camera, timing, vehicle response, sensor noise \\
+\SONE    & camera resolution, frame rate, FOV/intrinsics, measurable image statistics & timing, vehicle response, sensor noise \\
+\STWO    & \SONE{} $+$ acquisition/encode/transport latency, detector latency, command latency, frame drops & vehicle response, sensor noise \\
+\STHREE  & \STWO{} $+$ surge/sway/yaw response, deadbands, rate limits, attitude/depth noise and rate & optical medium (scattering, turbidity), tether dynamics \\
+\bottomrule
+\end{tabular}
+\end{table}

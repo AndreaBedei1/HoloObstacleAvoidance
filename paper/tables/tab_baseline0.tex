@@ -1,0 +1,37 @@
+%==============================================================================
+% Scientific Baseline 0.  Source: docs/SCIENTIFIC_BASELINE_0.md,
+% experiments/simulation/scientific_baseline_0/ (manifest + per-run JSON).
+% Status: READY.  Label: simulation dynamics integration baseline, ORACLE
+% perception -- NOT a visual obstacle-avoidance result.
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Simulation integration baseline, 9/9 accepted runs from fresh
+processes. Obstacle perception is the simulator oracle: this validates
+physics, control, navigation and safety plumbing, \emph{not} vision.
+Clearance is to the obstacle surface, computed from known geometry.}
+\label{tab:baseline0}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{26mm} r r r@{}}
+\toprule
+\textbf{Metric} & \textbf{A: straight} & \textbf{B: avoid} &
+\textbf{C: avoid$+$dropout} \\
+ & ($n{=}3$) & ($n{=}3$) & ($n{=}3$) \\
+\midrule
+Accepted                    & 3/3 & 3/3 & 3/3 \\
+Collisions                  & --- & 0/3 & 0/3 \\
+Min.\ clearance [m]         & --- & 0.672--0.712 & 0.688--0.715 \\
+Forward progress [m]        & 13.4--14.0 & 34.9--35.0 & 34.4--35.0 \\
+Max.\ lateral dev.\ [m]     & 0.000 & 2.43--2.48 & 2.45--2.47 \\
+Final lateral error [m]     & 0.000 & 0.019--0.058 & 0.016--0.045 \\
+Returned to line            & --- & 3/3 & 3/3 \\
+Avoidance entries / switches& 0 / 0 & 1 / 0 & 1 / 0 \\
+Maneuver time [s]           & --- & 70.6--70.8 & 70.7--70.8 \\
+Odometry error, max [m]     & 0.106--0.117 & 0.174--0.193 & 0.172--0.198 \\
+Thruster peak [N] (of 28.75)& 2.99 & 3.84 & 3.84 \\
+Saturation / watchdog trips & 0 / 0 & 0 / 0 & 0 / 0 \\
+\bottomrule
+\end{tabular}
+\end{table}

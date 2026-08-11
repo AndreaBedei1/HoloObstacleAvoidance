@@ -1,0 +1,92 @@
+%==============================================================================
+% Predictive sim-to-real evaluation of visual underwater obstacle avoidance
+% IEEEtran conference format (venue NOT frozen: ICRA / IROS / OCEANS / RA-L).
+%
+% BUILD:  latexmk -pdf main.tex     (or: pdflatex -> bibtex -> pdflatex x2)
+%
+% RULES (see paper/STATUS.md and docs/SCIENTIFIC_DECISIONS.md):
+%   * every number must be traceable to a committed experiment manifest;
+%   * results not yet measured use \PENDING{...}, never invented values;
+%   * Phase-8 (planner campaign) and pool results are NOT in this draft.
+%==============================================================================
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+\graphicspath{{figures/}}
+
+%------------------------------------------------------------------------------
+% Draft machinery.  \PENDING marks a result that the experiments have not yet
+% produced.  It is deliberately loud so no placeholder can survive to camera
+% ready.  Set \DRAFTfalse to make every pending marker compile to an error.
+%------------------------------------------------------------------------------
+\newif\ifDRAFT\DRAFTtrue
+\newcommand{\PENDING}[1]{%
+  \ifDRAFT\textcolor{red}{\small[\,PENDING: #1\,]}%
+  \else\GenericError{}{PENDING marker left in camera-ready: #1}{}{}\fi}
+% Shorthand tags used repeatedly.
+\newcommand{\PEIGHT}{\PENDING{PHASE8\_FINAL\_RESULT}}
+\newcommand{\POOL}{\PENDING{POOL\_EXPERIMENT}}
+\newcommand{\SREAL}{\PENDING{SIM\_REAL\_ANALYSIS}}
+\newcommand{\CALIB}{\PENDING{CALIBRATION\_MEASUREMENT}}
+
+% Consistent terminology (do not vary these across the paper).
+\newcommand{\SZERO}{S0}\newcommand{\SONE}{S1}
+\newcommand{\STWO}{S2}\newcommand{\STHREE}{S3}
+\newcommand{\PC}{C}   % committed circumnavigation planner
+\newcommand{\PD}{D}   % DWA baseline planner
+
+\begin{document}
+
+%------------------------------------------------------------------------------
+% TITLE.  NOT FROZEN.  Candidates are listed in paper/STATUS.md; the working
+% choice below is deliberately conservative (no "closing the gap", no "first").
+%------------------------------------------------------------------------------
+\title{How Predictive Is Underwater Simulation?\\
+A Calibration-Ladder Study of Visual Obstacle\\
+Avoidance from HoloOcean to a BlueROV2}
+
+\author{\IEEEauthorblockN{Andrea Bedei\PENDING{AUTHOR\_LIST}}
+\IEEEauthorblockA{\PENDING{AFFILIATION}\\
+\PENDING{EMAIL}}}
+
+\maketitle
+
+\input{sections/00_abstract}
+
+\begin{IEEEkeywords}
+Marine robotics, sim-to-real transfer, simulator validation, obstacle
+avoidance, underwater perception, BlueROV2, HoloOcean.
+\end{IEEEkeywords}
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_system}
+\input{sections/04_vehicle_model}
+\input{sections/05_perception_estimation}
+\input{sections/06_planners}
+\input{sections/07_calibration}
+\input{sections/08_experimental_design}
+\input{sections/09_results}
+\input{sections/10_predictivity_analysis}
+\input{sections/11_discussion}
+\input{sections/12_limitations}
+\input{sections/13_conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
