@@ -62,12 +62,18 @@ def generate_launch_description():
         DeclareLaunchArgument("planner", default_value="committed"),
         DeclareLaunchArgument("nominal_surge", default_value="0.3"),
         DeclareLaunchArgument("dwa_safety_margin_m", default_value="0.80"),
-        DeclareLaunchArgument("dwa_w_clearance", default_value="1.0"),
+        DeclareLaunchArgument("dwa_w_clearance", default_value="0.5"),
         DeclareLaunchArgument("dwa_w_progress", default_value="1.0"),
         DeclareLaunchArgument("dwa_w_speed", default_value="0.3"),
         DeclareLaunchArgument("dwa_w_route", default_value="0.5"),
         DeclareLaunchArgument("dwa_w_smooth", default_value="0.1"),
-        DeclareLaunchArgument("dwa_horizon_s", default_value="3.0"),
+        DeclareLaunchArgument("dwa_horizon_s", default_value="6.0"),
+        # Scenario class constants (pool-scale profile). Applied to BOTH
+        # planners so the monocular assumptions stay identical.
+        DeclareLaunchArgument("target_obstacle_height_m",
+                              default_value="3.5"),
+        DeclareLaunchArgument("dwa_obstacle_radius_m", default_value="1.75"),
+        DeclareLaunchArgument("dwa_goal_lookahead_m", default_value="4.0"),
         DeclareLaunchArgument("validator_output",
                               default_value="logs/baseline0_validation.json"),
         DeclareLaunchArgument("label", default_value="baseline0"),
@@ -132,7 +138,10 @@ def generate_launch_description():
             executable="local_avoidance_planner_node",
             name="local_avoidance_planner",
             output="screen",
-            parameters=[planner_config],
+            parameters=[planner_config, {
+                "target_obstacle_height_m":
+                    LaunchConfiguration("target_obstacle_height_m"),
+            }],
             condition=IfCondition(PythonExpression(
                 ["'", LaunchConfiguration("planner"), "' == 'committed'"])),
         ),
@@ -149,6 +158,12 @@ def generate_launch_description():
                 "w_route": LaunchConfiguration("dwa_w_route"),
                 "w_smooth": LaunchConfiguration("dwa_w_smooth"),
                 "horizon_s": LaunchConfiguration("dwa_horizon_s"),
+                "target_obstacle_height_m":
+                    LaunchConfiguration("target_obstacle_height_m"),
+                "obstacle_radius_m":
+                    LaunchConfiguration("dwa_obstacle_radius_m"),
+                "goal_lookahead_m":
+                    LaunchConfiguration("dwa_goal_lookahead_m"),
             }],
             condition=IfCondition(PythonExpression(
                 ["'", LaunchConfiguration("planner"), "' == 'dwa'"])),

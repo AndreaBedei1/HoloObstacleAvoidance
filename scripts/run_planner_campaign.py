@@ -47,6 +47,26 @@ F_SCENARIOS = {
            "desc": "initial heading error +15 deg"},
     "F10": {"yaml": "planner_F0.yaml", "args": ["nominal_surge:=0.4"],
             "desc": "higher approach speed 0.4 m/s"},
+    # Development-only tuning geometries (never in the final campaign).
+    "P0": {"yaml": "planner_P0.yaml", "args": [],
+           "desc": "TUNING: no obstacle (route-hold sanity)"},
+    "P1": {"yaml": "planner_P1.yaml", "args": [],
+           "desc": "TUNING: central obstacle at 11 m"},
+    "P2": {"yaml": "planner_P2.yaml", "args": [],
+           "desc": "TUNING: obstacle 2 m left at 11 m"},
+    # Pool-scale feasibility profile (K-series): ~8 m pool geometry, small
+    # obstacle class, shared monocular constants scaled for BOTH planners;
+    # planner-specific tuned parameters stay frozen (as-is transfer test).
+    "K0": {"duration_s": 90.0, "yaml": "planner_K0.yaml",
+           "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
+                    "dwa_obstacle_radius_m:=0.25",
+                    "dwa_goal_lookahead_m:=4.0"],
+           "desc": "POOL: central 0.5 m obstacle at 3.5 m, 0.15 m/s"},
+    "K1": {"duration_s": 90.0, "yaml": "planner_K1.yaml",
+           "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
+                    "dwa_obstacle_radius_m:=0.25",
+                    "dwa_goal_lookahead_m:=4.0"],
+           "desc": "POOL: 0.5 m obstacle 0.75 m left at 3.5 m, 0.15 m/s"},
 }
 DURATION_S = 120.0
 
@@ -54,6 +74,7 @@ DURATION_S = 120.0
 def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
              dwa_args) -> dict:
     fs = F_SCENARIOS[scenario]
+    duration = fs.get("duration_s", DURATION_S)
     run_dir = os.path.join(out_root, "runs",
                            f"{scenario}_{planner}_{run_idx}")
     os.makedirs(run_dir, exist_ok=True)
@@ -64,25 +85,9 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
     result = {"scenario": scenario, "planner": planner, "run": run_idx,
               "ok": False, "desc": fs["desc"]}
     try:
-        p, lg = b0.start([b0.ocean_python(),
-                          os.path.join(REPO, "src", "rov_obstacle_sim_bridge",
-                                       "holoocean_server",
-                                       "holoocean_sim_server.py"),
-                          "--config", scenario_yaml, "--serve"],
-                         os.path.join(run_dir, "sim_server.log"))
-        procs.append(p); logs.append(lg)
-        if not b0.wait_for_port("127.0.0.1", 47654, timeout_s=300):
-            result["error"] = "sim server port never opened"
-            return result
-
         env = dict(os.environ)
         env.setdefault("RMW_IMPLEMENTATION", "rmw_zenoh_cpp")
         env.setdefault("ZENOH_ROUTER_CHECK_ATTEMPTS", "20")
-        p, lg = b0.start(["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"],
-                         os.path.join(run_dir, "zenoh.log"), env=env)
-        procs.append(p); logs.append(lg)
-        time.sleep(6.0)
-
         launch_cmd = [
             "ros2", "launch", "rov_obstacle_sim_bridge",
             "holoocean_baseline0.launch.py",
@@ -93,6 +98,28 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
         ] + fs["args"] + list(dwa_args)
         launched = False
         for attempt in (1, 2):
+            # FULL environment start per attempt, sim server included: a
+            # retry that reuses the running engine inherits whatever pose,
+            # yaw, and velocity attempt 1 left behind, so the route the
+            # planner/validator capture at startup is poisoned (observed:
+            # a diagonal route from a -22 deg residual yaw).
+            p, lg = b0.start([b0.ocean_python(),
+                              os.path.join(REPO, "src",
+                                           "rov_obstacle_sim_bridge",
+                                           "holoocean_server",
+                                           "holoocean_sim_server.py"),
+                              "--config", scenario_yaml, "--serve"],
+                             os.path.join(run_dir,
+                                          f"sim_server_{attempt}.log"))
+            procs.append(p); logs.append(lg)
+            if not b0.wait_for_port("127.0.0.1", 47654, timeout_s=300):
+                result["error"] = "sim server port never opened"
+                return result
+            p, lg = b0.start(["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"],
+                             os.path.join(run_dir, f"zenoh_{attempt}.log"),
+                             env=env)
+            procs.append(p); logs.append(lg)
+            time.sleep(6.0)
             p, lg = b0.start(launch_cmd,
                              os.path.join(run_dir,
                                           f"ros2_launch_{attempt}.log"),
@@ -101,16 +128,18 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             if b0.wait_for_graph_liveness(validator_out, timeout_s=30.0):
                 launched = True
                 break
-            print(f"[planner8] graph not live (attempt {attempt}); retry",
-                  flush=True)
-            b0.stop(p)
+            print(f"[planner8] graph not live (attempt {attempt}); "
+                  "FULL restart incl. sim server", flush=True)
+            for pp in reversed(procs):
+                b0.stop(pp)
+            procs.clear()
             time.sleep(3.0)
         if not launched:
             result["error"] = "graph liveness failed twice (technical invalid)"
             result["technical_invalid"] = True
             return result
 
-        time.sleep(DURATION_S)
+        time.sleep(duration)
         result["ok"] = True
     finally:
         for p in reversed(procs):
@@ -133,6 +162,20 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
         result["ok"] = False
         result["error"] = "validator output missing"
     return result
+
+
+def is_technical_invalid(r: dict) -> str | None:
+    """Objective technical-invalid signatures (protocol section 6)."""
+    if r.get("technical_invalid"):
+        return r.get("error", "launch")
+    m = r.get("metrics")
+    if not m:
+        return r.get("error", "no validator output")
+    if m.get("infra_freeze_detected"):
+        return "infra_freeze"
+    if m.get("cmd_path_dead_detected"):
+        return "cmd_path_dead"
+    return None
 
 
 def assess(m: dict) -> dict:
@@ -185,12 +228,27 @@ def main() -> int:
     total = len(planners) * len(scenarios) * args.runs
     n = 0
     for sc in scenarios:
-        for planner in planners:
-            for i in range(1, args.runs + 1):
+        # Alternate planners inside the scenario block (protocol section 4)
+        # so drift in engine load affects both planners symmetrically.
+        for i in range(1, args.runs + 1):
+            for planner in planners:
                 n += 1
                 print(f"[planner8] === {n}/{total}: {sc} {planner} run {i} "
                       "===", flush=True)
                 r = run_once(planner, sc, i, args.out, args.dwa_args)
+                why = is_technical_invalid(r)
+                if why:
+                    # Protocol section 4: technical-invalid runs are
+                    # excluded and re-run (ONCE); algorithm failures never.
+                    print(f"[planner8] technical invalid ({why}) -> "
+                          "one re-run", flush=True)
+                    r_retry = run_once(planner, sc, i, args.out,
+                                       args.dwa_args)
+                    r_retry["replaced_technical_invalid"] = why
+                    if not is_technical_invalid(r_retry):
+                        r = r_retry
+                    else:
+                        r["also_retry_invalid"] = True
                 r["assessment"] = assess(r.get("metrics") or {})
                 print(f"[planner8] {sc}/{planner}/{i}: "
                       f"{json.dumps(r['assessment'])}", flush=True)

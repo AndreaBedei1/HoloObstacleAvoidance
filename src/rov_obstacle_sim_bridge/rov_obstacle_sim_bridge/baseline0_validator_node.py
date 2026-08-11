@@ -118,6 +118,14 @@ class Baseline0ValidatorNode(Node):
         self._raw_det_count = 0
         # Phase 8 infra-freeze detector state
         self._freeze_window_ticks = 0
+        # Phase 8 command-path-dead detector state (bridge->server TCP flap:
+        # planner commands flow on the ROS side but the sim-side setpoint
+        # never moves and the vehicle sits still).
+        self._safe_last_mag = 0.0
+        self._safe_last_t = None
+        self._cmd_dead_ticks = 0
+        self._cmd_path_dead = False
+        self._cmd_path_dead_t = None
         self._infra_freeze = False
         self._infra_freeze_t = None
         self._sg_last = None
@@ -237,6 +245,8 @@ class Baseline0ValidatorNode(Node):
     def _on_safe(self, msg: Twist) -> None:
         self._safe_count += 1
         cur = (msg.linear.x, msg.linear.y, msg.angular.z)
+        self._safe_last_mag = abs(cur[0]) + abs(cur[1])
+        self._safe_last_t = self._now()
         if self._safe_prev is not None:
             for i in range(3):
                 self._smooth_sum[i] += abs(cur[i] - self._safe_prev[i])
@@ -309,7 +319,33 @@ class Baseline0ValidatorNode(Node):
             self._freeze_window_ticks += 1
         else:
             self._freeze_window_ticks = 0
-        if self._freeze_window_ticks >= 150 and not self._infra_freeze:
+        # Command-path-dead rule (pre-registered, technical-invalid #5):
+        # the ROS side is publishing a nonzero safe command, but the
+        # sim-side controller setpoint stays ~zero and the world speed is
+        # ~zero — the bridge->server TCP command path is down (observed:
+        # 60 s dead start with 'bridge disconnected' flaps; the graph-
+        # liveness gate cannot see this because the ROS graph is healthy).
+        now_v = self._now()
+        sp_mag = abs(float(sp_now.get("surge", 0.0)))             + abs(float(sp_now.get("sway", 0.0)))
+        if (self._safe_last_t is not None
+                and now_v - self._safe_last_t < 1.0
+                and self._safe_last_mag > 0.1
+                and sp_mag < 0.02
+                and float(sg.get("speed_world", 1.0)) < 0.01):
+            self._cmd_dead_ticks += 1
+        else:
+            self._cmd_dead_ticks = 0
+        if self._cmd_dead_ticks >= 150 and not self._cmd_path_dead:
+            self._cmd_path_dead = True
+            self._cmd_path_dead_t = now_v - self._t0
+
+        # Cumulative rule: the sim-side sleep guard tickles a jammed body
+        # every ~2 s (same-pose teleport), which blips speed/pos and resets
+        # the CONSECUTIVE counter above — a 40 s boundary jam went
+        # undetected. The engine's own frozen_tick_total is monotonic and
+        # immune to that interaction.
+        frozen_total = int(sg.get("frozen_tick_total", 0) or 0)
+        if (self._freeze_window_ticks >= 150 or frozen_total >= 150)                 and not self._infra_freeze:
             # ~5 s at 30 Hz of commanded-but-motionless under thrust.
             self._infra_freeze = True
             self._infra_freeze_t = self._now() - self._t0
@@ -486,6 +522,10 @@ class Baseline0ValidatorNode(Node):
                 if self._dist_at_commit is not None else None),
             "qualification": self._qual_last,
             "infra_freeze_detected": self._infra_freeze,
+            "cmd_path_dead_detected": self._cmd_path_dead,
+            "cmd_path_dead_t_s": (round(self._cmd_path_dead_t, 2)
+                                  if self._cmd_path_dead_t is not None
+                                  else None),
             "infra_freeze_t_s": (round(self._infra_freeze_t, 2)
                                  if self._infra_freeze_t is not None else None),
             "sleep_guard_last": self._sg_last,

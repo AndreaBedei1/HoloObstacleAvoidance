@@ -25,6 +25,7 @@ from rov_obstacle_msgs.msg import Obstacle2DArray
 from std_msgs.msg import String
 
 from .dwa_planner import (
+    ObstacleMemory,
     DWAConfig,
     HolonomicDWA,
     ResponseVelocityEstimator,
@@ -59,15 +60,20 @@ class DWAPlannerNode(Node):
         self.declare_parameter("planner_rate_hz", 10.0)
         self.declare_parameter("command_timeout_s", 1.0)
         # Core DWA parameters exposed for the tuning phase.
-        self.declare_parameter("w_clearance", 1.0)
+        self.declare_parameter("w_clearance", 0.5)
         self.declare_parameter("w_progress", 1.0)
         self.declare_parameter("w_speed", 0.3)
         self.declare_parameter("w_route", 0.5)
         self.declare_parameter("w_smooth", 0.1)
         self.declare_parameter("safety_margin_m", 0.80)
-        self.declare_parameter("horizon_s", 3.0)
+        self.declare_parameter("horizon_s", 6.0)
         self.declare_parameter("clearance_saturation_m", 2.0)
         self.declare_parameter("max_surge", 0.5)
+        # Scenario class constants (pool-scale profile): shared monocular
+        # assumptions, kept IDENTICAL to the committed planner per scenario.
+        self.declare_parameter("target_obstacle_height_m", 3.5)
+        self.declare_parameter("obstacle_radius_m", 1.75)
+        self.declare_parameter("goal_lookahead_m", 4.0)
 
         topics = [str(self.get_parameter(p).value)
                   for p in ("obstacle_topic", "nominal_topic", "pose_topic")]
@@ -87,9 +93,20 @@ class DWAPlannerNode(Node):
             clearance_saturation_m=float(
                 self.get_parameter("clearance_saturation_m").value),
             max_surge=float(self.get_parameter("max_surge").value),
+            target_obstacle_height_m=float(
+                self.get_parameter("target_obstacle_height_m").value),
+            obstacle_radius_m=float(
+                self.get_parameter("obstacle_radius_m").value),
+            goal_lookahead_m=float(
+                self.get_parameter("goal_lookahead_m").value),
         )
         self._dwa = HolonomicDWA(cfg)
         self._vel_est = ResponseVelocityEstimator(cfg)
+        # Rolling odom-frame obstacle memory (see ObstacleMemory doc):
+        # parity with the committed planner's commitment-state memory.
+        self.declare_parameter("obstacle_memory_ttl_s", 30.0)
+        self._memory = ObstacleMemory(
+            ttl_s=float(self.get_parameter("obstacle_memory_ttl_s").value))
         self._cfg = cfg
 
         self._pose = None                 # (x, y, yaw)
@@ -186,12 +203,13 @@ class DWAPlannerNode(Node):
                 pose_yaw=self._pose[2], cfg=self._cfg))
         if obstacles:
             self._last_obstacles = list(obstacles)
+        self._memory.update(obstacles, now)
 
         nominal_surge = float(self._nominal.linear.x)
         res = self._dwa.plan(
             pose=self._pose,
             vel_est=(self._vel_est.u, self._vel_est.v, self._vel_est.r),
-            obstacles=obstacles,
+            obstacles=self._memory.active(now),
             route=self._route,
             nominal_surge=nominal_surge,
         )

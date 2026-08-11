@@ -211,6 +211,43 @@ reason, implications, commit. Newest last. Referenced from
   change would require a full rerun and a new decision entry.
 - **Commit:** (Phase-7B commit).
 
+## D-013 — Phase 8 DWA baseline parameter freeze
+
+- **Question:** which holonomic-DWA configuration runs the final C-vs-D
+  comparison campaign?
+- **Development evidence (P-series dev scenarios ONLY, archived under
+  `experiments/simulation/planner_dwa/tuning/`):** stage-1 grid r6
+  (w_clearance {0.5, 1.0, 2.0} x margin {0.5, 0.8} on P1/P2) and stage-2
+  single-axis probes (w_route {0.25, 1.0}, w_speed 0.1, w_progress 0.5),
+  plus the kinematic closed-loop regression battery in the unit suite.
+  Lexicographic objective, measured results: zero collisions in all 20
+  tuning runs; w_clearance 2.0 REJECTED (parks 5 m before a central
+  obstacle: path 5.5-5.9 m, the clearance-dominant local minimum);
+  w_progress 0.5 REJECTED (parks at 7.45 m, anti-parking pressure too
+  weak); w_route 0.25 looser returns (|final lat| 0.60-0.72 vs
+  0.26-0.48); w_route 1.0 residual yaw -10.7 deg; w_speed 0.1 residual
+  yaw -7.8 deg with no efficiency gain. Margin 0.8 preferred over 0.5 at
+  criterion 3 (P1 GT clearance 1.65 vs 1.06 m against the close-range
+  monocular over-estimation stack).
+- **Frozen values:** w_clearance 0.5, w_progress 1.0, w_speed 0.3,
+  w_route 0.5, w_smooth 0.1; safety_margin_m 0.80 (+ vehicle radius
+  0.40); horizon 6.0 s, rollout step 0.2 s, window = one control
+  interval (0.1 s, surge slew-limited; sway/yaw full-authority per-axis
+  window); sampling 7 x 7 x 9; limits u<=0.5, |v|<=0.3, |r|<=0.3;
+  goal_lookahead 4.0 m; clearance saturation 2.0 m; stoppability
+  v*1.2 s + v^2/(2*0.5) applied to closing candidates only + escape
+  rule; response taus 1.2/1.15/0.3 s; mission-paced progress + cruise
+  tracking with light sway penalty (0.15/max_sway); obstacle memory TTL
+  30 s, merge 1.5 m; obstacle class constants per scenario set (3.5 m /
+  1.75 m long-range; 0.5 m / 0.25 m pool) applied to BOTH planners.
+- **Formulation lineage:** 10 documented iterations
+  (`docs/DWA_IMPLEMENTATION_AND_PROTOCOL.md`), each fixed BEFORE this
+  freeze; two candidate variants rejected with recorded numeric evidence
+  (course-alignment heading; relative clearance normalization).
+- **Rule:** FROZEN for the entire Phase 8 campaign. Any change
+  invalidates the campaign and requires a new decision entry.
+- **Commit:** (Phase 8 freeze commit).
+
 ---
 
 *(Add new decisions below with incrementing IDs.)*

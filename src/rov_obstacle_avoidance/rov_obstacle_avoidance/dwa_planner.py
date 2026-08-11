@@ -25,12 +25,14 @@ TRANSFERABLE INPUTS ONLY (identical information to the committed planner):
     (same convention as the committed planner)
 No ground truth, no oracle position, no simulator sensors.
 
-Classical objective (5 weights):
-    J = w_clearance * clearance_norm
-      + w_progress  * route_progress_norm
-      + w_speed     * forward_speed_norm
-      - w_route     * cross_track_norm
+Classical objective (5 weights, all normalized, Fox-style):
+    J = w_clearance * end_state_clearance_sat   (saturated absolute)
+      + w_progress  * mission_paced_goal_progress
+      + w_speed     * mission_speed_tracking
+      + w_route     * heading_to_goal_alignment (yaw, Fox's heading term)
       - w_smooth    * command_change_norm
+Goal = receding point on the nominal route, goal_lookahead_m ahead of the
+current along-track position (LOS pairing, Eriksen).
 
 Admissibility (classical stop-distance): a candidate is admissible only if
 its minimum predicted clearance exceeds the braking distance
@@ -69,13 +71,27 @@ class DWAConfig:
     # odometry assumption valid (a 0.5 s window at 10 Hz replanning produced
     # 2.5 m/s^2 effective slew, thruster saturation and odometry divergence
     # in the first closed-loop smoke).
-    window_dt: float = 0.1          # = control interval at 10 Hz
+    window_dt: float = 0.1          # = control interval at 10 Hz (surge)
+    # Per-axis window shaping (Eriksen philosophy: the window reflects the
+    # vehicle's per-axis dynamics/authority). Surge stays slew-limited; the
+    # LATERAL axes get full-range candidates: sway is the avoidance DOF of a
+    # holonomic vehicle, and a one-interval lateral window makes the planner
+    # myopic in front of large inflated obstacles (observed stall equilibrium
+    # at the safety boundary in tuning stage 1 rerun: the 3 s rollout cannot
+    # see that ~3 m of lateral motion clears the way). Commands are still
+    # physically rate-limited by the downstream controller.
+    full_lateral_window: bool = True
     # --- sampling -----------------------------------------------------------
     n_u: int = 7
     n_v: int = 7
-    n_r: int = 5
+    # 9-point yaw-rate grid (step 0.075): with 5 points (step 0.15) the
+    # smallest nonzero turn over-rotates ~46 deg by the horizon end, so
+    # small corrective turns are inexpressible and the planner holds a
+    # skewed equilibrium (residual yaw ~30 deg + lateral drift) after
+    # every pass (formulation iteration 9).
+    n_r: int = 9
     # --- forward simulation -------------------------------------------------
-    horizon_s: float = 3.0
+    horizon_s: float = 6.0
     sim_dt: float = 0.2
     # --- footprint / safety -------------------------------------------------
     # BlueROV2 Heavy documented horizontal extent 0.576 x 0.457 m ->
@@ -88,13 +104,30 @@ class DWAConfig:
     # (clearance_offset 2.5 - obstacle radius 1.75).
     safety_margin_m: float = 0.80
     stop_decel: float = 0.5         # available braking deceleration m/s^2
+    # Reaction/response lag included in the braking check (classical safe
+    # stopping distance v*t_react + v^2/2a): without it the vehicle GLIDES
+    # into the inflated zone during its ~1.2 s response lag and parks there
+    # (observed in tuning stage 1, P1 c2.0_m0.8).
+    reaction_time_s: float = 1.2
     # --- objective weights (classical, small set) ---------------------------
-    w_clearance: float = 1.0
+    # Fox 1997 weights the objective 0.8 heading / 0.1 clearance /
+    # 0.1 velocity: SAFETY is the admissibility constraint's job, the
+    # clearance objective only breaks near-danger ties. A dominant
+    # clearance weight parks the vehicle at the point of maximum
+    # clearance in front of the obstacle (observed local minimum).
+    w_clearance: float = 0.5
     clearance_saturation_m: float = 2.0
     w_progress: float = 1.0
     w_speed: float = 0.3
-    w_route: float = 0.5
+    w_route: float = 0.5            # heading-to-goal alignment (Fox's term)
     w_smooth: float = 0.1
+    # Receding goal on the nominal route (LOS guidance, Eriksen pairing):
+    # the goal sits this far ahead of the current along-track position.
+    # Fox's goal-directed heading/progress terms naturally curve AROUND
+    # obstacles; a distance-to-line route term instead PENALIZES the very
+    # detour avoidance requires and produced a stall equilibrium in front
+    # of central obstacles (tuning iterations 2-3).
+    goal_lookahead_m: float = 4.0
     # --- perception geometry (same assumptions as committed planner) -------
     camera_vertical_fov_deg: float = 90.0
     camera_horizontal_fov_deg: float = 90.0
@@ -158,6 +191,48 @@ def obstacle_from_detection(cx: float, bbox_h: float, pose_x: float,
                             bearing_rad=bearing, range_m=rng)
 
 
+class ObstacleMemory:
+    """Rolling odom-frame obstacle memory (classical DWA deployment
+    practice: ROS move_base pairs DWA with a persistent rolling costmap).
+
+    A memoryless DWA re-crosses the obstacle position as soon as the pass
+    takes it out of the camera FOV (observed pool-scale collision: swerve,
+    obstacle leaves the ±45° FOV, blind early return through it). The
+    committed planner carries the equivalent memory implicitly in its
+    commitment state machine, so this is information parity, using ONLY
+    past perception — no ground truth.
+
+    Detections merge into remembered obstacles within merge_dist_m
+    (position updated to the freshest estimate); entries expire after
+    ttl_s without re-observation."""
+
+    def __init__(self, ttl_s: float = 30.0, merge_dist_m: float = 1.5,
+                 max_items: int = 12) -> None:
+        self.ttl_s = ttl_s
+        self.merge_dist_m = merge_dist_m
+        self.max_items = max_items
+        self._items: List[Tuple[ObstacleEstimate, float]] = []
+
+    def update(self, detections: List[ObstacleEstimate],
+               now_s: float) -> None:
+        for det in detections:
+            for i, (ob, _) in enumerate(self._items):
+                if math.hypot(det.x - ob.x, det.y - ob.y) \
+                        <= self.merge_dist_m:
+                    self._items[i] = (det, now_s)
+                    break
+            else:
+                self._items.append((det, now_s))
+        self._items = [(ob, t) for ob, t in self._items
+                       if now_s - t <= self.ttl_s]
+        if len(self._items) > self.max_items:
+            self._items = sorted(self._items, key=lambda it: -it[1])[
+                :self.max_items]
+
+    def active(self, now_s: float) -> List[ObstacleEstimate]:
+        return [ob for ob, t in self._items if now_s - t <= self.ttl_s]
+
+
 class ResponseVelocityEstimator:
     """Planner-internal transferable body-velocity estimate: first-order
     response of the planner's OWN commanded outputs (same concept/taus as the
@@ -217,10 +292,14 @@ class HolonomicDWA:
         u0, v0, r0 = vel
         us = np.linspace(max(c.min_surge, u0 - du),
                          min(c.max_surge, u0 + du), c.n_u)
-        vs = np.linspace(max(-c.max_sway, v0 - du),
-                         min(c.max_sway, v0 + du), c.n_v)
-        rs = np.linspace(max(-c.max_yaw_rate, r0 - dr),
-                         min(c.max_yaw_rate, r0 + dr), c.n_r)
+        if c.full_lateral_window:
+            vs = np.linspace(-c.max_sway, c.max_sway, c.n_v)
+            rs = np.linspace(-c.max_yaw_rate, c.max_yaw_rate, c.n_r)
+        else:
+            vs = np.linspace(max(-c.max_sway, v0 - du),
+                             min(c.max_sway, v0 + du), c.n_v)
+            rs = np.linspace(max(-c.max_yaw_rate, r0 - dr),
+                             min(c.max_yaw_rate, r0 + dr), c.n_r)
         return us, vs, rs
 
     def plan(self,
@@ -257,6 +336,7 @@ class HolonomicDWA:
         y = np.full(n, float(y0), dtype=float)
         yaw = np.full(n, float(yaw0), dtype=float)
         min_d = np.full(n, np.inf)
+        end_d = np.full(n, np.inf)
         for _ in range(steps):
             cu += (cu_cmd - cu) * au
             cv += (cv_cmd - cv) * av
@@ -266,16 +346,50 @@ class HolonomicDWA:
             sin_y = np.sin(yaw)
             x = x + (cu * cos_y - cv * sin_y) * c.sim_dt
             y = y + (cu * sin_y + cv * cos_y) * c.sim_dt
+            step_d = None
             for ob in obstacles:
                 d = np.hypot(x - ob.x, y - ob.y) - ob.radius
                 np.minimum(min_d, d, out=min_d)
+                step_d = d if step_d is None else np.minimum(step_d, d)
+            end_d = step_d  # after the loop: min clearance at final point
 
         if obstacles:
             clear = min_d - inflate
+            # SCORING uses the END-state clearance: with response-aware
+            # rollouts every candidate shares a long common prefix near the
+            # current position, so the path-min clearance is nearly
+            # identical across candidates (no gradient � the stall of
+            # tuning iteration 3). Admissibility keeps the hard path-min.
+            clear_end = end_d - inflate
             speed = np.hypot(cu_cmd, cv_cmd)
-            stop_dist = speed * speed / (2.0 * c.stop_decel)
-            admissible_mask = (clear > 0.0) & (clear >= stop_dist)
-            clear_norm = np.minimum(clear, c.clearance_saturation_m)                 / c.clearance_saturation_m
+            stop_dist = speed * c.reaction_time_s                 + speed * speed / (2.0 * c.stop_decel)
+            # Initial clearance (current position, before the rollout).
+            d0 = min(math.hypot(x0 - ob.x, y0 - ob.y) - ob.radius
+                     for ob in obstacles)
+            clear0 = d0 - inflate
+            if clear0 <= 0.0:
+                # ESCAPE rule (standard DWA practice): already inside the
+                # inflated zone -> admissible candidates are those that
+                # INCREASE clearance; plain clear>0 would lock the vehicle
+                # in a permanent no-admissible stop inside the margin.
+                admissible_mask = clear > clear0 + 1e-6
+            else:
+                # DIRECTIONAL stoppability: the braking requirement applies
+                # only to candidates still CLOSING at the horizon end
+                # (min clearance at the final point). A candidate whose
+                # clearance is receding (min occurred mid-path, or it moves
+                # away) has already escaped/passed � requiring stopping
+                # distance against the shared start proximity made every
+                # lateral escape inadmissible and stalled the planner.
+                receding = clear_end > clear + 1e-6
+                admissible_mask = (clear > 0.0)                     & (receding | (clear_end >= stop_dist))
+            # ABSOLUTE saturated normalization (Fox caps the clearance
+            # objective at a useful distance). A RELATIVE (min-max over
+            # candidates) variant was tried and rejected (iteration 8):
+            # extreme flee-backward candidates stretch the normalization
+            # range so far that the useful escape candidates compress
+            # toward zero, and near-danger gradients vanish.
+            clear_norm = np.minimum(clear_end, c.clearance_saturation_m)                 / c.clearance_saturation_m
         else:
             admissible_mask = np.ones(n, dtype=bool)
             clear = np.full(n, np.inf)
@@ -283,27 +397,64 @@ class HolonomicDWA:
 
         speed_ref = max(0.05, min(nominal_surge, c.max_surge))
         if route is not None:
+            # Receding goal on the route, ahead of the CURRENT along-track
+            # position (LOS guidance). Goal-distance reduction + heading-to-
+            # goal are Fox's own objective structure and curve around
+            # obstacles instead of stalling against a distance-to-line term.
             rx, ry, ryaw = route
             cos_r, sin_r = math.cos(ryaw), math.sin(ryaw)
-            along = (x - rx) * cos_r + (y - ry) * sin_r
             along0 = (x0 - rx) * cos_r + (y0 - ry) * sin_r
-            progress = along - along0
-            cross = np.abs(-(x - rx) * sin_r + (y - ry) * cos_r)
-            dyaw = yaw - ryaw
-            yaw_err = np.abs(np.arctan2(np.sin(dyaw), np.cos(dyaw)))
+            gx = rx + (along0 + c.goal_lookahead_m) * cos_r
+            gy = ry + (along0 + c.goal_lookahead_m) * sin_r
+            d0 = math.hypot(x0 - gx, y0 - gy)
+            d_end = np.hypot(x - gx, y - gy)
+            # MISSION-PACED progress (anti-racing AND anti-parking):
+            # peak score for closing the goal distance at exactly the pace
+            # the nominal surge covers in one horizon; over- and under-
+            # progress are penalized symmetrically. At steady cruise the
+            # u = nominal candidate scores the peak (no relaxation loss),
+            # racing scores lower, and parking (zero progress) scores
+            # 1 - 1 = 0 � the classical velocity-term pressure that keeps
+            # a pure local DWA from freezing at a comfortable clearance.
+            ref = max(1e-6, speed_ref * c.horizon_s)
+            progress_norm = 1.0 - np.abs((d0 - d_end) - ref) / ref
+            bearing_goal = np.arctan2(gy - y, gx - x)
+            # YAW-based heading alignment, exactly Fox's own term (heading
+            # of the robot at the predicted end position vs the goal
+            # direction). A COURSE-based variant was tried and rejected
+            # (iteration 8): any detour necessarily points its velocity
+            # away from a goal that sits behind the obstacle, so course
+            # alignment rewards parking in front of the obstacle and
+            # punishes every escape � the classical DWA local minimum,
+            # amplified. With yaw alignment the term only discourages
+            # gratuitous spinning (sway leaves it neutral) and the route
+            # convergence gradient comes from the PROGRESS term toward a
+            # maneuver-scale receding goal (goal_lookahead_m ~ obstacle
+            # diameter, not route length): a lateral off-route candidate
+            # then saturates progress while racing straight cannot outbid
+            # the mission-speed term.
+            dyaw = yaw - bearing_goal
+            heading_norm = np.cos(np.arctan2(np.sin(dyaw), np.cos(dyaw)))
         else:
-            progress = np.zeros(n)
-            cross = np.zeros(n)
-            yaw_err = np.zeros(n)
-        progress_norm = progress / max(1e-6, speed_ref * c.horizon_s)
-        # LINEAR, UNCAPPED route term: any cap flattens the return-to-route
-        # gradient beyond the cap distance and the vehicle wanders off
-        # indefinitely after the pass (observed twice in closed loop, 10 m
-        # drift). Safety near the obstacle is protected by the HARD
-        # admissibility constraint, not by this weight, so an unbounded
-        # route penalty is safe by construction.
-        cross_norm = cross / 1.5 + 1.0 * (yaw_err / math.pi)
-        speed_norm = cu_cmd / c.max_surge
+            progress_norm = np.zeros(n)
+            heading_norm = np.zeros(n)
+        cross_norm = -heading_norm   # w_route rewards goal alignment
+        # Mission-speed tracking (marine DWA practice: LOS guidance at
+        # cruise speed): reward closeness to the nominal surge rather than
+        # raw speed, so the baseline cruises at the same mission speed as
+        # the committed planner (fair comparison) instead of racing at
+        # max_surge.
+        # Cruise-condition tracking (Eriksen: track the commanded cruise
+        # u = U_d, v ~ 0). Penalizing |v| here stops the planner from
+        # crab-walking (sway + counter-yaw) to make up mission pace when
+        # surge is window-capped below nominal; sway stays reserved for
+        # avoidance, where the clearance gradient dominates this penalty.
+        # The sway penalty must stay LIGHT: the crab exploit's margin
+        # over straight cruising is < 0.01 cost units, while a legitimate
+        # avoidance swerve's clearance gain is > 0.1 � a small coefficient
+        # separates the two cleanly; a full-weight |v| penalty tipped the
+        # symmetric central-obstacle case back into the parking minimum.
+        speed_norm = 1.0 - np.abs(cu_cmd - speed_ref) / c.max_surge             - 0.15 * np.abs(cv_cmd) / c.max_sway
         lu, lv, lr = self._last_cmd
         smooth_norm = (np.abs(cu_cmd - lu) / max(c.max_surge, 1e-6)
                        + np.abs(cv_cmd - lv) / max(c.max_sway, 1e-6)
@@ -327,5 +478,17 @@ class HolonomicDWA:
         best = (float(cu_cmd[i]), float(cv_cmd[i]), float(cr_cmd[i]))
         best_clear = None if not obstacles else float(clear[i])
         self._last_cmd = best
+        # Term breakdown of the leading candidates (debug JSON / analysis).
+        order = np.argsort(cost)[::-1][:5]
+        top = [{"u": round(float(cu_cmd[j]), 3),
+                "v": round(float(cv_cmd[j]), 3),
+                "r": round(float(cr_cmd[j]), 3),
+                "cost": round(float(cost[j]), 4),
+                "clear": round(float(clear_norm[j]), 3),
+                "prog": round(float(progress_norm[j]), 3),
+                "speed": round(float(speed_norm[j]), 3),
+                "head": round(float(heading_norm[j]), 3)}
+               for j in order if np.isfinite(cost[j])]
         return DWAResult(best[0], best[1], best[2], admissible, int(n),
-                         False, float(cost[i]), dt_ms, best_clear)
+                         False, float(cost[i]), dt_ms, best_clear,
+                         {"top": top})

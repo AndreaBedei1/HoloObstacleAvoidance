@@ -21,6 +21,10 @@ Verified against the actual subscriptions and parameter usage of both nodes
 | Simulator VelocitySensor / DVL | not used | not used | ✔ |
 | Output | Twist on `/planner/cmd_vel_safe` | identical | ✔ same downstream stack |
 
+| Obstacle persistence | implicit memory in the commitment state machine (a committed maneuver survives detection loss) | explicit rolling odom-frame obstacle memory (TTL 30 s, merge 1.5 m; classical rolling-costmap practice) | ✔ parity: both retain only PAST perception; a memoryless DWA would blindly re-cross the obstacle once the pass takes it out of the FOV |
+
+Perception-side guard already declared: when the bbox touches the image border the DWA node holds the last reliable estimate (edge-clip range over-estimation); same-information rule.
+
 **Conclusion:** no planner receives runtime information unavailable to the
 other; the only differences are internal representations (state machine vs
 sampled rollouts), which is precisely the variable under study.
