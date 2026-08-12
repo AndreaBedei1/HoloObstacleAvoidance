@@ -104,9 +104,9 @@ exclusions.
    wandered off-route (41 m lateral, never near the obstacle). Zero
    collisions; the fallback stop behaves exactly as designed. C's
    commitment maneuver is speed-robust (10/10). Note C is not immune to
-   sporadic non-successes elsewhere: F2 runs 1/4/6 (no return 2.46 m;
-   an unexplained full stop at 0.29 m forward with no objective
-   technical-invalid signature; a 15.3 m off-line drift).
+   sporadic non-successes elsewhere: F2 runs 1/4/6 (no return 2.46 m; a
+   mid-run graph death mis-scored as a stop — diagnosed in the post-hoc
+   section; a 15.3 m off-line drift).
 
 9. **Pool scale (~8 m):** K0: both planners avoid and return inside a
    ~2.5–3.0 m lateral envelope — marginal but feasible in an 8 m pool
