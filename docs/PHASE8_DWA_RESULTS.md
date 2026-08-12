@@ -155,7 +155,14 @@ exclusions.
   world-frame route definition would remove the artifact. Kept as-is
   here because the protocol was frozen; both planners are affected
   identically.
-- F2/C run 4 (0.29 m forward, full stop, no invalid signature) deserves
-  a trace-level look before the paper: if a new objective infra
-  signature is identified, it must be added to the protocol for FUTURE
-  campaigns only — this campaign's ledger stands.
+- F2/C run 4 (0.29 m forward) — trace-level diagnosis done: NOT a
+  vehicle stop. The validator recorded only ~1.6 s of observation
+  (49 dynamics messages, all healthy: setpoint 0.3, vehicle
+  accelerating, state APPROACH_OBSTACLE) and then the ROS graph died;
+  the atomic final write preserved a truncated window. This is an
+  infrastructure death mis-scored as an algorithm failure. Objective
+  signature for FUTURE protocols: validator `elapsed_s` far below the
+  commanded run duration (here ~2 s vs 120 s). This campaign's ledger
+  stands as frozen; re-scoring C's F2 with that rule would give 7/9
+  (0.78) instead of 7/10 — direction unchanged (D 9/10 stays ahead on
+  F2 either way).
