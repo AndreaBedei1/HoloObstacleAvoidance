@@ -41,10 +41,9 @@ only for the ×1.333-corrected bottom cross-check).
   x ≥ 2.3 m in the 1.2–1.3 m basin; proposed mission depth 0.55 m
   (keel 0.75, ~0.5 m bottom clearance); stop by x ≈ 5.5 m until the right
   shelf is confirmed.
-- **Lateral:** usable clearance anchor-center → near rim ≈ 1.40 m;
-  after 0.25 m wall standoff and the 0.40 m footprint, the max real margin
-  is ~0.75 m minus the anchor half-width. The Phase-8 sim margin (0.80 m)
-  DOES NOT FIT — pool profile proposes 0.35 m (D-014 draft in
+- **Lateral:** anchor-center → near rim ≈ 1.40 m; the Phase-8 sim margin
+  (0.80 m) does not fit — see the corridor analysis below for the actual
+  budget with the 0.80 m anchor (D-014 draft in
   `config/real_pool/pool_mission_profile.yaml`).
 - **Route:** usable 3.2 m (x 2.3→5.5), anchor at 3.92 m, 1.6 m of
   detection run-up at 0.12 m/s (adequate for T2 warm-up + confirmation).
@@ -73,8 +72,11 @@ margin doubles.
    engaged the small pool class and grazed at 0.10 m) — values after (1).
 4. Camera mount rigidity check (any bump invalidates the camera→pool
    transform; re-run `scripts/measure_pool_geometry.py` after any touch).
-5. Decide anchor suspension height if the visual engagement geometry at
-   0.55 m depth proves poor (anchor top vs camera axis).
+5. ~~Engagement geometry~~ settled with the 0.80 m anchor: at 0.55 m
+   mission depth the vehicle center is below the anchor top (0.45 m) —
+   genuine frontal course, over-the-top escape impossible by
+   construction. Revisit only if the drone-camera check changes the
+   anchor size estimate.
 
 Safety unchanged: interlocks default-false, arming operator-only, Ping-1D
 only after in-water confirmation, imaging sonar prohibited forever.
