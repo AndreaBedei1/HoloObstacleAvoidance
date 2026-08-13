@@ -18,10 +18,10 @@ rod_and_anchor:
   rod_along_x_m: 3.92          # measured; left segment 3.92 m, right ~2.1 m
   anchor_suspension_xy_m: [3.92, 0.07]   # 7 cm toward the FAR rim
   anchor_touches_bottom: true  # operator: nearly touches at ~1.3 m depth
-  anchor_height_m: null        # TODO(Andrea): MEASURE — required as H_ref
-                               # for the monocular range model of BOTH
-                               # planners before any pool run
-  anchor_width_m: null         # TODO(Andrea): measure (planning radius)
+  anchor_height_m: 0.80        # operator estimate 2026-08-13; to be
+                               # refined with the drone camera. H_ref of
+                               # the monocular model for BOTH planners.
+  anchor_width_m: 0.80         # operator estimate; planning radius 0.40
 
 water_depths:
   # operator tape values + refraction-corrected stereo cross-check

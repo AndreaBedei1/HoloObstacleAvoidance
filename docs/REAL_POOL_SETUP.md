@@ -49,11 +49,24 @@ only for the ×1.333-corrected bottom cross-check).
 - **Route:** usable 3.2 m (x 2.3→5.5), anchor at 3.92 m, 1.6 m of
   detection run-up at 0.12 m/s (adequate for T2 warm-up + confirmation).
 
+## Corridor analysis with the 0.80 × 0.80 m anchor (operator estimate)
+
+Free water beside the anchor (near-rim side): 1.399 − 0.40 ≈ **1.0 m**.
+The sim-circumscribed vehicle radius (0.40 m) leaves NO admissible pass
+for any margin ≥ 0.1 m — the pool profile therefore plans with the
+orientation-aware transverse half-width (0.457/2 + 0.05 = **0.28 m**,
+valid because the DWA holds yaw ≈ 0 in sway passes) and margin 0.15 m:
+hull-center window [0.83, 1.02] m from the anchor center, pass at
+~0.92 m, physical clearances ≈ 0.29 m (anchor side) / 0.25 m (wall side)
+at 0.12 m/s. **Recommendation:** if practical, shift the suspension
+0.3–0.4 m toward the far rim — the corridor grows to ~1.4 m and every
+margin doubles.
+
 ## Open items before any wet run (Andrea)
 
-1. **Measure the anchor**: height (→ `target_obstacle_height_m`, the
-   monocular H_ref for BOTH planners — nothing runs without it) and width
-   (→ planning radius).
+1. ~~Measure the anchor~~ **DONE 2026-08-13: ~0.80 m wide × 0.80 m tall
+   (operator estimate)** — to be refined tomorrow with the drone camera;
+   H_ref 0.80 configured for BOTH planners.
 2. **Confirm the right shelf**: where the bottom rises to 0.80 m
    (camera sees ≥1.2 m everywhere in-frame on the right).
 3. **Committed planner engagement re-scale** (Phase-8 K1 finding: it never
