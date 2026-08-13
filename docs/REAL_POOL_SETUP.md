@@ -48,7 +48,13 @@ only for the ×1.333-corrected bottom cross-check).
 - **Route:** usable 3.2 m (x 2.3→5.5), anchor at 3.92 m, 1.6 m of
   detection run-up at 0.12 m/s (adequate for T2 warm-up + confirmation).
 
-## Corridor analysis with the 0.80 × 0.80 m anchor (operator estimate)
+## Corridor analysis with the 0.80 m-base anchor (operator estimate)
+
+Shape note (operator, 2026-08-13): 0.80 m is the width of the LOWEST part
+only (flukes); the shank above is much thinner. The analysis below uses
+the conservative base width for the whole height; the true width at the
+0.55 m transit depth gets measured tomorrow with the drone camera and
+D-014 is frozen only after that.
 
 Free water beside the anchor (near-rim side): 1.399 − 0.40 ≈ **1.0 m**.
 The sim-circumscribed vehicle radius (0.40 m) leaves NO admissible pass
@@ -63,9 +69,11 @@ margin doubles.
 
 ## Open items before any wet run (Andrea)
 
-1. ~~Measure the anchor~~ **DONE 2026-08-13: ~0.80 m wide × 0.80 m tall
-   (operator estimate)** — to be refined tomorrow with the drone camera;
-   H_ref 0.80 configured for BOTH planners.
+1. **Anchor sizing (partial)**: ~0.80 m tall, 0.80 m wide at the BASE
+   only, tapering above (operator estimate). Tomorrow with the drone
+   camera: width at transit depth (0.55 m), true height, shape — then
+   freeze D-014. H_ref 0.80 configured provisionally for BOTH planners;
+   planning radius 0.40 stays conservative until imaged.
 2. **Confirm the right shelf**: where the bottom rises to 0.80 m
    (camera sees ≥1.2 m everywhere in-frame on the right).
 3. **Committed planner engagement re-scale** (Phase-8 K1 finding: it never

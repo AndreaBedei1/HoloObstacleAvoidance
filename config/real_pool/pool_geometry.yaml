@@ -21,7 +21,13 @@ rod_and_anchor:
   anchor_height_m: 0.80        # operator estimate 2026-08-13; to be
                                # refined with the drone camera. H_ref of
                                # the monocular model for BOTH planners.
-  anchor_width_m: 0.80         # operator estimate; planning radius 0.40
+  anchor_width_base_m: 0.80    # operator estimate: 0.80 only at the LOWEST
+                               # part (flukes); the shank above is much
+                               # thinner. Tapered shape — width at the
+                               # vehicle transit depth NOT yet measured:
+                               # drone-camera imaging tomorrow. Planning
+                               # radius stays 0.40 (widest part,
+                               # CONSERVATIVE) until then.
 
 water_depths:
   # operator tape values + refraction-corrected stereo cross-check

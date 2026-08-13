@@ -49,8 +49,12 @@ obstacle_class:
   target_obstacle_height_m: 0.80   # operator estimate (refine with drone
                                    # camera); H_ref applied IDENTICALLY to
                                    # both planners.
-  obstacle_radius_m: 0.40          # half of the 0.80 m width; line sway
-                                   # absorbed by the safety margin
+  obstacle_radius_m: 0.40          # CONSERVATIVE: half of the 0.80 m BASE
+                                   # width (flukes). The anchor tapers —
+                                   # the width at the 0.55 m transit depth
+                                   # is likely smaller, but it stays 0.40
+                                   # until measured with the drone camera
+                                   # (no speculative narrowing).
   # Engagement geometry at mission depth 0.55 m: anchor spans ~0.45-1.25 m
   # of depth (0.80 tall, bottom at 1.22-1.30) -> dead ahead of the camera;
   # bbox height fraction ~0.25 at the 1.6 m detection run-up (VFOV 90),
@@ -75,10 +79,13 @@ lateral_budget:
                                   # ~0.25 wall side
   preferred_side: near_rim        # +7 cm extra gap; depths equal L/R of rod
   recommendation: >
-    If practical, shift the anchor suspension 0.3-0.4 m toward the far
-    rim: the near-side corridor grows to ~1.4 m of free water and the
-    margins double. Decision is Andrea's; the profile works as-is at
-    0.12 m/s with the numbers above.
+    The corridor numbers above use the CONSERVATIVE base width (0.80 m).
+    The anchor tapers: at the 0.55 m transit depth the true width is
+    likely well under 0.80, which would relax the whole budget — measure
+    it tomorrow with the drone camera BEFORE freezing D-014; do not relax
+    any number on assumption. Independent easing option: shifting the
+    suspension 0.3-0.4 m toward the far rim widens the corridor to
+    ~1.4 m. Decision is Andrea's.
 
 planner_pool_profile:
   # DWA (Planner D) — proposed pool overrides (D-013 stays frozen for sim;
