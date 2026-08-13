@@ -1,0 +1,85 @@
+# Real-pool mission profile — PROPOSED (D-014 draft, NOT frozen).
+# Derived from config/real_pool/pool_geometry.yaml (survey 2026-08-13) and
+# the Phase-8 K-series findings (docs/PHASE8_DWA_RESULTS.md Q9).
+# NOTHING here authorizes actuation: the rov_real_bridge interlock keeps
+# vehicle_in_water:=false AND allow_real_actuation:=false until Andrea
+# explicitly sets both. No arming, no thruster test, Ping-1D only after
+# in-water confirmation. The imaging sonar remains prohibited.
+
+route:
+  # Along-pool centerline, left -> right. The left 0.6 m-deep shelf cannot
+  # accommodate the vehicle at maneuvering depth (see vertical_envelope):
+  # start the run at x >= 2.3 m where the bottom has dropped past ~0.9 m.
+  start_x_m: 2.3
+  end_x_m: 5.5            # before the right-end shallow shelf (TBC 0.80 m)
+  usable_route_length_m: 3.2
+  obstacle_x_m: 3.92      # anchor plane (survey)
+  detection_run_up_m: 1.6 # start -> anchor: adequate for T2 warm-up
+                          # (~1.0 s) + confirmation at 0.12 m/s
+
+speeds:
+  nominal_surge_ms: 0.12  # pool profile (K-series used 0.15; slower here
+                          # because the usable route is 3.2 m, not 6)
+  max_surge_ms: 0.25
+  max_sway_ms: 0.15
+  max_yaw_rate_rads: 0.3
+
+vertical_envelope:
+  # BlueROV2 Heavy height ~0.37 m (0.40 conservative). depth = of the
+  # pressure sensor (hull mid). Bottom profile from the survey.
+  segments:
+    - {x_range_m: [0.0, 2.0], water_m: 0.57-0.8, note: "NO-GO at depth:
+        keel clearance < 0.1 m; surface transit only"}
+    - {x_range_m: [2.3, 5.0], water_m: 1.2-1.3, depth_setpoint_m: 0.55,
+        keel_m: 0.75, bottom_clearance_m: ~0.5}
+    - {x_range_m: [5.0, 6.0], water_m: rising to ~0.8 (TBC),
+        depth_setpoint_m: 0.25, note: "end-of-run zone; stop before the
+        shelf until the 0.80 m line is confirmed"}
+  depth_setpoint_mission_m: 0.55
+  # Rationale: anchor sits near the bottom (top well below 0.7 m if
+  # anchor_height <= 0.5 m). At 0.55 m the front camera has the anchor
+  # ahead/slightly below — engagement geometry comparable to sim. FINAL
+  # value depends on the measured anchor height (H_ref TODO).
+
+obstacle_class:
+  name: anchor_real
+  target_obstacle_height_m: null   # = H_ref of the monocular range model.
+                                   # MUST equal the measured anchor height;
+                                   # applied IDENTICALLY to both planners.
+  obstacle_radius_m: null          # anchor half-width + line sway allowance
+
+lateral_budget:
+  # Width at the anchor 2.662 m; suspension +0.07 m toward the far rim.
+  half_width_near_side_m: 1.40    # anchor center -> near rim
+  wall_standoff_m: 0.25
+  vehicle_radius_m: 0.40
+  available_clearance_m: 0.75     # minus anchor half-width when measured
+  preferred_side: near_rim        # +7 cm extra gap; depths equal L/R of rod
+
+planner_pool_profile:
+  # DWA (Planner D) — proposed pool overrides (D-013 stays frozen for sim;
+  # these are the REAL-POOL profile to be frozen as D-014 before any run):
+  dwa:
+    safety_margin_m: 0.35         # 0.8 m sim margin exceeds the lateral
+                                  # budget (Phase-8 Q9: 3 m excursions)
+    clearance_saturation_m: 0.8
+    goal_lookahead_m: 2.0
+    horizon_s: 6.0
+    weights: {w_clearance: 0.5, w_progress: 1.0, w_speed: 0.3,
+              w_route: 0.5, w_smooth: 0.1}
+  # Committed (Planner C): Phase-8 K1 finding — the image-space engagement
+  # threshold tuned on the 3.5 m class NEVER engaged the 0.5 m pool class
+  # and grazed at 0.10 m from contact. Its engagement thresholds MUST be
+  # re-scaled to anchor_real BEFORE any pool run; values TBD after
+  # anchor_height_m is measured.
+  committed:
+    engagement_rescale_required: true
+
+safety_gates:
+  vehicle_in_water: false          # Andrea sets true ONLY with ROV in pool
+  allow_real_actuation: false      # both must be true for any command
+  arming: "NEVER by Claude; operator-only"
+  abort_conditions:
+    - depth > 0.85 m (hard floor margin in the 1.2 m basin)
+    - lateral position beyond |y| = 1.0 m (wall proximity)
+    - loss of external-camera GT or tether telemetry
