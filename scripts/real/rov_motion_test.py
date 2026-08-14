@@ -52,7 +52,7 @@ AXES = {
 class TelemetryLogger:
     WANTED = ("ATTITUDE", "VFR_HUD", "SCALED_PRESSURE2",
               "SERVO_OUTPUT_RAW", "DISTANCE_SENSOR", "HEARTBEAT",
-              "SYS_STATUS", "STATUSTEXT")
+              "SYS_STATUS", "STATUSTEXT", "SCALED_IMU2", "RAW_IMU")
 
     def __init__(self, rov, path):
         self.rov = rov
@@ -116,7 +116,9 @@ def main() -> int:
                 (mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD, 15),
                 (mavutil.mavlink.MAVLINK_MSG_ID_SCALED_PRESSURE2, 15),
                 (mavutil.mavlink.MAVLINK_MSG_ID_SERVO_OUTPUT_RAW, 15),
-                (mavutil.mavlink.MAVLINK_MSG_ID_DISTANCE_SENSOR, 10)]:
+                (mavutil.mavlink.MAVLINK_MSG_ID_DISTANCE_SENSOR, 10),
+                (mavutil.mavlink.MAVLINK_MSG_ID_SCALED_IMU2, 25),
+                (mavutil.mavlink.MAVLINK_MSG_ID_RAW_IMU, 25)]:
             rov.set_message_interval(mid, hz)
         log.start()
         log.write("meta", {"seq": args.seq, "power": power, "dur": dur,
@@ -134,13 +136,19 @@ def main() -> int:
         hb = rov.set_mode(args.mode)
         log.write("cmd", {"set_mode": args.mode, "result": hb})
         print("mode:", hb)
-        hb = rov.arm()
+        hb = rov.arm(mode=args.mode)
         log.write("cmd", {"arm": True, "result": hb})
         print("armed:", hb)
         if not hb or not hb["armed"]:
-            print("ARMING FAILED — aborting sequence")
+            print("ARMING FAILED - aborting sequence")
             log.stop()
             return 1
+        # ArduSub can bounce the mode around failsafe recovery: re-assert
+        # AFTER arming (mode changes are allowed while armed).
+        if hb["mode"] != args.mode:
+            hb = rov.set_mode(args.mode)
+            log.write("cmd", {"post_arm_mode": args.mode, "result": hb})
+            print("post-arm mode:", hb)
 
         try:
             if args.seq == "static":

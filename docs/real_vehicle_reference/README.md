@@ -98,6 +98,37 @@ Static arm test: 141 SERVO_OUTPUT_RAW samples, all eight = 1500 while
 armed at neutral ✓. Depth held 0.45 m throughout all horizontal tests
 (verticals untouched by the mixer) ✓.
 
+## Measured dynamic response (2026-08-14, 20% steps, 3 s)
+
+| Quantity | Real measured | HoloOcean model | Note |
+|---|---|---|---|
+| cmd->PWM latency | 53-89 ms | 0 (D-model) | one telemetry frame |
+| first motion (surge) | 0.36 s | - | spin-up + inertia |
+| surge v @20%, 3 s | 0.102 m/s | (0.5 max_surge) | ~linear extrap ~0.5 m/s full |
+| surge rise t63 | ~1.44 s | tau_surge 1.2 s | GOOD agreement |
+| surge coast to 37% | ~1.2 s | - | IMU-drift caveat |
+| first gyro response (yaw) | 0.38 s | - | |
+| yaw rate @20% | 0.192 rad/s | max 0.3 rad/s cmd | |
+| yaw rise t63 | ~1.04 s | tau_yaw 0.3 s | **3x slower than sim** |
+| yaw decay after release | 0.21 s | - | asymmetric (drag-dominated) |
+| yaw asymmetry | yaw- stronger than yaw+ | none | to quantify |
+
+IMU: RAW_IMU is the live stream (mg, zacc -998 at rest);
+SCALED_IMU2 is all zeros (no secondary IMU) - use RAW_IMU.
+
+## Control modes - tested findings
+
+- **ALT_HOLD = the science mode**: depth held rock-solid (0.45 m const)
+  with verticals actively trimming (1421-1576 PWM) while horizontal axes
+  respond to MANUAL_CONTROL. Mirrors the HoloOcean architecture (planner
+  horizontal + control layer holds depth).
+- STABILIZE: attitude hold, depth free. MANUAL: fully open loop.
+- ArduSub BOUNCES the mode (often to STABILIZE) around GCS-failsafe
+  transitions (our heartbeat stops between scripts). Recipe that works:
+  set mode -> arm (ACK + retry) -> RE-ASSERT mode after arming
+  (implemented in rovlink.arm(mode=...) + rov_motion_test post-arm
+  assert). Occasional first-arm refusals: retry succeeds.
+
 ## Sensors
 
 - IMU/AHRS: ATTITUDE ~12 Hz; compass heading in VFR_HUD.

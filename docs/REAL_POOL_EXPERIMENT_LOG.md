@@ -50,3 +50,15 @@ HEARTBEAT + command records, 15 Hz).
 - MAV_STATE_CRITICAL appears whenever no GCS heartbeat is streaming
   (FS_GCS_ENABLE=2); clears to STANDBY/ACTIVE during sessions. Benign
   when disarmed.
+
+### Session 1 (continued): step characterization + modes
+
+| # | Test | Result |
+|---|---|---|
+| 9 | step_yaw 20% 3 s (MANUAL) | steady 0.192 rad/s, t63 1.04 s, latency 53 ms, decay 0.21 s |
+| 10 | step_surge 20% 3 s (ran in STABILIZE, mode bounce) | v_end 0.102 m/s, t63 ~1.44 s, first motion 0.36 s |
+| 11 | ALT_HOLD static hold 4 s | depth 0.45 m CONSTANT, verticals trimming actively - MODE FOR SCIENCE RUNS |
+
+Fixes during session: robust arm (ACK+retry), post-arm mode re-assert,
+RAW_IMU (not SCALED_IMU2) for accelerometry, utf-8 script encoding.
+Sim-real deltas logged in real_vehicle_reference README (yaw tau 3x).

@@ -2,7 +2,7 @@
 
 Connection: BlueOS "GCS Client Link" pushes MAVLink to this PC at
 udp 0.0.0.0:14550 (verified 2026-08-14). We answer on the same socket,
-identify as a GCS (sysid 255), and stream OUR heartbeat at 1 Hz — this
+identify as a GCS (sysid 255), and stream OUR heartbeat at 1 Hz â€" this
 clears the GCS failsafe (vehicle showed MAV_STATE_CRITICAL without one).
 
 SAFETY CONTRACT (every user of this module inherits it):
@@ -108,15 +108,40 @@ class RovLink:
         return None if m is None or m.param_id != name else m.param_value
 
     # -- mode / arming -------------------------------------------------
-    def set_mode(self, name: str, settle_s: float = 1.0) -> dict | None:
-        self.master.set_mode(MODE_IDS[name])
-        time.sleep(settle_s)
-        return self.heartbeat()
+    def set_mode(self, name: str, settle_s: float = 1.0,
+                 retries: int = 3) -> dict | None:
+        """Set mode and VERIFY the heartbeat reflects it (ArduSub can
+        bounce modes while recovering from the GCS failsafe)."""
+        hb = None
+        for _ in range(retries):
+            self.master.set_mode(MODE_IDS[name])
+            time.sleep(settle_s)
+            hb = self.heartbeat()
+            if hb and hb["mode"] == name:
+                return hb
+        return hb
 
-    def arm(self, settle_s: float = 1.0) -> dict | None:
-        self.master.arducopter_arm()
-        time.sleep(settle_s)
-        return self.heartbeat()
+    def arm(self, settle_s: float = 1.0, retries: int = 3,
+            mode: str | None = None) -> dict | None:
+        """Arm with COMMAND_ACK check and retry. If `mode` is given the
+        mode is re-asserted before every attempt (ArduSub was observed
+        reverting to STABILIZE and refusing the first arm right after a
+        fresh connection, while the GCS failsafe clears)."""
+        hb = None
+        for attempt in range(retries):
+            if mode:
+                self.set_mode(mode, settle_s=0.8)
+            self.master.arducopter_arm()
+            ack = self.recv_match("COMMAND_ACK", timeout=2.0)
+            time.sleep(settle_s)
+            hb = self.heartbeat()
+            if hb and hb["armed"]:
+                return hb
+            if ack is not None and attempt == 0:
+                print(f"  arm attempt {attempt+1}: ack result "
+                      f"{getattr(ack, 'result', '?')} - retrying")
+            time.sleep(1.0)
+        return hb
 
     def disarm(self, settle_s: float = 1.5) -> dict | None:
         self.master.arducopter_disarm()
