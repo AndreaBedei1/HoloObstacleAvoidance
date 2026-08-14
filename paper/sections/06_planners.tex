@@ -144,10 +144,16 @@ objective --- zero collisions first, then success, then clearance above
 threshold, then efficiency --- with every tuning run archived. Two pre-freeze
 amendments to the declared ranges are recorded with their reasons in the
 implementation protocol; both strictly improve the baseline's own safety and
-success. \textbf{The frozen parameter set is Phase-8 decision D-013, which
-has not been recorded at the time of writing, so the parameter table is
-deliberately empty:} \PEIGHT
+success. The resulting configuration was frozen before the comparison
+campaign and is reproduced in Table~\ref{tab:dwaparams}; it was not modified
+during the campaign. Two rejected settings are worth recording because they
+identify the failure modes the objective must avoid: a dominant clearance
+weight parks the vehicle several metres in front of a central obstacle at the
+point of maximum clearance, and a weak progress weight parks it likewise ---
+both are the classical local minimum, and the mission-paced progress term is
+what removes them.
 
-% TODO_PHASE8_FINAL_RESULT: insert tables/tab_dwa_parameters.tex once D-013 is
-% recorded in docs/SCIENTIFIC_DECISIONS.md.  Do not transcribe development
-% defaults here --- they are not the frozen configuration.
+\input{tables/tab_dwa_parameters}
+
+% TODO_PHASE8_FINAL_RESULT: planner-comparison RESULTS (success, clearance,
+% ranking) go in Sec. IX only after the campaign completes and is aggregated.

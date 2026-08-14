@@ -206,6 +206,110 @@ def assess(m: dict) -> dict:
     }
 
 
+def has_valid_outcome(r: dict) -> bool:
+    """A tuple is DONE only if its final record is a usable experimental
+    outcome: the run completed and is not technical-invalid. Algorithm
+    failures (collision, abort, no return) ARE valid outcomes and must never
+    be re-run (protocol section 4)."""
+    if not r.get("ok"):
+        return False
+    if r.get("technical_invalid") or r.get("also_retry_invalid"):
+        return False
+    return bool(r.get("metrics"))
+
+
+def load_prior(out_root: str) -> list:
+    """Read already-completed runs so a resumed campaign continues instead of
+    restarting. Manifest first (it carries the assessments); per-run
+    validation.json is the fallback if the manifest was lost or truncated by
+    a kill. Never invents outcomes."""
+    manifest = os.path.join(out_root, "manifest.json")
+    prior = []
+    if os.path.isfile(manifest):
+        try:
+            with open(manifest) as f:
+                prior = json.load(f).get("results", [])
+            print(f"[planner8] resume: manifest has {len(prior)} records",
+                  flush=True)
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"[planner8] resume: manifest unreadable ({exc}); "
+                  "falling back to per-run artifacts", flush=True)
+            prior = []
+    have = {(r["scenario"], r["planner"], r["run"]) for r in prior}
+    runs_dir = os.path.join(out_root, "runs")
+    recovered = 0
+    if os.path.isdir(runs_dir):
+        for name in sorted(os.listdir(runs_dir)):
+            vj = os.path.join(runs_dir, name, "validation.json")
+            if not os.path.isfile(vj):
+                continue
+            try:
+                scenario, planner, idx = name.rsplit("_", 2)
+                key = (scenario, planner, int(idx))
+            except ValueError:
+                continue
+            if key in have:
+                continue
+            try:
+                with open(vj) as f:
+                    metrics = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+            rec = {"scenario": scenario, "planner": planner, "run": int(idx),
+                   "ok": True, "desc": F_SCENARIOS.get(scenario, {})
+                   .get("desc", ""), "metrics": metrics,
+                   "recovered_from_run_dir": True}
+            rec["assessment"] = assess(metrics)
+            why = is_technical_invalid(rec)
+            if why:
+                rec["ok"] = False
+                rec["technical_invalid"] = True
+                rec["error"] = why
+            prior.append(rec)
+            have.add(key)
+            recovered += 1
+    if recovered:
+        print(f"[planner8] resume: recovered {recovered} run(s) from "
+              "per-run artifacts", flush=True)
+    return prior
+
+
+def preserve_partial(run_dir: str) -> None:
+    """Move an existing run directory's artifacts aside before re-running the
+    same planned tuple, so an interrupted or technical-invalid attempt is
+    never silently overwritten (protocol: preserve, label, re-run)."""
+    if not os.path.isdir(run_dir):
+        return
+    entries = [e for e in os.listdir(run_dir)
+               if not e.startswith("superseded_")]
+    if not entries:
+        return
+    n = 1
+    while os.path.exists(os.path.join(run_dir, f"superseded_{n}")):
+        n += 1
+    dest = os.path.join(run_dir, f"superseded_{n}")
+    os.makedirs(dest, exist_ok=True)
+    for e in entries:
+        try:
+            os.replace(os.path.join(run_dir, e), os.path.join(dest, e))
+        except OSError:
+            pass
+    with open(os.path.join(dest, "REASON.txt"), "w") as f:
+        f.write("interrupted_session / technical-invalid attempt preserved "
+                "before a protocol re-run of the same planned tuple.\n"
+                "Not counted as an algorithm success or failure.\n")
+    print(f"[planner8] preserved prior artifacts -> {dest}", flush=True)
+
+
+def write_manifest(path: str, payload: dict) -> None:
+    """Atomic manifest write: a kill mid-write must not destroy the record of
+    every completed run."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(payload, f, indent=2)
+    os.replace(tmp, path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--planners", default="committed,dwa")
@@ -214,6 +318,11 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--duration", type=float, default=None)
     parser.add_argument("--dwa-args", nargs="*", default=[])
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="continue an interrupted campaign: keep every completed run, "
+             "execute only planned tuples without a valid outcome. Does not "
+             "change any experimental parameter.")
     args = parser.parse_args()
     global DURATION_S
     if args.duration:
@@ -223,7 +332,20 @@ def main() -> int:
     scenarios = [s.strip().upper() for s in args.scenarios.split(",")
                  if s.strip()]
     os.makedirs(args.out, exist_ok=True)
-    results = []
+    results = load_prior(args.out) if args.resume else []
+    done = {(r["scenario"], r["planner"], r["run"])
+            for r in results if has_valid_outcome(r)}
+    # A tuple that exists only as a technical-invalid record still owes a
+    # valid outcome: drop the stale record so the re-run replaces it.
+    if args.resume:
+        stale = [(r["scenario"], r["planner"], r["run"]) for r in results
+                 if not has_valid_outcome(r)]
+        if stale:
+            print(f"[planner8] resume: {len(stale)} tuple(s) without a valid "
+                  f"outcome will be re-run: {sorted(set(stale))}", flush=True)
+        results = [r for r in results if has_valid_outcome(r)]
+        print(f"[planner8] resume: {len(done)} tuple(s) already complete",
+              flush=True)
     t0 = time.time()
     total = len(planners) * len(scenarios) * args.runs
     n = 0
@@ -233,8 +355,15 @@ def main() -> int:
         for i in range(1, args.runs + 1):
             for planner in planners:
                 n += 1
+                if (sc, planner, i) in done:
+                    print(f"[planner8] --- {n}/{total}: {sc} {planner} run "
+                          f"{i} already complete, skipping ---", flush=True)
+                    continue
                 print(f"[planner8] === {n}/{total}: {sc} {planner} run {i} "
                       "===", flush=True)
+                if args.resume:
+                    preserve_partial(os.path.join(args.out, "runs",
+                                                  f"{sc}_{planner}_{i}"))
                 r = run_once(planner, sc, i, args.out, args.dwa_args)
                 why = is_technical_invalid(r)
                 if why:
@@ -253,23 +382,23 @@ def main() -> int:
                 print(f"[planner8] {sc}/{planner}/{i}: "
                       f"{json.dumps(r['assessment'])}", flush=True)
                 results.append(r)
-                with open(os.path.join(args.out, "manifest.json"), "w") as f:
-                    json.dump({
-                        "campaign": "phase8_planner_comparison",
-                        "test_type": "simulation dynamics integration "
-                                     "baseline + planner comparison "
-                                     "(oracle perception, NOT visual)",
-                        "generated_utc": time.strftime(
-                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "commit_sha": b0.git_sha(),
-                        "wall_time_s": round(time.time() - t0, 1),
-                        "perception_stack": "t2 + phase7b qualification",
-                        "scenarios": {k: v["desc"]
-                                      for k, v in F_SCENARIOS.items()},
-                        "dwa_args": list(args.dwa_args),
-                        "duration_s": DURATION_S,
-                        "results": results,
-                    }, f, indent=2)
+                write_manifest(os.path.join(args.out, "manifest.json"), {
+                    "campaign": "phase8_planner_comparison",
+                    "test_type": "simulation dynamics integration "
+                                 "baseline + planner comparison "
+                                 "(oracle perception, NOT visual)",
+                    "generated_utc": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "commit_sha": b0.git_sha(),
+                    "wall_time_s": round(time.time() - t0, 1),
+                    "perception_stack": "t2 + phase7b qualification",
+                    "scenarios": {k: v["desc"]
+                                  for k, v in F_SCENARIOS.items()},
+                    "dwa_args": list(args.dwa_args),
+                    "duration_s": DURATION_S,
+                    "resumed": bool(args.resume),
+                    "results": results,
+                })
     print(f"[planner8] campaign done -> {args.out}/manifest.json", flush=True)
     return 0
 

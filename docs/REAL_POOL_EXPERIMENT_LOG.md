@@ -1,64 +1,90 @@
-# Real Pool Experiment Log
+# Real Pool Experiment Log — Phase 9
 
-Structured, append-only. Every actuation session gets an entry:
-date/time (topside PC clock), git SHA, hardware state, mode, commands,
-measured response, anomalies, changes.
+Vehicle: BlueROV2 Heavy, ArduSub 4.1.2, BlueOS 1.3.1. Pool ~6 m,
+suspended anchor on a transverse rod. Overhead Intel RealSense D435 =
+external ground truth and safety supervisor (NEVER a planner input).
+Imaging/side-scan sonar: present, PERMANENTLY EXCLUDED, never activated.
 
----
+## Session 2026-08-14 — first real camera-based obstacle avoidance
 
-## 2026-08-14 — Session 1: Phase 9 bring-up (first in-water actuation)
+Software: branch `feature/scientific-sim-to-real-obstacle-avoidance`.
+Perception: `scripts/real/anchor_detect.py` (classical, NO trained
+weights — none exist for the real setup). Control: `scripts/real/
+avoid_mission.py`. Vehicle link: `scripts/real/rovlink.py`.
 
-- **Git SHA at session start:** ba6c7d6 (+ Phase-9 scripts uncommitted)
-- **Hardware:** ROV in pool (Andrea), battery 15.9 V, leak OK,
-  depth sensor reading 0.45 m at float trim, water temp ~31 °C zone.
-  Overhead RealSense mounted (ROTATED since 2026-08-13 survey — old
-  camera→pool transform INVALID, remap pending).
-- **Vehicle software:** BlueOS 1.3.1, ArduSub 4.1.2, FRAME 2 (Heavy).
-- **Pool:** ~6 m, anchor on the transverse rod (from yesterday's survey;
-  remap pending). Anchor VISIBLE from the onboard camera at session
-  start (frame_20260814_155428_2.png — thin shank, wide flukes ✓ the
-  taper Andrea described).
+### Vehicle characterization (measured)
 
-### Tests executed (all MANUAL mode, 15% power, 1.2 s pulses)
-
-| # | Test | Result |
+| Quantity | Value | Note |
 |---|---|---|
-| 1 | Lights1 flash 0→50%→0 (RC9 override) | command path OK (log lights_155628) |
-| 2 | Static arm 4 s neutral | PASS — 8×PWM=1500 for 141 samples, clean disarm |
-| 3 | surge+ | PASS — thr1-4 +30 µs, yaw drift −0.5°, depth const |
-| 4 | surge− | PASS — thr1-4 −30 µs, +3.3° yaw asymmetry noted |
-| 5 | sway− | PASS — (+,−,−,+) pattern |
-| 6 | sway+ | PASS on retry (first attempt: arming refused, transient; retried OK) |
-| 7 | yaw+ | PASS — +6.4° |
-| 8 | yaw− | PASS — −13.7° (stronger than yaw+, asymmetry to characterize) |
+| Thruster directions | all 6 DOF correct | vectored mixing verified on SERVO_OUTPUT_RAW |
+| Surge response t63 | ~1.44 s | sim used 1.2 s |
+| Yaw response t63 | ~1.04 s | sim used 0.3 s — **3x discrepancy** |
+| Command latency | 53-89 ms | MANUAL_CONTROL to thruster PWM |
+| Yaw/translation deadband | commands <= 15-22% do not move the vehicle | tether drag; 35% needed for reliable surge |
+| Coasting | keeps rotating/translating after thrusters stop | every stop must be an ACTIVE hold |
+| Heading hold (P+D on compass) | max error 1.9-4.3 deg, mean 1.3-1.8 deg | `rovlink.hold_heading()` |
+| Depth sensor reference | keel (reads 0.45 m when floating with the top at the surface) | operator-confirmed |
+| Camera | 1920x1080 H.264 RTP on UDP 5600, ~25 fps | persistent reader required (per-frame open costs 3-5 s) |
+| Lights | RC9 override, verified | |
+| Ping1D | present, down-facing (PITCH_270), UDP 9090 | not used as obstacle sensor |
 
-Logs: `experiments/real/motion_tests/*_20260814_*.jsonl` (ATTITUDE,
-VFR_HUD, SCALED_PRESSURE2, SERVO_OUTPUT_RAW, DISTANCE_SENSOR,
-HEARTBEAT + command records, 15 Hz).
+### Perception (weight-free detector)
 
-### Anomalies / notes
+Shape prior: long thin vertical dark shank + arm span, with three
+discriminators developed against the real failure modes:
+tall-thin morphological opening (kills dome bubbles), straight-line test
+(row width + centroid wander), left/right isolation (kills the shaded
+pool-edge band). On clean frames it returns a SINGLE candidate on the
+anchor.
 
-- FCU auto-reverts mode to STABILIZE after some disarms → mode is now
-  always set explicitly pre-arm.
-- One transient arming refusal (test 6 first attempt) — retry succeeded;
-  watch for recurrence.
-- Ping1D DISTANCE_SENSOR reads 75.29 m (no lock) pre-dive; orientation
-  unknown — characterize submerged.
-- Disarm state sampling at 0.5 s was too early (showed stale armed=True);
-  settle raised to 1.5 s; actual disarm verified via mavlink2rest each
-  time.
-- MAV_STATE_CRITICAL appears whenever no GCS heartbeat is streaming
-  (FS_GCS_ENABLE=2); clears to STANDBY/ACTIVE during sessions. Benign
-  when disarmed.
+Measured monocular range error vs overhead ground truth (n = 47 paired
+samples, 1.29-2.64 m): **bias -0.26 m, MAE 0.44 m, RMS 0.58 m**
+(one-point calibration D-015: f_px = 1277, anchor arm span 0.80 m).
 
-### Session 1 (continued): step characterization + modes
+Detection acceptance rate is dominated by dome cleanliness:
+8-25% with bubbles, **46% right after wiping the dome**.
 
-| # | Test | Result |
-|---|---|---|
-| 9 | step_yaw 20% 3 s (MANUAL) | steady 0.192 rad/s, t63 1.04 s, latency 53 ms, decay 0.21 s |
-| 10 | step_surge 20% 3 s (ran in STABILIZE, mode bounce) | v_end 0.102 m/s, t63 ~1.44 s, first motion 0.36 s |
-| 11 | ALT_HOLD static hold 4 s | depth 0.45 m CONSTANT, verticals trimming actively - MODE FOR SCIENCE RUNS |
+### Missions (8 runs)
 
-Fixes during session: robust arm (ACK+retry), post-arm mode re-assert,
-RAW_IMU (not SCALED_IMU2) for accelerometry, utf-8 script encoding.
-Sim-real deltas logged in real_vehicle_reference README (yaw tau 3x).
+| Session | Result | Trigger range | Bearing | Min GT distance | Detect rate |
+|---|---|---|---|---|---|
+| 18:44 (avoid_run) | avoided, range grew 1.24 -> 2.46 m | 1.24 m | -2.1° | — | 16% |
+| 18:51 | PASSED (window) | 1.26 m | +12.2° | 1.33 m | 18% |
+| 18:53 | PASSED (window) | 1.29 m | +2.1° | 2.55 m | 21% |
+| 18:56 | PASSED (window) | 1.21 m | -16.9° | 1.85 m | 25% |
+| 19:00, 19:02, 19:09 | ABORTED by wall guard at t=0 | — | — | — | 0% |
+| 19:05 | **PASSED (GT anchor plane)** | 1.21 m | -10.4° | 0.87 m | 8% |
+| **19:10** | **PASSED (GT anchor plane)** | **1.42 m** | **-2.9°** | **0.80 m** | **46%** |
+
+Zero collisions, zero uncommanded excursions, every run ended in an
+active heading hold.
+
+### Behaviour finally adopted (operator-driven)
+
+APPROACH straight -> TRIGGER on monocular range -> LATERAL clearing to
+the right ONLY while the anchor is still seen -> STRAIGHT ahead once it
+is cleared (sideways travel walks into the pool walls) -> active hold.
+Wall guard is RELATIVE to the release point: the operator releases the
+vehicle from the pool edge, so an absolute margin aborted every run.
+
+### Sim-to-real discrepancies measured
+
+1. **Yaw time constant 1.04 s vs 0.3 s in HoloOcean** — the largest
+   dynamic discrepancy; the sim over-estimates yaw agility ~3x.
+2. **Command deadband**: the real vehicle needs >= 30-35% authority to
+   move at all (tether drag); the sim has no deadband.
+3. **Post-command coasting** with no damping: the sim vehicle stops far
+   more readily than the real one.
+4. **Monocular range noise**: MAE 0.44 m at 1.3-2.6 m, i.e. ~25% of the
+   range — far noisier than the simulated oracle-derived estimate.
+5. **Perception availability**: 8-46% of frames vs ~100% in simulation.
+
+### Open items
+
+* Trained detector: no weights exist for the real anchor; the classical
+  detector is the current solution and its acceptance rate is the
+  limiting factor.
+* The overhead GT distance is measured to the anchor's suspension pixel
+  with an oblique camera; a proper homography would tighten it.
+* Multi-repetition campaign for statistics (only 5 successful runs so
+  far, in varying start geometry).

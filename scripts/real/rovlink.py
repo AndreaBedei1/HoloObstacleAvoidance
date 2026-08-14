@@ -25,6 +25,7 @@ MANUAL_CONTROL axes (ArduSub): x surge [-1000..1000], y sway
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 
@@ -121,26 +122,36 @@ class RovLink:
                 return hb
         return hb
 
-    def arm(self, settle_s: float = 1.0, retries: int = 3,
+    def arm(self, settle_s: float = 1.0, retries: int = 6,
             mode: str | None = None) -> dict | None:
-        """Arm with COMMAND_ACK check and retry. If `mode` is given the
-        mode is re-asserted before every attempt (ArduSub was observed
-        reverting to STABILIZE and refusing the first arm right after a
-        fresh connection, while the GCS failsafe clears)."""
+        """Arm robustly.
+
+        Observed failure modes on this vehicle (2026-08-14): the first
+        attempt after a fresh connection is refused while the GCS
+        failsafe clears, ArduSub sometimes reverts the mode, and the
+        heartbeat sampled right after the ACK can still report DISARMED.
+        Strategy: re-assert the mode, keep a MANUAL_CONTROL neutral
+        stream alive (ArduSub wants pilot input present), send the arm
+        command, then poll the heartbeat for up to 2 s per attempt."""
         hb = None
         for attempt in range(retries):
             if mode:
-                self.set_mode(mode, settle_s=0.8)
+                self.set_mode(mode, settle_s=0.6)
+            for _ in range(5):          # pilot input must be streaming
+                self.neutral()
+                time.sleep(0.05)
             self.master.arducopter_arm()
-            ack = self.recv_match("COMMAND_ACK", timeout=2.0)
-            time.sleep(settle_s)
-            hb = self.heartbeat()
-            if hb and hb["armed"]:
-                return hb
-            if ack is not None and attempt == 0:
-                print(f"  arm attempt {attempt+1}: ack result "
-                      f"{getattr(ack, 'result', '?')} - retrying")
-            time.sleep(1.0)
+            self.recv_match("COMMAND_ACK", timeout=1.5)
+            deadline = time.time() + max(2.0, settle_s)
+            while time.time() < deadline:
+                self.neutral()
+                hb = self.heartbeat(timeout=0.5)
+                if hb and hb["armed"]:
+                    return hb
+                time.sleep(0.1)
+            print(f"  arm attempt {attempt + 1} failed ({hb}); retrying",
+                  flush=True)
+            time.sleep(0.5)
         return hb
 
     def disarm(self, settle_s: float = 1.5) -> dict | None:
@@ -170,6 +181,53 @@ class RovLink:
                 on_sample(time.time() - t0)
             time.sleep(period)
         self.neutral()
+
+    def hold_heading(self, seconds: float, target_yaw: float | None = None,
+                     kp: float = 2.2, kd: float = 2.0, max_cmd: int = 200,
+                     on_sample=None) -> float | None:
+        """ACTIVE station-keeping in heading (armed, closed loop).
+
+        Stopping the thrusters does NOT stop the vehicle: it keeps
+        rotating on its own inertia, and DISARMING removes all control so
+        it drifts freely (operator observation 2026-08-14). Every "stop"
+        in this project must therefore be an active hold: a P+D loop on
+        the compass that nulls both the heading error and the residual
+        yaw RATE, keeping the vehicle where the maneuver left it.
+
+        Returns the final yaw (rad), or None if no attitude was received.
+        """
+        att = self.recv_match("ATTITUDE", timeout=2.0)
+        if att is None:
+            # No feedback: fall back to open-loop neutral.
+            t0 = time.time()
+            while time.time() - t0 < seconds:
+                self.neutral()
+                time.sleep(0.1)
+            return None
+        if target_yaw is None:
+            target_yaw = att.yaw
+        t0 = time.time()
+        yaw = att.yaw
+        while time.time() - t0 < seconds:
+            att = self.recv_match("ATTITUDE", timeout=0.3)
+            if att is not None:
+                yaw = att.yaw
+                rate = getattr(att, "yawspeed", 0.0)
+                err = math.atan2(math.sin(target_yaw - yaw),
+                                 math.cos(target_yaw - yaw))
+                cmd = kp * math.degrees(err) * 3.0 - kd * math.degrees(rate)
+                cmd = int(max(-max_cmd, min(max_cmd, cmd)))
+                # small deadband: do not chatter the thrusters
+                if abs(math.degrees(err)) < 1.5 and abs(rate) < 0.03:
+                    cmd = 0
+                self.manual(r=cmd)
+                if on_sample:
+                    on_sample(time.time() - t0, math.degrees(err), cmd)
+            else:
+                self.neutral()
+            time.sleep(0.08)
+        self.neutral()
+        return yaw
 
     # -- lights (RC channel 9 override, ArduSub Lights1) ---------------
     def lights(self, level: float) -> None:

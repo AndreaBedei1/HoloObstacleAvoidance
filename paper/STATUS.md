@@ -26,7 +26,7 @@ Build: `latexmk -pdf main.tex` (MiKTeX, IEEEtran present on this machine).
 | System Architecture | `sections/03_system.tex` | **READY** | — |
 | Vehicle + Navigation | `sections/04_vehicle_model.tex` | **READY** | — |
 | Temporal Estimation | `sections/05_perception_estimation.tex` | **READY** | — |
-| Avoidance Policies | `sections/06_planners.tex` | **DRAFT** | DWA parameter table waits D-013 freeze |
+| Avoidance Policies | `sections/06_planners.tex` | **READY (methods)** | frozen D-013 parameters added 2026-08-12; results still WAIT_PHASE8 |
 | Calibration Ladder | `sections/07_calibration.tex` | **DRAFT** | methodology fixed; measurements pending |
 | Experimental Design | `sections/08_experimental_design.tex` | **DRAFT** | blocks D/E/F are plans |
 | Results (avail.) | `sections/09_results.tex` | **READY** | Baseline-0 + Phase-7B only |
@@ -64,7 +64,7 @@ Additional gates: **WAIT_PHASE8** (planner results, DWA parameters),
 | VI Baseline-0 integration metrics | `tables/tab_baseline0.tex` | READY |
 | VII S0 step responses | `tables/tab_step_response.tex` | READY |
 | VIII Maneuver-onset prediction | `tables/tab_onset.tex` | READY |
-| — DWA frozen parameters | not created | **WAIT_PHASE8 (D-013)** |
+| IX DWA frozen parameters | `tables/tab_dwa_parameters.tex` | READY (D-013, 2026-08-12) |
 
 ## Closed-list literature verification (2026-08-11)
 

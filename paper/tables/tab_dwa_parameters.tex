@@ -1,0 +1,51 @@
+%==============================================================================
+% Frozen DWA baseline configuration.  Source: docs/SCIENTIFIC_DECISIONS.md
+% D-013 (parameter freeze, 2026-08-11) + docs/DWA_IMPLEMENTATION_AND_PROTOCOL.md.
+% Status: READY -- these are the FROZEN values the comparison campaign runs.
+% Tuned on P-series development scenarios only; never on F/K campaign scenarios.
+%==============================================================================
+\begin{table}[t]
+\centering
+\caption{Frozen configuration of the dynamic-window baseline (planner \PD{}),
+decided before the comparison campaign and unchanged during it. Tuning used
+development scenarios only, under a lexicographic objective (zero collisions,
+then success, then clearance, then efficiency); every tuning run is archived.
+Obstacle class constants are applied identically to \emph{both} planners.}
+\label{tab:dwaparams}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{34mm} p{42mm}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Frozen value} \\
+\midrule
+\multicolumn{2}{@{}l@{}}{\emph{Objective weights}} \\
+$w_{\mathrm{clearance}}$ & 0.5 \\
+$w_{\mathrm{progress}}$ & 1.0 \\
+$w_{\mathrm{speed}}$ & 0.3 \\
+$w_{\mathrm{route}}$ & 0.5 \\
+$w_{\mathrm{smooth}}$ & 0.1 \\
+Clearance saturation & 2.0\,m \\
+Goal lookahead & 4.0\,m \\
+Sway penalty (cruise term) & $0.15/v_{\max}$ \\
+\midrule
+\multicolumn{2}{@{}l@{}}{\emph{Safety}} \\
+Safety margin & 0.80\,m ($+$ vehicle radius 0.40\,m) \\
+Stoppability & $v\,t_{\mathrm{react}} + v^{2}/(2a_{\mathrm{brake}})$, \newline
+  $t_{\mathrm{react}}=1.2$\,s, $a_{\mathrm{brake}}=0.5$\,m/s$^{2}$, \newline
+  closing candidates only, $+$ escape rule \\
+\midrule
+\multicolumn{2}{@{}l@{}}{\emph{Search and rollout}} \\
+Horizon / step & 6.0\,s / 0.2\,s \\
+Window & one control interval (0.1\,s); surge slew-limited, sway and yaw full authority \\
+Sampling $n_u \times n_v \times n_r$ & $7 \times 7 \times 9$ \\
+Velocity limits & $u \leq 0.5$, $|v| \leq 0.3$\,m/s, $|r| \leq 0.3$\,rad/s \\
+Response constants $\tau_{u,v,r}$ & 1.2 / 1.15 / 0.3\,s \\
+\midrule
+\multicolumn{2}{@{}l@{}}{\emph{Obstacle handling}} \\
+Memory TTL / merge radius & 30\,s / 1.5\,m \\
+Class constants (long range) & $H_{\mathrm{ref}}$ 3.5\,m, radius 1.75\,m \\
+Class constants (pool scale) & $H_{\mathrm{ref}}$ 0.5\,m, radius 0.25\,m \\
+\bottomrule
+\end{tabular}
+\end{table}

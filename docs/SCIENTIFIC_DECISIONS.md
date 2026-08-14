@@ -248,6 +248,40 @@ reason, implications, commit. Newest last. Referenced from
   invalidates the campaign and requires a new decision entry.
 - **Commit:** (Phase 8 freeze commit).
 
+## D-015 — Real monocular range model (one-point calibration)
+
+- **Question:** how is the distance to the real anchor obtained from the
+  onboard camera, with no trained detector and no calibration rig?
+- **Method:** the anchor arm span (0.80 m, operator measurement) spanned
+  399 px at 2.56 m of overhead ground-truth distance -> f_px = 1277,
+  i.e. HFOV ~74 deg underwater, consistent with the BlueROV2 low-light
+  camera behind a dome in water.
+- **Measured accuracy (47 paired samples, 1.29-2.64 m):** bias -0.26 m,
+  MAE 0.44 m, RMS 0.58 m. Roughly 25% of range: adequate to TRIGGER a
+  committed maneuver, NOT adequate for continuous servoing.
+- **Rule:** the model is frozen for the Phase-9 campaign; refining it
+  requires a new decision entry and a re-run.
+
+## D-016 — Phase 9 real-campaign freeze
+
+- **Question:** which configuration runs the 10-repetition real
+  avoidance campaign?
+- **Development evidence (2026-08-14 afternoon, declared as development,
+  never as results):** 8 missions; the behaviour was reshaped three
+  times on operator observation — active heading hold instead of
+  disarming (the vehicle coasts and keeps rotating), lateral clearing
+  ONLY while the anchor is visible followed by a straight leg (pure
+  sideways travel walks into the pool walls), and a wall guard relative
+  to the release point (the operator releases from the pool edge, so an
+  absolute margin aborted every run). Authority had to be raised to 35%
+  surge: below ~30% the thrusters spin without moving the vehicle
+  against tether drag.
+- **Frozen values:** as tabulated in
+  `docs/PHASE9_REAL_CAMPAIGN_PROTOCOL.md` section 4.
+- **Rule:** FROZEN for the entire campaign. Pilot runs are declared as
+  pilots and excluded from the results.
+- **Commit:** (Phase 9 freeze commit).
+
 ---
 
 *(Add new decisions below with incrementing IDs.)*
