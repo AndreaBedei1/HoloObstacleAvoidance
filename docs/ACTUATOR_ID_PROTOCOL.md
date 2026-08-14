@@ -38,8 +38,29 @@ identifiable with adequate repeatability — not when a matrix is full.
    the post-pulse coast already recorded in every trial. No dedicated
    runs.
 
-Expected cost: roughly 8-12 short trials per translational DOF and
-somewhat more for yaw (which is cheap: the vehicle stays in place).
+**8-12 trials per axis is an UPPER BOUND, not a target.** Every existing
+valid pilot trial is reused; only the trials that are still needed for
+identifiability are collected. `scripts/analysis/actuator_data_
+sufficiency.py` computes that gap from the recorded data and prints the
+shortest remaining experiment.
+
+What it found (2026-08-14):
+
+| Signed axis | Existing | Still needed |
+|---|---|---|
+| surge+ | one 20 % step, attitude only | overhead speed |
+| surge- | one 15 % pulse | overhead speed + a second level |
+| sway+ / sway- | short cross-coupling pulses only, no speed | the real gap: speed at two levels each |
+| yaw+ | 15 % and 20 % steps with gyro rate | a second moving level + one repetition |
+| yaw- | one 15 % pulse (2.5 deg, below the movement floor) | a moving level, a second one, one repetition |
+
+CONTAMINATED DATA, excluded: the 18:28 yaw authority sweep was run while
+the vehicle was grounded on the shallow bottom, and its response is
+non-monotone (140 deg at 15 %, 2.5 deg at 30 %, 2.8 deg at 45 %). It
+measures the grounding, not the vehicle.
+
+Realistic remaining cost: about 3 short trials per signed axis, roughly
+15-18 trials in total, all with overhead ground truth.
 
 ## Termination and safety: geometric, not temporal
 

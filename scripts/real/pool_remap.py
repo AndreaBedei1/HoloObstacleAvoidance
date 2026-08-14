@@ -11,7 +11,10 @@ instead of a survey.
 
 Pool frame produced here (the frame the missions and the analysis use):
 
-    origin  = the anchor attachment point on the rod
+    origin  = the MIDPOINT OF THE ROD between the two rims, a point
+              fixed by the pool structure (NOT the anchor: the anchor is
+              movable, and a frame tied to it would be invalidated by
+              every obstacle reconfiguration)
     +Y      = along the rod, cross-pool, toward the FAR rim
     +X      = perpendicular to the rod in the surface plane, the
               approach direction (along-pool, toward the right end)
@@ -23,7 +26,9 @@ Same convention as pool_geometry.yaml, so downstream code does not have
 to learn a second one. The rod is found automatically (long, bright,
 near-vertical structure in the image); the anchor attachment PIXEL is a
 parameter because nothing in the image marks it - default 1069 635, the
-value avoid_mission.py has been using since the second camera move.
+value avoid_mission.py has been using since the second camera move. The
+anchor is reported as a POSE INSIDE the pool frame, so it can be moved
+and re-measured without touching the camera->pool transform.
 
 READ-ONLY with respect to the vehicle: this opens the RealSense only. It
 does NOT open a MAVLink connection and does not command anything. The
@@ -455,7 +460,18 @@ def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
         anchor_depth_source = "interpolated_along_rod"
         warnings.append("no direct depth at the anchor pixel; the origin "
                         "depth was interpolated along the rod")
-    origin = deproject(intr, anchor_snap, z_anchor)
+    # ORIGIN = the midpoint of the rod's visible span, i.e. a point
+    # fixed by the POOL STRUCTURE (the rod is rigidly held by the two
+    # sides). It is deliberately NOT the anchor: the anchor is a
+    # movable object, and a frame anchored to it would be invalidated
+    # by every obstacle reconfiguration, breaking the comparability of
+    # start poses, wall distances, trajectories and clearances between
+    # the two final geometries. The anchor is instead LOCATED in this
+    # frame, below, and can be re-measured on its own.
+    p_lo = deproject(intr, uv_lo, z_lo)
+    p_hi = deproject(intr, uv_hi, z_hi)
+    origin = 0.5 * (p_lo + p_hi)
+    anchor_cam = deproject(intr, anchor_snap, z_anchor)
 
     # Vertical from the surface plane.
     ref_depth = 0.5 * (z_lo + z_hi)
@@ -484,6 +500,30 @@ def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
 
     frame = build_pool_frame(origin, rod_dir, up)
     R = frame["R"]
+
+    # The obstacle's pose INSIDE the pool frame. Re-measuring this after
+    # moving the anchor does NOT change the camera->pool transform.
+    anchor_pool = R @ (anchor_cam - origin)
+    rod_span_pool = R @ (p_hi - p_lo)
+    frame["anchor_pose_pool"] = {
+        "x_m": round(float(anchor_pool[0]), 3),
+        "y_m": round(float(anchor_pool[1]), 3),
+        "z_m": round(float(anchor_pool[2]), 3),
+        "yaw_deg": None,
+        "yaw_note": "not observable from a single overhead view of a "
+                    "vertically suspended anchor; the planners use the "
+                    "obstacle as a circular footprint, so yaw is not "
+                    "required",
+        "pixel": [float(anchor_snap[0]), float(anchor_snap[1])],
+        "depth_source": anchor_depth_source,
+        "measured_separately": True,
+    }
+    frame["rod_span_pool_m"] = {
+        "length_m": round(float(np.linalg.norm(rod_span_pool)), 3),
+        "along_y_m": round(float(rod_span_pool[1]), 3),
+        "note": "the rod spans the pool between the two rims; its "
+                "midpoint is the frame origin",
+    }
 
     # Handedness / convention check, in pixels: +X must run toward the
     # right of the image (along-pool, the approach direction).
