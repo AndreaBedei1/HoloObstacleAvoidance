@@ -1,3 +1,42 @@
+# Observation model for the simulated /perception/obstacles_raw
+
+> **STATUS (2026-08-14, corrected): the range-residual model below is a
+> PILOT FINDING, not the S1 observation model.**
+>
+> The finding — that the width-derived range was structurally invalid
+> (censored at 1.21 m, statistically independent of the truth, failing
+> toward "far away" inside 1 m) — is exactly why that estimator is not
+> used by the final system. It explains a design decision; it must not
+> become the calibration of the simulator.
+>
+> The final system derives range from the bbox HEIGHT through the SHARED
+> `planner.estimate_range()`, so the simulated observation model must
+> live in the same domain the real detector publishes:
+>
+> | S1 models | in the bbox domain |
+> |---|---|
+> | detection / no detection | probability of a valid observation |
+> | bbox centre error | center_x, center_y residuals |
+> | bbox height error | the quantity the shared estimator consumes |
+> | bbox width / aspect error | if it proves useful |
+> | outliers | gross bbox failures |
+>
+> and S2 owns the TEMPORAL structure (burst dropout, arrival process).
+>
+> **S1 IS NOT FROZEN.** It will be estimated from the paired dataset
+> collected by `scripts/real/collect_paired_dataset.py`, which records
+> ground-truth pose, true range and bearing, the camera frame, the full
+> bbox, the confidence and the shared-estimator range AT THE SAME
+> TIMESTAMP — removing the disjoint-cycle limitation that made a
+> covariate model impossible here.
+>
+> **What survives from this document and enters S2 now:** the temporal
+> structure of availability. Detection is BURSTY, not IID (2-state
+> Markov beats IID, G2 = 131.7, p ~ 1.8e-30; mean detect run 3.9 cycles,
+> mean gap 13.9). That result is about the arrival process, not about
+> the range estimator, so it stands — to be refreshed with the paired
+> dataset.
+
 # Observation Model v1 — the real detector, measured
 
 > **PILOT/CALIBRATION ONLY.** Every number in this document comes from
