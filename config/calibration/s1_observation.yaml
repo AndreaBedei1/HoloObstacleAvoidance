@@ -1,0 +1,187 @@
+# S1 = S0 + ONE effect class: the STATIC OBSERVATION MODEL.
+#
+# WHY this rung exists: at S0 the planner sees a noiseless geometric
+# projection of ground truth at /perception/obstacles_raw.  The real vehicle
+# sees a monocular detection whose bearing and apparent size are wrong by a
+# measurable amount, and which is often simply absent.  S1 replaces the
+# identity observation map with the MEASURED one, and changes nothing else.
+#
+# WHAT S1 OWNS (and no other level may touch):
+#   camera.*       - projection geometry: FOV, intrinsics, distortion,
+#                    refraction, and the pixel grid that quantizes a bbox
+#   observation.*  - the STATIC (time-independent) detection distribution:
+#                    per-frame detection probability treated as a marginal,
+#                    bearing/size bias and scatter, false positives, class
+#                    confusion, occlusion/edge-clip, detector acceptance gate
+#
+# WHAT S1 MUST NOT TOUCH:
+#   timing.*  -> S2.  In particular the RATE at which observations arrive,
+#                their jitter, latency, and the burst structure of the
+#                misses.  S1 owns only the MARGINAL probability that a frame
+#                yields a detection; the fact that misses arrive in BURSTS
+#                (dome bubbles, glare) is a timing effect and belongs to S2.
+#                This split is what keeps the acceptance-rate effect from
+#                being counted twice.
+#   vehicle.* -> S3.
+#   simulator.* -> S0 (immutable).  Note the standing conflict recorded in
+#                the TODO for camera.width/height: raising the render size
+#                must not break the 30 tick/s real-time contract (D-010),
+#                which S1 is not allowed to renegotiate.
+#
+# STATUS: STRUCTURE FROZEN, VALUES INCOMPLETE.  Nulls are deliberate: they
+# mark quantities nobody has measured yet.  scripts/calibration/load_profile.py
+# refuses to emit a runnable profile while any null survives, so an
+# unmeasured value can never silently become an experimental condition.
+#
+# DATA ADMISSIBILITY: the 2026-08-14 wet runs (experiments/real/) are PILOT/
+# CALIBRATION data.  Using them to FIT this observation model is their one
+# admissible use; none of their numbers may appear as results.
+
+profile:
+  id: S1
+  name: s1_observation
+  parent: s0_historical.yaml
+  status: STRUCTURE_FROZEN_VALUES_INCOMPLETE
+  owns:
+    - camera
+    - observation
+  effect_class: "static observation distribution at /perception/obstacles_raw"
+  not_owned_here:
+    timing: "S2 (rate, jitter, latency, burst structure of misses)"
+    vehicle: "S3 (deadband, signed gains, rise/decay, command latency)"
+    simulator: "S0 (immutable engine/world/tick contract)"
+
+overrides:
+
+  camera:
+    # Underwater HFOV behind the dome, from the D-015 one-point calibration
+    # (f_px = 1277 over a 1920 px width -> 2*atan(960/1277) = 73.9 deg).
+    horizontal_fov_deg: 74.0
+    vertical_fov_deg: null
+    distortion_model: null
+    refraction_model: null
+    width: null
+    height: null
+
+  observation:
+    detection_probability: null
+    confidence: null
+    min_detection_range_m: null
+    max_detection_range_m: null
+    center_x_bias: null
+    center_x_noise_std: null
+    center_y_bias: null
+    center_y_noise_std: null
+    log_size_bias: null
+    log_size_noise_std: null
+    false_positive_rate_hz: null
+    occlusion_model: null
+    edge_clip_model: null
+    # The real setup contains exactly ONE obstacle class (the suspended
+    # anchor), so no confusion is possible by construction.
+    class_confusion_prob: 0.0
+    # Acceptance gate of the real detector, frozen in D-016.  It defines the
+    # SUPPORT of the observation distribution and must be applied to the
+    # simulated observations too, or the sim will deliver detections the
+    # real pipeline would have rejected.
+    detector_gate:
+      score_min: 0.55
+      height_min: 0.12
+      width_min: 0.02
+
+provenance:
+  camera.horizontal_fov_deg: "docs/SCIENTIFIC_DECISIONS.md D-015 (f_px = 1277 from the 0.80 m anchor arm span at 2.56 m overhead-GT distance; HFOV ~74 deg underwater); docs/REAL_POOL_EXPERIMENT_LOG.md"
+  observation.class_confusion_prob: "docs/PHASE9_REAL_CAMPAIGN_PROTOCOL.md section 2 - single obstacle (the suspended anchor); no second class exists in the real scene"
+  observation.detector_gate: "docs/SCIENTIFIC_DECISIONS.md D-016 / docs/PHASE9_REAL_CAMPAIGN_PROTOCOL.md section 4 (detector gate: score >= 0.55, height >= 0.12, width >= 0.02)"
+
+todo:
+  camera.vertical_fov_deg: >
+    MEASURE. Not calibrated. It is DERIVABLE from D-015 assuming square
+    pixels and a common focal length (2*atan(540/1277) = 45.4 deg over a
+    1080 px height), but that is an assumption, not a measurement: verify
+    with a target of known VERTICAL extent at a known range, since the whole
+    monocular range model runs off bbox HEIGHT.
+  camera.distortion_model: >
+    MEASURE. Calibrate the dome-port camera in water (checkerboard or the
+    anchor rod at several positions) and record radial/tangential
+    coefficients, or state explicitly that a pinhole model is adequate over
+    the used field, with the residual reported.
+  camera.refraction_model: >
+    MEASURE. The one-point f_px absorbs air/water refraction at ONE range
+    and ONE image position. Either validate that a single effective focal
+    length holds across the 1.2-2.6 m working range and across the image, or
+    fit an explicit interface model.
+  camera.width: >
+    DECIDE + MEASURE, with a constraint. The real stream is 1920x1080
+    (docs/real_vehicle_reference/README.md), but the render size is also a
+    compute knob: D-010 fixes 30 ticks/s as MANDATORY and the 256x256 render
+    is what keeps the tick cost at ~22 ms. Measure the sim tick cost at
+    candidate render sizes and pick the smallest size whose bbox
+    quantization matches the measured detection granularity. If none holds
+    30 Hz, the observation model must be applied in normalized coordinates
+    with an explicit quantization term instead of by raising the render size.
+  camera.height: >
+    DECIDE + MEASURE. Same constraint as camera.width; keep the aspect ratio
+    consistent with the FOV pair actually adopted.
+  observation.detection_probability: >
+    FIT. Pooled per-frame acceptance probability with a confidence interval,
+    from experiments/real/observation_model/ (parallel task). Repo evidence
+    today is per-run and condition-dependent, NOT a single number: 8%, 16%,
+    18%, 21%, 25%, 46% over the six 2026-08-14 runs, dominated by dome
+    cleanliness (docs/REAL_POOL_EXPERIMENT_LOG.md). Report it as a function
+    of the declared dome condition, or freeze the campaign to one condition;
+    do not collapse the range to a midpoint.
+  observation.confidence: >
+    DECIDE + FIT. The real detector emits an unbounded shape score (0.31-4.47
+    observed in experiments/real/approach_dataset/20260814_181721/records.json)
+    gated at 0.55, while the sim publishes a constant 1.0. Either map the
+    measured score distribution onto the confidence field or declare the
+    field unused downstream and record that decision.
+  observation.min_detection_range_m: >
+    MEASURE. Near limit at which the anchor stops being detectable (bbox
+    edge-clip and dome proximity). Real accepted detections span 1.29-2.64 m
+    (n = 47, D-015); nothing below 1.29 m has been characterized.
+  observation.max_detection_range_m: >
+    MEASURE. Far limit of acceptance for the anchor class in pool water.
+    The S0 value of 40 m is a sim range gate and is meaningless for a 6 m
+    pool; the real evidence stops at 2.64 m.
+  observation.center_x_bias: >
+    FIT from experiments/real/observation_model/ - bearing (horizontal
+    image) bias of accepted detections against the overhead ground truth.
+    Not derivable from anything committed today: D-015 characterizes RANGE
+    error only. Requires paired detector-vs-overhead bearing samples.
+  observation.center_x_noise_std: >
+    FIT (same source as center_x_bias). Report the scatter, and whether it
+    is range-dependent, so the S1 model is a distribution rather than a
+    single sigma.
+  observation.center_y_bias: >
+    FIT (same source). Vertical image bias; it feeds the bbox-height range
+    model through the clip geometry.
+  observation.center_y_noise_std: >
+    FIT (same source).
+  observation.log_size_bias: >
+    CONVERT + FIT. The measured quantity is a RANGE error (bias -0.26 m,
+    MAE 0.44 m, RMS 0.58 m over n = 47 paired samples, 1.29-2.64 m, D-015).
+    Under the pinhole relation h = f*H/Z a relative size error is minus the
+    relative range error, so the range statistics must be converted to
+    log-size statistics at the measured ranges (they are NOT the same number)
+    and cross-checked against the raw bbox heights in
+    experiments/real/observation_model/.
+  observation.log_size_noise_std: >
+    CONVERT + FIT (same source and caveat as log_size_bias). This term, not
+    the bearing terms, is what governs the trigger-range distribution.
+  observation.false_positive_rate_hz: >
+    MEASURE. Rate of accepted detections on frames with no anchor in view.
+    The known real failure modes are dome bubbles and the shaded pool-edge
+    band (docs/REAL_POOL_EXPERIMENT_LOG.md), and the detector's three
+    discriminators were built against them, but the surviving rate was never
+    counted. Requires labelled anchor-absent frames.
+  observation.occlusion_model: >
+    DECIDE. Whether partial occlusion occurs at all in the pool scene; if it
+    does not, set 'none' with that finding recorded rather than inheriting
+    S0's value by default.
+  observation.edge_clip_model: >
+    MEASURE. Behaviour when the anchor leaves the frame edge, which the pool
+    profile flags as relevant inside ~0.9 m
+    (config/real_pool/pool_mission_profile.yaml). The sim currently clips
+    exactly; the real detector's response to a clipped shank is unknown.

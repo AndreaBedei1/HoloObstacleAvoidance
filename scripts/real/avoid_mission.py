@@ -30,6 +30,7 @@ from camera_stream import CameraStream, ensure_env  # noqa: E402
 ensure_env()
 
 from anchor_detect import annotate, detect_anchor  # noqa: E402
+from gt_guard import PoseGuard  # noqa: E402
 from overhead_track import OverheadTracker  # noqa: E402
 from rovlink import RovLink  # noqa: E402
 
@@ -69,6 +70,29 @@ def wrap(a):
     return math.atan2(math.sin(a), math.cos(a))
 
 
+def overhead_scale(default=402.0):
+    """Pixel/metre scale for the overhead camera.
+
+    Prefers the value measured by scripts/real/pool_remap.py after the
+    last camera move; falls back to the 2026-08-13 survey number, which
+    is only valid while the camera has not been touched."""
+    try:
+        from pool_remap import latest_pool_frame
+        found = latest_pool_frame()
+        if found:
+            path, doc = found
+            scale = doc.get("scale", {}).get("px_per_m_anchor_plane")
+            if scale:
+                print(f"overhead scale {scale:.0f} px/m from "
+                      f"{os.path.basename(path)}", flush=True)
+                return float(scale)
+    except Exception as exc:                       # never block a run
+        print("pool frame unavailable:", exc, flush=True)
+    print(f"overhead scale {default:.0f} px/m (2026-08-13 survey; run "
+          "pool_remap.py if the camera moved)", flush=True)
+    return default
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--surge", type=float, default=0.18)
@@ -106,6 +130,11 @@ def main() -> int:
     sess = os.path.join(OUT, stamp)
     os.makedirs(sess, exist_ok=True)
     apx = np.array(args.anchor_px)
+    px_per_m = overhead_scale()
+    # ONE abort predicate, shared with the offline harness and the unit
+    # tests (scripts/real/gt_guard.py). Thresholds: docs/GT_VALIDATION.md.
+    guard = PoseGuard(margin=args.margin, px_per_m=px_per_m,
+                      t0=time.time())
 
     # Cap raised to 0.50: at 0.22 the thrusters spin but the
     # vehicle does not move against tether drag (operator,
@@ -153,7 +182,7 @@ def main() -> int:
         if rng is not None:
             txt += f"  camera range {rng:.2f} m"
         if gt_dist is not None:
-            txt += f"  |  GT {gt_dist / 402.0:.2f} m"
+            txt += f"  |  GT {gt_dist / px_per_m:.2f} m"
         cv2.putText(vis, txt, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (255, 255, 255), 1)
         ov_writer.write(vis)
@@ -213,14 +242,17 @@ def main() -> int:
             rng_hist = []
             confirm = 0
             start_frac = None
-            lim_x = lim_y = 0.02
-            lim_x2 = lim_y2 = 0.98
             t_str = None
             lost = 0
             p_start = None
             head_dir = None
             min_gt = 1e9
             t0 = time.time()
+            # The guard's no-pose timeout runs from HERE, not from
+            # construction: camera warm-up, arming and the centring
+            # window take tens of seconds, and the guard must not spend
+            # its acquisition budget while nothing is looking yet.
+            guard.reset(t0)
             aborted = None
             trig_info = None
             try:
@@ -253,12 +285,29 @@ def main() -> int:
                     r = int(max(-200, min(200, r)))
 
                     # ---- overhead ground truth (every cycle) ----------
+                    # The guard owns EVERY abort decision (wall margin,
+                    # missing/stale pose, impossible jump, low-confidence
+                    # blob). It is the same object the offline harness
+                    # and the unit tests drive, so its behaviour is
+                    # qualified before the vehicle is in the water.
                     ovd = tracker.detect(near=near)
+                    verdict = guard.update(ovd, t=time.time())
                     gt_dist = None
-                    log_extra = {}
-                    if ovd and ovd.get("found"):
+                    log_extra = {"gt": verdict.reason or verdict.level}
+                    if verdict.abort:
+                        aborted = f"GT guard: {verdict.reason}"
+                        print(f"!! ABORT ({verdict.reason}): "
+                              f"{json.dumps(verdict.detail, default=str)}"
+                              " — active hold", flush=True)
+                        break
+                    if verdict.ok:
+                        if start_frac is None:
+                            start_frac = guard.snapshot()["start_frac"]
+                            print("wall guard box (frame fractions): "
+                                  f"{guard.snapshot()['box']}", flush=True)
                         near = ovd["pixel"]
                         traj.append(list(near))
+                        log_extra["area_px"] = ovd.get("area_px")
                         if p_start is None:
                             p_start = np.array(near, dtype=float)
                         elif state == "APPROACH":
@@ -268,41 +317,20 @@ def main() -> int:
                         gt_dist = float(np.linalg.norm(
                             np.array(near) - apx))
                         min_gt = min(min_gt, gt_dist)
-                        fx, fy = ovd["frac_x"], ovd["frac_y"]
-                        # RELATIVE wall guard: the operator releases the
-                        # vehicle from the pool edge (that is where the
-                        # hands reach), so an absolute margin aborts every
-                        # run at t=0. Instead: never get CLOSER to any
-                        # border than the release point (minus a small
-                        # tolerance), and never cross a hard 2% limit.
-                        if start_frac is None:
-                            start_frac = (fx, fy)
-                            lim_x = min(args.margin,
-                                        max(0.02, start_frac[0] - 0.03))
-                            lim_y = min(args.margin,
-                                        max(0.02, start_frac[1] - 0.03))
-                            lim_x2 = max(1 - args.margin,
-                                         min(0.98, start_frac[0] + 0.03))
-                            lim_y2 = max(1 - args.margin,
-                                         min(0.98, start_frac[1] + 0.03))
-                            print(f"wall guard: x in [{lim_x:.2f},"
-                                  f"{lim_x2:.2f}] y in [{lim_y:.2f},"
-                                  f"{lim_y2:.2f}]", flush=True)
-                        m = args.margin
-                        if not (lim_x < fx < lim_x2
-                                and lim_y < fy < lim_y2):
-                            aborted = "overhead safe box (wall margin)"
-                            print("!! ABORT: too close to the pool "
-                                  f"margin ({fx:.2f}, {fy:.2f}) — active "
-                                  "hold", flush=True)
-                            break
 
                     x, y = surge, 0
                     if state == "PREROLL":
                         # stationary, recorded: the video must show where
                         # the vehicle starts before anything happens
                         x, y = 0, 0
-                        if time.time() - t_pre > args.preroll_s:
+                        # ... and do NOT start moving before the overhead
+                        # ground truth has a lock: without it the wall
+                        # guard cannot see an excursion. Worst measured
+                        # acquisition was 7.4 s (mission 19:38), well
+                        # inside the guard's no-pose timeout.
+                        if not guard.has_fix:
+                            t_pre = time.time()
+                        elif time.time() - t_pre > args.preroll_s:
                             state = "APPROACH"
                             print("== APPROACH (straight)", flush=True)
                     elif state == "APPROACH" and rng is not None                             and rng <= args.trigger_m:
@@ -402,9 +430,7 @@ def main() -> int:
                                 "yaw_deg": round(math.degrees(yaw), 1),
                                 **log_extra})
                     onboard_frames.append(annotate(fr, det))
-                    ovv = tracker.last_frame if hasattr(
-                        tracker, "last_frame") else None
-                    if ovd is not None and ovd.get("found"):
+                    if verdict.ok:
                         overhead_frames.append((list(near), state,
                                                 gt_dist))
                     if len(log) % 8 == 1:
@@ -492,9 +518,14 @@ def main() -> int:
                    "trigger": trig_info, "samples": len(log),
                    "min_gt_dist_px": None if min_gt > 1e8
                    else round(min_gt, 1),
+                   "min_gt_dist_m": None if min_gt > 1e8
+                   else round(min_gt / px_per_m, 2),
+                   "px_per_m": px_per_m,
                    "accepted_frac": round(
                        sum(1 for r in log if r["accepted"])
                        / max(1, len(log)), 3),
+                   "gt_guard": guard.snapshot(),
+                   "gt_guard_config": guard.cfg.as_dict(),
                    "params": vars(args)}
         with open(os.path.join(sess, "log.json"), "w") as f:
             json.dump({"summary": summary, "log": log, "traj": traj},

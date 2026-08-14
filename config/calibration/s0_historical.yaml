@@ -1,0 +1,269 @@
+# S0 - the CURRENT/HISTORICAL simulation configuration, captured exactly as
+# it is today (2026-08-14).  It is the ROOT of the S0-S3 calibration ladder
+# and the "no calibration" control condition of the headline study (C1,
+# paper/contributions.md): every later level must differ from S0 by exactly
+# ONE class of measured effect, so that a change in predictivity can be
+# attributed to the rung that changed.
+#
+# WHY this file exists at all: the simulation configuration is currently
+# spread over scenario YAMLs, node defaults, launch arguments and dataclass
+# defaults.  Without a single frozen snapshot there is no defensible "S0"
+# to compare S1-S3 against, and nothing stops a later edit from silently
+# redefining the control condition.
+#
+# STATUS: IMMUTABLE.  This file is a RECORD, not a tuning surface.  If the
+# simulator changes, do NOT edit these values: write a new decision entry in
+# docs/SCIENTIFIC_DECISIONS.md, add s0b_*.yaml, and re-run.  Editing S0
+# invalidates every campaign that referenced it.
+#
+# NOTE ON NULLS: S0 contains NO nulls.  Every leaf is the literal value the
+# system uses today, and every leaf carries provenance naming the file it
+# came from.  `scripts/calibration/load_profile.py` enforces both rules.
+
+profile:
+  id: S0
+  name: s0_historical
+  parent: null
+  status: IMMUTABLE
+  captured_on: "2026-08-14"
+  base_level: true
+
+  # Effect classes OWNED here.  S0 owns the simulator/engine identity and
+  # supplies the BASE VALUE of every knob in the ladder; it does not own the
+  # observation, timing or vehicle EFFECT CLASSES - those are introduced,
+  # one per rung, by S1/S2/S3 (see docs/CALIBRATION_PROFILES.md).
+  owns:
+    - simulator
+
+  # Where each other effect class is calibrated.  Nothing in this table may
+  # be re-touched at more than one level; the loader enforces it.
+  ownership:
+    camera: S1
+    observation: S1
+    timing: S2
+    vehicle: S3
+
+  deliberately_uncalibrated:
+    - "camera intrinsics/FOV vs the real dome-in-water camera (S1)"
+    - "observation noise, misses, false positives (S1)"
+    - "frame rate, jitter, latency, burst dropout (S2)"
+    - "vehicle deadband, signed gains, rise/decay, command latency (S3)"
+    - "optical medium: scattering, turbidity, illumination (NO LEVEL -
+       declared out of scope in the paper's calibration table)"
+    - "tether dynamics (NO LEVEL - out of scope)"
+
+values:
+
+  # ---------------------------------------------------------------------
+  # simulator: engine/world/agent identity and the tick contract.
+  # ---------------------------------------------------------------------
+  simulator:
+    engine: holoocean
+    engine_version: "2.3.0"
+    stock_world: SimpleUnderwater
+    stock_package: Ocean
+    agent_type: BlueROV2
+    agent_name: rov0
+    camera_sensor: FrontCamera
+    camera_socket: CameraSocket
+    motion_model: dynamics
+    control_scheme: 0            # 8 x thruster forces
+    ticks_per_sec: 30
+    frames_per_sec: false
+    show_viewport: false
+    real_time_pacing: true       # timeBeginPeriod(1) + sleep/spin hybrid
+    cmd_timeout_s: 1.0
+    start_offset_m: [0.0, 0.0, 0.0]
+    collision_detection: false   # engine-side contact is NOT simulated
+    water_current: false
+
+  # ---------------------------------------------------------------------
+  # camera: the rendered camera AND the projection geometry the oracle uses
+  # (the bridge builds its CameraConfig from the FOV the server reports).
+  # ---------------------------------------------------------------------
+  camera:
+    width: 256
+    height: 256
+    horizontal_fov_deg: 90.0
+    vertical_fov_deg: 90.0
+    distortion_model: none
+    refraction_model: none       # no air/water interface model
+    rolling_shutter: false
+
+  # ---------------------------------------------------------------------
+  # observation: the distribution of detections delivered to the scientific
+  # boundary /perception/obstacles_raw.  In S0 this is a NOISELESS
+  # geometric projection of ground truth - the "observation model" is the
+  # identity map plus a range/FOV gate.
+  # ---------------------------------------------------------------------
+  observation:
+    producer: oracle_geometric_projection
+    boundary_topic: /perception/obstacles_raw
+    coordinates: normalized_image          # center_x/y, width, height in [0,1]
+    detection_probability: 1.0             # every in-gate obstacle, every frame
+    confidence: 1.0                        # constant, not a score
+    min_detection_range_m: 0.2
+    max_detection_range_m: 40.0
+    risk_area_gain: 4.0
+    center_x_bias: 0.0
+    center_x_noise_std: 0.0
+    center_y_bias: 0.0
+    center_y_noise_std: 0.0
+    log_size_bias: 0.0
+    log_size_noise_std: 0.0
+    false_positive_rate_hz: 0.0
+    class_confusion_prob: 0.0
+    occlusion_model: none
+    edge_clip_model: exact_projection       # bbox clipped by geometry only
+    detector_gate:
+      score_min: 0.0                        # no scoring stage exists
+      height_min: 0.0
+      width_min: 0.0
+
+  # ---------------------------------------------------------------------
+  # timing: WHEN observations arrive at the boundary, and what the
+  # transport does to them.
+  # ---------------------------------------------------------------------
+  timing:
+    observation_rate_hz: 30.0               # one oracle array per sim state
+    observation_rate_source: sim_tick        # not a camera/detector rate
+    observation_interval_jitter_std_s: 0.0
+    observation_latency_s: 0.0               # published in the state callback
+    observation_latency_jitter_std_s: 0.0
+    arrival_process: deterministic_periodic
+    stamp_source: publish_time               # image stamps are NOT propagated
+    bridge_poll_rate_hz: 60.0
+    estimator_output_rate_hz: 30.0
+    burst_dropout:
+      enabled: false
+      model: scripted_window                 # not a stochastic process
+      trigger_state_prefix: AVOIDING
+      delay_s: 3.0
+      duration_s: 2.0
+      mode: single
+      repeat_on_s: 1.0
+      repeat_off_s: 0.5
+      repeat_total_s: 6.0
+      outlier_at_s: 0.0
+
+  # ---------------------------------------------------------------------
+  # vehicle: actuation and body response.
+  # ---------------------------------------------------------------------
+  vehicle:
+    axis_sign_convention:
+      frame: REP-103_body                    # x fwd, y LEFT, z up
+      surge_positive: forward
+      sway_positive: left
+      yaw_positive: counter_clockwise
+    limits:
+      max_surge_ms: 0.8
+      max_sway_ms: 0.5
+      max_heave_ms: 0.4
+      max_yaw_rate_rads: 0.6
+    command_latency_s: 0.0
+    deadband:
+      surge_frac: 0.0
+      sway_frac: 0.0
+      yaw_frac: 0.0
+    gain_asymmetry:
+      surge_fwd_over_rev: 1.0                # symmetric by construction
+      sway_right_over_left: 1.0
+      yaw_neg_over_pos: 1.0
+    response:
+      surge_tau_rise_s: 1.2
+      surge_tau_decay_s: 1.2
+      sway_tau_rise_s: 1.15
+      sway_tau_decay_s: 1.15
+      yaw_tau_rise_s: 0.3
+      yaw_tau_decay_s: 0.3
+    setpoint_rate_limits:
+      max_lin_accel: 1.0
+      max_yaw_accel: 1.5
+    controller:
+      kp_lin: [40.0, 40.0, 45.0]
+      ki_lin: [12.0, 12.0, 15.0]
+      kp_yaw_rate: 8.0
+      ki_yaw_rate: 2.0
+      kp_att: 12.0
+      kd_att: 4.0
+      int_limit_lin: 20.0
+      int_limit_yaw: 6.0
+      max_thrust_n: 28.75
+    coasting_model: engine_hydrodynamics      # emergent, not a knob
+
+# -------------------------------------------------------------------------
+# Provenance: which file each value came from.  A key may name a leaf or a
+# subtree (the loader resolves the longest matching prefix), so that groups
+# read from one source stay readable.  Every S0 leaf MUST resolve.
+# -------------------------------------------------------------------------
+provenance:
+  simulator.engine: "docs/SCIENTIFIC_DECISIONS.md D-005 (HoloOcean native BlueROV2 agent)"
+  simulator.engine_version: "docs/SCIENTIFIC_DECISIONS.md D-005 (holoocean 2.3.0, env holoocean_joystick)"
+  simulator.stock_world: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (identical in all 12 planner_*.yaml)"
+  simulator.stock_package: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.agent_type: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml; decision D-005"
+  simulator.agent_name: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.camera_sensor: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.camera_socket: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.motion_model: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (sim.motion_model)"
+  simulator.control_scheme: "docs/SCIENTIFIC_DECISIONS.md D-005; src/rov_obstacle_sim_bridge/holoocean_server/bluerov2_dynamics.py module docstring"
+  simulator.ticks_per_sec: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml; MANDATORY per docs/SCIENTIFIC_DECISIONS.md D-010"
+  simulator.frames_per_sec: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.show_viewport: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  simulator.real_time_pacing: "docs/SCIENTIFIC_DECISIONS.md D-010; src/rov_obstacle_sim_bridge/holoocean_server/holoocean_sim_server.py (high-resolution pacing)"
+  simulator.cmd_timeout_s: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (sim.cmd_timeout_s)"
+  simulator.start_offset_m: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (sim.start_offset)"
+  simulator.collision_detection: "docs/SCIENTIFIC_DECISIONS.md D-003 (audit: no collision detection; vehicle can pass through geometry)"
+  simulator.water_current: "config/real_pool/pool_mission_profile.yaml no_current_note; no current is configured in any scenario"
+
+  camera.width: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  camera.height: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  camera.horizontal_fov_deg: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  camera.vertical_fov_deg: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml"
+  camera.distortion_model: "absent by construction: no distortion is applied anywhere in src/rov_obstacle_sim_bridge/"
+  camera.refraction_model: "absent by construction: no air/water interface model exists in the sim path"
+  camera.rolling_shutter: "absent by construction: HoloOcean RGBCamera renders a full frame per tick"
+
+  observation.producer: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py::_publish_oracle + oracle_geometry.py"
+  observation.boundary_topic: "src/rov_obstacle_sim_bridge/launch/holoocean_baseline0.launch.py (relay output_topic)"
+  observation.coordinates: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/oracle_geometry.py (normalized image projection)"
+  observation.detection_probability: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py::_publish_oracle - every projected obstacle is published, no miss model exists"
+  observation.confidence: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py::_publish_oracle (CameraConfig confidence=1.0)"
+  observation.min_detection_range_m: "src/rov_obstacle_sim_bridge/config/holoocean_bridge.yaml"
+  observation.max_detection_range_m: "src/rov_obstacle_sim_bridge/config/holoocean_bridge.yaml (40.0; the 10.0 in holoocean_oracle.yaml belongs to the standalone demo path, not the closed loop)"
+  observation.risk_area_gain: "src/rov_obstacle_sim_bridge/config/holoocean_bridge.yaml"
+  observation.center_x_bias: "absent by construction: no noise is injected between the oracle and /perception/obstacles_raw"
+  observation.center_x_noise_std: "absent by construction (see center_x_bias)"
+  observation.center_y_bias: "absent by construction (see center_x_bias)"
+  observation.center_y_noise_std: "absent by construction (see center_x_bias)"
+  observation.log_size_bias: "absent by construction (see center_x_bias)"
+  observation.log_size_noise_std: "absent by construction (see center_x_bias)"
+  observation.false_positive_rate_hz: "absent by construction: the oracle publishes configured obstacles only"
+  observation.class_confusion_prob: "absent by construction: class_name is copied from the scenario YAML"
+  observation.occlusion_model: "absent by construction: oracle_geometry.py projects each obstacle independently"
+  observation.edge_clip_model: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/oracle_geometry.py"
+  observation.detector_gate: "absent by construction: no detector/scoring stage is in the oracle path"
+
+  timing.observation_rate_hz: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py (one oracle array per received sim state) x planner_F0.yaml ticks_per_sec=30"
+  timing.observation_rate_source: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py::_publish_state"
+  timing.observation_interval_jitter_std_s: "absent by construction: the server paces ticks in real time (D-010) and the bridge relays one array per state"
+  timing.observation_latency_s: "absent by construction: _publish_oracle runs inside the state callback; no delay line exists on the perception path"
+  timing.observation_latency_jitter_std_s: "absent by construction (see observation_latency_s)"
+  timing.arrival_process: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/holoocean_bridge_node.py"
+  timing.stamp_source: "docs/SCIENTIFIC_DECISIONS.md D-003 (stamps applied at publish time; image stamps discarded)"
+  timing.bridge_poll_rate_hz: "src/rov_obstacle_sim_bridge/config/holoocean_bridge.yaml"
+  timing.estimator_output_rate_hz: "src/rov_obstacle_tracking/rov_obstacle_tracking/temporal_estimator_node.py (output_rate_hz default)"
+  timing.burst_dropout: "src/rov_obstacle_sim_bridge/rov_obstacle_sim_bridge/oracle_dropout_relay_node.py defaults; disabled by default in src/rov_obstacle_sim_bridge/launch/holoocean_baseline0.launch.py"
+
+  vehicle.axis_sign_convention: "src/rov_obstacle_sim_bridge/holoocean_server/bluerov2_dynamics.py (client/ROS body frame: x fwd, y LEFT, z up)"
+  vehicle.limits: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (limits block)"
+  vehicle.command_latency_s: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (dynamics.command_latency_s)"
+  vehicle.deadband: "absent by construction: bluerov2_dynamics.py has no deadband stage"
+  vehicle.gain_asymmetry: "absent by construction: allocation is symmetric (bluerov2_dynamics.py ThrusterAllocator)"
+  vehicle.response: "src/rov_obstacle_avoidance/rov_obstacle_avoidance/dwa_planner.py DWAConfig tau_surge_s/tau_sway_s/tau_yaw_s, frozen in docs/SCIENTIFIC_DECISIONS.md D-013. EMERGENT closed-loop response identified in sim, not an engine knob"
+  vehicle.setpoint_rate_limits: "src/rov_obstacle_sim_bridge/config/holoocean_scenarios/planner_F0.yaml (dynamics.max_lin_accel/max_yaw_accel)"
+  vehicle.controller: "src/rov_obstacle_sim_bridge/holoocean_server/bluerov2_dynamics.py DynamicsConfig defaults (no scenario overrides them)"
+  vehicle.coasting_model: "engine-side hydrodynamics of the HoloOcean BlueROV2 agent (D-005); no explicit damping knob is exposed"
+
+# S0 has no TODOs by definition: it is what the system does today.
+todo: {}

@@ -144,20 +144,50 @@ def detect_anchor(img: np.ndarray, debug: bool = False) -> dict:
         # --- arm span: widest dark row in the lower part of the shank
         y1 = int(y + 0.62 * bh)
         y2 = min(h, int(y + bh + 0.06 * h))
-        # Search the arm span only in a window centred on the shank:
-        # a full-row scan measured the whole dark background band.
+        # Search the arm span in a window centred on the shank. The
+        # window CENSORS the measurable range: the arm span cannot
+        # exceed 2*half, so the monocular range
+        # (W_ref*f_px)/(width*img_w) has a hard floor. At half = 0.22*w
+        # that floor was 1.21 m -- above the avoidance trigger distance,
+        # so inside ~1.2 m the width saturated, the range stopped
+        # tracking the truth (measured slope vs true range -0.09,
+        # CI [-0.33, +0.06], i.e. statistically independent) and, worse,
+        # collapsed onto the shank so the reported range EXPLODED toward
+        # 'far away' exactly when the obstacle was closest
+        # (25% gross failures, all at true range <= 0.99 m; see
+        # docs/OBSERVATION_MODEL.md). Widened to 0.45*w -> floor 0.59 m,
+        # below any operating distance. This is a structural defect
+        # fixed pre-freeze, NOT a tuning against outcomes.
+        # ARM SPAN IS DIAGNOSTIC ONLY. The shared planner derives range
+        # from the bbox HEIGHT (planner.estimate_range, the same code the
+        # simulation runs), so the detector's job at the observation
+        # boundary is to publish a well-measured bbox, not a range.
+        #
+        # The pilot analysis (docs/OBSERVATION_MODEL.md) showed the
+        # width-derived range was not informative over the tested
+        # interval (slope vs true range -0.09, CI [-0.33, +0.06]) and
+        # failed toward 'far away' precisely when the obstacle was
+        # closest, because the arms are thin and faint and the search
+        # window censored the span. Height, by contrast, is the quantity
+        # the straight-line and coverage tests already guarantee is well
+        # segmented.
         xc = x + bw / 2.0
-        half = int(0.22 * w)
+        half = int(0.30 * w)
         x0w = max(0, int(xc - half))
         x1w = min(w, int(xc + half))
         band = dn[y1:y2, x0w:x1w]
-        rows = (band > 0.30).astype(np.uint8)
+        shank_col = int(xc) - x0w
         widths = []
-        for rr in rows:
-            idx = np.flatnonzero(rr)
-            if idx.size:
-                widths.append((idx[-1] - idx[0] + 1,
-                               x0w + int(idx[0]), x0w + int(idx[-1])))
+        for rr in (band > 0.22).astype(np.uint8):
+            if shank_col < 0 or shank_col >= rr.size or not rr[shank_col]:
+                continue
+            a = shank_col
+            while a > 0 and rr[a - 1]:
+                a -= 1
+            b2 = shank_col
+            while b2 < rr.size - 1 and rr[b2 + 1]:
+                b2 += 1
+            widths.append((b2 - a + 1, x0w + a, x0w + b2))
         arm_w, arm_x0, arm_x1 = max(widths) if widths else (bw, x, x + bw)
         arm_w = max(arm_w, bw)
         out.update({

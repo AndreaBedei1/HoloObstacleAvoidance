@@ -1,0 +1,1800 @@
+{
+  "PILOT_ONLY_NOTICE": "Every number here comes from the 2026-08-14 PILOT/CALIBRATION wet runs and is model input, never a result.",
+  "generated_utc": "2026-08-14T20:19:50Z",
+  "git_sha": "fec04c743955d22611ebfbb5dcc253e11e2ac9f0",
+  "git_worktree_dirty": true,
+  "sessions_used": [
+    {
+      "session": "20260814_193827",
+      "kind": "missions",
+      "origin": "worktree",
+      "n_cycles": 85,
+      "has_gt": true,
+      "has_det_block": false
+    },
+    {
+      "session": "20260814_194145",
+      "kind": "missions",
+      "origin": "worktree",
+      "n_cycles": 57,
+      "has_gt": true,
+      "has_det_block": false
+    },
+    {
+      "session": "20260814_195048",
+      "kind": "missions",
+      "origin": "worktree",
+      "n_cycles": 52,
+      "has_gt": true,
+      "has_det_block": false
+    },
+    {
+      "session": "run_20260814_184449",
+      "kind": "avoid_runs",
+      "origin": "worktree",
+      "n_cycles": 43,
+      "has_gt": false,
+      "has_det_block": true
+    },
+    {
+      "session": "shadow_20260814_183518",
+      "kind": "avoid_runs",
+      "origin": "worktree",
+      "n_cycles": 57,
+      "has_gt": false,
+      "has_det_block": true
+    },
+    {
+      "session": "shadow_20260814_183600",
+      "kind": "avoid_runs",
+      "origin": "worktree",
+      "n_cycles": 47,
+      "has_gt": false,
+      "has_det_block": true
+    }
+  ],
+  "git_tracked_but_missing_from_worktree": [
+    "20260814_185123",
+    "20260814_185340",
+    "20260814_185622",
+    "20260814_190048",
+    "20260814_190249",
+    "20260814_190516",
+    "20260814_190930",
+    "20260814_191040"
+  ],
+  "included_git_missing": false,
+  "dataset_structure_finding": {
+    "sessions_with_ground_truth": [
+      "20260814_193827",
+      "20260814_194145",
+      "20260814_195048"
+    ],
+    "sessions_with_det_block": [
+      "run_20260814_184449",
+      "shadow_20260814_183518",
+      "shadow_20260814_183600"
+    ],
+    "n_cycles_with_both": 0,
+    "consequence": "the two sets are disjoint, so no regression of the range residual on bbox height or detector score is possible"
+  },
+  "traj_alignment_check": [
+    {
+      "session": "20260814_193827",
+      "n": 61,
+      "max_px_error": 0.0498,
+      "accepted": true
+    },
+    {
+      "session": "20260814_194145",
+      "n": 51,
+      "max_px_error": 0.049,
+      "accepted": true
+    },
+    {
+      "session": "20260814_195048",
+      "n": 48,
+      "max_px_error": 0.0496,
+      "accepted": true
+    }
+  ],
+  "inversion_check": {
+    "n_width": 12,
+    "max_abs_width_error": 0.001366,
+    "n_center_x": 12,
+    "max_abs_center_x_error": 0.000549,
+    "tolerance": 0.002,
+    "passes": true,
+    "residual_source": "the logs round range_m to 0.01 m and bearing_deg to 0.1 deg, so the inversion inherits a quantisation of about width*0.01/range (1.8e-3 at the range floor) and 1.2e-3 in center_x. The observed maxima match that, i.e. the map is exact and only the printout is coarse."
+  },
+  "range_residual": {
+    "n_paired": 59,
+    "sessions": [
+      "20260814_193827",
+      "20260814_194145",
+      "20260814_195048"
+    ],
+    "gt_range_m": [
+      0.371,
+      2.376
+    ],
+    "bootstrap_block_len": 9,
+    "all_samples": {
+      "name": "range residual (m), all",
+      "n": 59,
+      "mean": 2.2936,
+      "median": 0.0917,
+      "std": 5.8057,
+      "mad": 0.8316,
+      "mae": 2.9205,
+      "rms": 6.1964,
+      "min": -1.042,
+      "max": 21.2872,
+      "q25": -0.7179,
+      "q75": 0.975
+    },
+    "gross": {
+      "definition": "measured/true outside [1/2.0, 2.0]",
+      "n": 15,
+      "n_total": 59,
+      "rate": 0.2542,
+      "rate_ci95": [
+        0.1606,
+        0.378
+      ]
+    },
+    "non_gross": {
+      "name": "range residual (m), non-gross",
+      "n": 44,
+      "mean": -0.3075,
+      "median": -0.4297,
+      "std": 0.5345,
+      "mad": 0.4913,
+      "mae": 0.5331,
+      "rms": 0.6114,
+      "min": -1.042,
+      "max": 0.6565,
+      "q25": -0.8121,
+      "q75": 0.1912,
+      "bias_ci95": [
+        -0.6494,
+        -0.0147
+      ],
+      "mae_ci95": [
+        0.3319,
+        0.7574
+      ],
+      "rms_ci95": [
+        0.4015,
+        0.7971
+      ]
+    },
+    "per_session": [
+      {
+        "session": "20260814_193827",
+        "n": 37,
+        "n_gross": 15,
+        "all": {
+          "name": "",
+          "n": 37,
+          "mean": 3.9963,
+          "median": 0.3081,
+          "std": 6.7926,
+          "mad": 0.846,
+          "mae": 4.2215,
+          "rms": 7.8015,
+          "min": -0.696,
+          "max": 21.2872,
+          "q25": 0.0633,
+          "q75": 3.6426
+        },
+        "non_gross": {
+          "name": "",
+          "n": 22,
+          "mean": -0.045,
+          "median": 0.1288,
+          "std": 0.3797,
+          "mad": 0.2386,
+          "mae": 0.3337,
+          "rms": 0.3737,
+          "min": -0.696,
+          "max": 0.3939,
+          "q25": -0.3922,
+          "q75": 0.2785
+        }
+      },
+      {
+        "session": "20260814_194145",
+        "n": 20,
+        "n_gross": 0,
+        "all": {
+          "name": "",
+          "n": 20,
+          "mean": -0.6142,
+          "median": -0.8199,
+          "std": 0.5214,
+          "mad": 0.1164,
+          "mae": 0.7495,
+          "rms": 0.7972,
+          "min": -1.042,
+          "max": 0.6565,
+          "q25": -0.9279,
+          "q75": -0.6664
+        },
+        "non_gross": {
+          "name": "",
+          "n": 20,
+          "mean": -0.6142,
+          "median": -0.8199,
+          "std": 0.5214,
+          "mad": 0.1164,
+          "mae": 0.7495,
+          "rms": 0.7972,
+          "min": -1.042,
+          "max": 0.6565,
+          "q25": -0.9279,
+          "q75": -0.6664
+        }
+      },
+      {
+        "session": "20260814_195048",
+        "n": 2,
+        "n_gross": 0,
+        "all": {
+          "name": "",
+          "n": 2,
+          "mean": -0.128,
+          "median": -0.128,
+          "std": 0.7952,
+          "mad": 0.5623,
+          "mae": 0.5623,
+          "rms": 0.5767,
+          "min": -0.6902,
+          "max": 0.4343,
+          "q25": -0.4091,
+          "q75": 0.1532
+        },
+        "non_gross": {
+          "name": "",
+          "n": 2,
+          "mean": -0.128,
+          "median": -0.128,
+          "std": 0.7952,
+          "mad": 0.5623,
+          "mae": 0.5623,
+          "rms": 0.5767,
+          "min": -0.6902,
+          "max": 0.4343,
+          "q25": -0.4091,
+          "q75": 0.1532
+        }
+      }
+    ],
+    "dependence_on_observables": {
+      "gt_range_m": {
+        "n": 59,
+        "pearson_resid": -0.6412,
+        "spearman_resid": -0.9023,
+        "spearman_log_ratio": -0.9145,
+        "spearman_resid_non_gross": -0.8094,
+        "spearman_ci95": [
+          -0.9589,
+          -0.6964
+        ]
+      },
+      "bbox_width_frac": {
+        "n": 59,
+        "pearson_resid": -0.8773,
+        "spearman_resid": -0.8658,
+        "spearman_log_ratio": -0.8679,
+        "spearman_resid_non_gross": -0.6866,
+        "spearman_ci95": [
+          -0.9766,
+          -0.6158
+        ],
+        "caveat": "NOT an independent covariate: width = ANCHOR_WIDTH_M*F_PX/(range*IMG_W) exactly, so this is the range regression re-parameterised. Reported for completeness only."
+      },
+      "center_x": {
+        "n": 59,
+        "pearson_resid": -0.0665,
+        "spearman_resid": 0.069,
+        "spearman_log_ratio": 0.0673,
+        "spearman_resid_non_gross": 0.2873,
+        "spearman_ci95": [
+          -0.5655,
+          0.4466
+        ]
+      },
+      "abs_center_offset": {
+        "n": 59,
+        "pearson_resid": -0.3443,
+        "spearman_resid": 0.1187,
+        "spearman_log_ratio": 0.113,
+        "spearman_resid_non_gross": 0.6927,
+        "spearman_ci95": [
+          -0.6291,
+          0.8068
+        ]
+      },
+      "bbox_height_frac": {
+        "n": 0,
+        "available": false,
+        "reason": "no cycle in the dataset carries both gt_dist_px and a bbox height: the GT sessions (missions/) log no det block and the det sessions (avoid_runs/) log no GT. Height is not recoverable from range either, because range is derived from WIDTH."
+      },
+      "detector_score": {
+        "n": 0,
+        "available": false,
+        "reason": "same disjointness: score is logged only where GT is absent. Not estimable from this dataset."
+      }
+    },
+    "scale_model": {
+      "model": "measured_range = a + b * true_range (non-gross)",
+      "a": 1.6173,
+      "b": -0.0897,
+      "b_ci95": [
+        -0.3288,
+        0.0547
+      ],
+      "r2": 0.0104,
+      "residual_rms_m": 0.3309,
+      "pearson_measured_vs_true": -0.102,
+      "best_pure_scale_k": 0.7858,
+      "interpretation": "b is the informativeness of the sensor: b=1 would mean the measurement tracks truth. See the report for the verdict; the CI is a moving-block bootstrap, block 9."
+    },
+    "gt_bins": [
+      {
+        "gt_lo": 0.0,
+        "gt_hi": 1.0,
+        "n": 15,
+        "n_gross": 15,
+        "gross_rate": 1.0,
+        "gross_rate_ci95": [
+          0.7961,
+          1.0
+        ],
+        "measured_range_m": {
+          "name": "",
+          "n": 15,
+          "mean": 10.6347,
+          "median": 11.23,
+          "std": 7.4575,
+          "mad": 7.71,
+          "mae": 10.6347,
+          "rms": 12.8453,
+          "min": 1.68,
+          "max": 22.17,
+          "q25": 2.65,
+          "q75": 17.41
+        },
+        "resid_m": {
+          "name": "",
+          "n": 15,
+          "mean": 9.9235,
+          "median": 10.6611,
+          "std": 7.4245,
+          "mad": 7.5147,
+          "mae": 9.9235,
+          "rms": 12.2443,
+          "min": 1.2934,
+          "max": 21.2872,
+          "q25": 1.9898,
+          "q75": 16.6486
+        },
+        "ratio_median": 19.7397
+      },
+      {
+        "gt_lo": 1.0,
+        "gt_hi": 1.6,
+        "n": 15,
+        "n_gross": 0,
+        "gross_rate": 0.0,
+        "gross_rate_ci95": [
+          0.0,
+          0.2039
+        ],
+        "measured_range_m": {
+          "name": "",
+          "n": 15,
+          "mean": 1.506,
+          "median": 1.42,
+          "std": 0.2038,
+          "mad": 0.1,
+          "mae": 1.506,
+          "rms": 1.5188,
+          "min": 1.3,
+          "max": 2.1,
+          "q25": 1.37,
+          "q75": 1.58
+        },
+        "resid_m": {
+          "name": "",
+          "n": 15,
+          "mean": 0.1974,
+          "median": 0.201,
+          "std": 0.2263,
+          "mad": 0.1071,
+          "mae": 0.2611,
+          "rms": 0.2946,
+          "min": -0.2714,
+          "max": 0.6565,
+          "q25": 0.1288,
+          "q75": 0.308
+        },
+        "ratio_median": 1.1735
+      },
+      {
+        "gt_lo": 1.6,
+        "gt_hi": 2.0,
+        "n": 15,
+        "n_gross": 0,
+        "gross_rate": 0.0,
+        "gross_rate_ci95": [
+          0.0,
+          0.2039
+        ],
+        "measured_range_m": {
+          "name": "",
+          "n": 15,
+          "mean": 1.4827,
+          "median": 1.23,
+          "std": 0.4148,
+          "mad": 0.02,
+          "mae": 1.4827,
+          "rms": 1.5359,
+          "min": 1.21,
+          "max": 2.33,
+          "q25": 1.215,
+          "q75": 1.675
+        },
+        "resid_m": {
+          "name": "",
+          "n": 15,
+          "mean": -0.361,
+          "median": -0.4734,
+          "std": 0.4019,
+          "mad": 0.2168,
+          "mae": 0.4841,
+          "rms": 0.5302,
+          "min": -0.774,
+          "max": 0.4343,
+          "q25": -0.6629,
+          "q75": -0.1516
+        },
+        "ratio_median": 0.7237
+      },
+      {
+        "gt_lo": 2.0,
+        "gt_hi": null,
+        "n": 14,
+        "n_gross": 0,
+        "gross_rate": 0.0,
+        "gross_rate_ci95": [
+          0.0,
+          0.2153
+        ],
+        "measured_range_m": {
+          "name": "",
+          "n": 14,
+          "mean": 1.3829,
+          "median": 1.275,
+          "std": 0.3674,
+          "mad": 0.045,
+          "mae": 1.3829,
+          "rms": 1.4275,
+          "min": 1.21,
+          "max": 2.64,
+          "q25": 1.235,
+          "q75": 1.3275
+        },
+        "resid_m": {
+          "name": "",
+          "n": 14,
+          "mean": -0.7911,
+          "median": -0.8553,
+          "std": 0.4083,
+          "mad": 0.055,
+          "mae": 0.877,
+          "rms": 0.8835,
+          "min": -1.042,
+          "max": 0.6012,
+          "q25": -0.9607,
+          "q75": -0.8173
+        },
+        "ratio_median": 0.5897
+      }
+    ],
+    "censoring": {
+      "arm_search_window_frac": 0.44,
+      "implied_range_floor_m": 1.2093,
+      "max_width_frac_observed": 0.4397,
+      "n_within_1pct_of_cap": 8,
+      "n_paired": 59,
+      "note": "the detector cannot report a width above ARM_WINDOW_FRAC, so the monocular range is CENSORED from below at the floor. This is structure, not noise."
+    }
+  },
+  "bearing_residual": {
+    "frame_offset_per_session": {
+      "20260814_193827": {
+        "n": 3,
+        "offset_deg": 67.642,
+        "std_deg": 1.825
+      },
+      "20260814_195048": {
+        "n": 9,
+        "offset_deg": 66.381,
+        "std_deg": 3.439
+      }
+    },
+    "frame_offset_deg": 67.011,
+    "frame_offset_spread_deg": 1.261,
+    "n_sessions_calibrating": 2,
+    "available": true,
+    "n": 59,
+    "residual_deg": {
+      "name": "bearing residual (deg)",
+      "n": 59,
+      "mean": -2.8812,
+      "median": -2.31,
+      "std": 4.5629,
+      "mad": 2.76,
+      "mae": 3.9419,
+      "rms": 5.3637,
+      "min": -16.98,
+      "max": 10.64,
+      "q25": -5.66,
+      "q75": -0.02
+    },
+    "residual_deg_non_gross_range": {
+      "name": "",
+      "n": 44,
+      "mean": -2.0625,
+      "median": -1.93,
+      "std": 3.7183,
+      "mad": 2.53,
+      "mae": 3.2616,
+      "rms": 4.2149,
+      "min": -8.19,
+      "max": 10.64,
+      "q25": -5.57,
+      "q75": 0.155
+    },
+    "residual_deg_gt_below_0p8m": {
+      "name": "",
+      "n": 10,
+      "mean": -5.104,
+      "median": -4.405,
+      "std": 6.7245,
+      "mad": 2.995,
+      "mae": 6.086,
+      "rms": 8.17,
+      "min": -16.98,
+      "max": 4.91,
+      "q25": -6.035,
+      "q75": -0.8
+    },
+    "residual_deg_gt_above_0p8m": {
+      "name": "",
+      "n": 49,
+      "mean": -2.4276,
+      "median": -1.97,
+      "std": 3.9294,
+      "mad": 2.64,
+      "mae": 3.5043,
+      "rms": 4.5845,
+      "min": -10.38,
+      "max": 10.64,
+      "q25": -5.57,
+      "q75": 0.07
+    },
+    "bootstrap_block_len": 6,
+    "bias_ci95": [
+      -4.9372,
+      -1.5618
+    ],
+    "sd_ci95": [
+      2.9445,
+      5.3395
+    ],
+    "validity": {
+      "bias_is_validated": false,
+      "why": "the GT bearing is defined relative to an estimated frame offset; any error in that offset shifts EVERY residual by the same amount, so the mean residual and the offset error are not separable. The per-session offsets agree to 1.261 deg, which bounds but does not remove the confound.",
+      "dispersion_is_usable": true,
+      "extra_caveat": "the GT is the bearing to the anchor's SUSPENSION pixel while the camera reports the bearing to the detected blob centre; at short range the anchor subtends a large angle and the two diverge, which is visible in the gt<0.8 m split above."
+    },
+    "samples": [
+      {
+        "session": "20260814_193827",
+        "t": 9.55,
+        "cam_bearing_deg": 27.8,
+        "gt_bearing_deg": 26.18,
+        "resid_deg": 1.62,
+        "gt_m": 1.9360696517412934,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 9.82,
+        "cam_bearing_deg": 20.8,
+        "gt_bearing_deg": 26.8,
+        "resid_deg": -6.0,
+        "gt_m": 1.9059701492537315,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 10.12,
+        "cam_bearing_deg": 21.6,
+        "gt_bearing_deg": 27.88,
+        "resid_deg": -6.28,
+        "gt_m": 1.8554726368159205,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 10.4,
+        "cam_bearing_deg": 22.2,
+        "gt_bearing_deg": 28.3,
+        "resid_deg": -6.1,
+        "gt_m": 1.814676616915423,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 10.68,
+        "cam_bearing_deg": 23.1,
+        "gt_bearing_deg": 28.67,
+        "resid_deg": -5.57,
+        "gt_m": 1.7679104477611942,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 10.95,
+        "cam_bearing_deg": 23.2,
+        "gt_bearing_deg": 28.77,
+        "resid_deg": -5.57,
+        "gt_m": 1.7134328358208955,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 11.23,
+        "cam_bearing_deg": 22.4,
+        "gt_bearing_deg": 28.64,
+        "resid_deg": -6.24,
+        "gt_m": 1.6477611940298507,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 11.5,
+        "cam_bearing_deg": 22.7,
+        "gt_bearing_deg": 28.63,
+        "resid_deg": -5.93,
+        "gt_m": 1.62363184079602,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 11.78,
+        "cam_bearing_deg": 21.4,
+        "gt_bearing_deg": 28.38,
+        "resid_deg": -6.98,
+        "gt_m": 1.5713930348258707,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 12.05,
+        "cam_bearing_deg": 22.8,
+        "gt_bearing_deg": 28.51,
+        "resid_deg": -5.71,
+        "gt_m": 1.536318407960199,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 12.34,
+        "cam_bearing_deg": 22.4,
+        "gt_bearing_deg": 28.06,
+        "resid_deg": -5.66,
+        "gt_m": 1.4883084577114427,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 12.61,
+        "cam_bearing_deg": 22.1,
+        "gt_bearing_deg": 27.59,
+        "resid_deg": -5.49,
+        "gt_m": 1.4445273631840798,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 12.87,
+        "cam_bearing_deg": 24.1,
+        "gt_bearing_deg": 27.35,
+        "resid_deg": -3.25,
+        "gt_m": 1.3940298507462685,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 13.15,
+        "cam_bearing_deg": 18.8,
+        "gt_bearing_deg": 26.99,
+        "resid_deg": -8.19,
+        "gt_m": 1.3567164179104476,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 13.41,
+        "cam_bearing_deg": 23.5,
+        "gt_bearing_deg": 25.81,
+        "resid_deg": -2.31,
+        "gt_m": 1.3246268656716418,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 13.69,
+        "cam_bearing_deg": 23.2,
+        "gt_bearing_deg": 25.17,
+        "resid_deg": -1.97,
+        "gt_m": 1.2718905472636817,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 13.96,
+        "cam_bearing_deg": 23.2,
+        "gt_bearing_deg": 24.52,
+        "resid_deg": -1.32,
+        "gt_m": 1.2308457711442786,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 14.22,
+        "cam_bearing_deg": 21.7,
+        "gt_bearing_deg": 23.67,
+        "resid_deg": -1.97,
+        "gt_m": 1.1920398009950248,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 14.49,
+        "cam_bearing_deg": 20.6,
+        "gt_bearing_deg": 22.49,
+        "resid_deg": -1.89,
+        "gt_m": 1.158955223880597,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 14.78,
+        "cam_bearing_deg": 17.6,
+        "gt_bearing_deg": 21.29,
+        "resid_deg": -3.69,
+        "gt_m": 1.1121890547263682,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 15.05,
+        "cam_bearing_deg": 15.4,
+        "gt_bearing_deg": 20.01,
+        "resid_deg": -4.61,
+        "gt_m": 1.07363184079602,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 15.34,
+        "cam_bearing_deg": 13.2,
+        "gt_bearing_deg": 18.05,
+        "resid_deg": -4.85,
+        "gt_m": 1.0305970149253731,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_193827",
+        "t": 15.6,
+        "cam_bearing_deg": 6.0,
+        "gt_bearing_deg": 16.38,
+        "resid_deg": -10.38,
+        "gt_m": 0.9932835820895523,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 15.88,
+        "cam_bearing_deg": 4.5,
+        "gt_bearing_deg": 14.87,
+        "resid_deg": -10.37,
+        "gt_m": 0.9490049751243781,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 16.14,
+        "cam_bearing_deg": 7.7,
+        "gt_bearing_deg": 13.25,
+        "resid_deg": -5.55,
+        "gt_m": 0.9174129353233831,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 16.43,
+        "cam_bearing_deg": 10.0,
+        "gt_bearing_deg": 11.34,
+        "resid_deg": -1.34,
+        "gt_m": 0.8828358208955224,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 16.69,
+        "cam_bearing_deg": 8.1,
+        "gt_bearing_deg": 8.66,
+        "resid_deg": -0.56,
+        "gt_m": 0.8300995024875621,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 16.97,
+        "cam_bearing_deg": 5.8,
+        "gt_bearing_deg": 5.85,
+        "resid_deg": -0.05,
+        "gt_m": 0.7930348258706468,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 17.25,
+        "cam_bearing_deg": 3.5,
+        "gt_bearing_deg": 3.67,
+        "resid_deg": -0.17,
+        "gt_m": 0.764179104477612,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 17.5,
+        "cam_bearing_deg": 6.7,
+        "gt_bearing_deg": 1.79,
+        "resid_deg": 4.91,
+        "gt_m": 0.7296019900497512,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 17.78,
+        "cam_bearing_deg": -2.4,
+        "gt_bearing_deg": 0.29,
+        "resid_deg": -2.69,
+        "gt_m": 0.6927860696517413,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 18.06,
+        "cam_bearing_deg": -5.2,
+        "gt_bearing_deg": -1.47,
+        "resid_deg": -3.73,
+        "gt_m": 0.6502487562189054,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 18.32,
+        "cam_bearing_deg": -7.8,
+        "gt_bearing_deg": -2.72,
+        "resid_deg": -5.08,
+        "gt_m": 0.6111940298507462,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 18.62,
+        "cam_bearing_deg": -9.7,
+        "gt_bearing_deg": -4.04,
+        "resid_deg": -5.66,
+        "gt_m": 0.5689054726368159,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 18.88,
+        "cam_bearing_deg": -11.8,
+        "gt_bearing_deg": -5.64,
+        "resid_deg": -6.16,
+        "gt_m": 0.5271144278606965,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 19.7,
+        "cam_bearing_deg": -27.2,
+        "gt_bearing_deg": -11.77,
+        "resid_deg": -15.43,
+        "gt_m": 0.38656716417910447,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_193827",
+        "t": 19.98,
+        "cam_bearing_deg": -28.0,
+        "gt_bearing_deg": -11.02,
+        "resid_deg": -16.98,
+        "gt_m": 0.3708955223880597,
+        "gross_range": true
+      },
+      {
+        "session": "20260814_194145",
+        "t": 2.14,
+        "cam_bearing_deg": -0.5,
+        "gt_bearing_deg": 0.32,
+        "resid_deg": -0.82,
+        "gt_m": 2.375870646766169,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 2.89,
+        "cam_bearing_deg": -3.1,
+        "gt_bearing_deg": -2.1,
+        "resid_deg": -1.0,
+        "gt_m": 2.292039800995025,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 3.15,
+        "cam_bearing_deg": -2.5,
+        "gt_bearing_deg": -2.51,
+        "resid_deg": 0.01,
+        "gt_m": 2.2733830845771146,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 3.41,
+        "cam_bearing_deg": -5.4,
+        "gt_bearing_deg": -2.7,
+        "resid_deg": -2.7,
+        "gt_m": 2.2512437810945274,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 3.65,
+        "cam_bearing_deg": -4.7,
+        "gt_bearing_deg": -3.73,
+        "resid_deg": -0.97,
+        "gt_m": 2.233084577114428,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 3.92,
+        "cam_bearing_deg": -5.2,
+        "gt_bearing_deg": -4.67,
+        "resid_deg": -0.53,
+        "gt_m": 2.201990049751244,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 4.16,
+        "cam_bearing_deg": -5.9,
+        "gt_bearing_deg": -5.3,
+        "resid_deg": -0.6,
+        "gt_m": 2.1793532338308457,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 4.44,
+        "cam_bearing_deg": -6.1,
+        "gt_bearing_deg": -6.17,
+        "resid_deg": 0.07,
+        "gt_m": 2.1552238805970148,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 4.7,
+        "cam_bearing_deg": -5.7,
+        "gt_bearing_deg": -6.81,
+        "resid_deg": 1.11,
+        "gt_m": 2.1355721393034828,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 4.99,
+        "cam_bearing_deg": -6.8,
+        "gt_bearing_deg": -7.62,
+        "resid_deg": 0.82,
+        "gt_m": 2.1194029850746268,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 5.25,
+        "cam_bearing_deg": -8.4,
+        "gt_bearing_deg": -8.73,
+        "resid_deg": 0.33,
+        "gt_m": 2.085074626865672,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 5.53,
+        "cam_bearing_deg": -9.4,
+        "gt_bearing_deg": -9.73,
+        "resid_deg": 0.33,
+        "gt_m": 2.069900497512438,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 5.82,
+        "cam_bearing_deg": -17.8,
+        "gt_bearing_deg": -10.84,
+        "resid_deg": -6.96,
+        "gt_m": 2.038805970149254,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 6.08,
+        "cam_bearing_deg": -11.6,
+        "gt_bearing_deg": -12.05,
+        "resid_deg": 0.45,
+        "gt_m": 2.0246268656716415,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 6.36,
+        "cam_bearing_deg": -12.5,
+        "gt_bearing_deg": -12.63,
+        "resid_deg": 0.13,
+        "gt_m": 1.9940298507462688,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 6.65,
+        "cam_bearing_deg": -13.2,
+        "gt_bearing_deg": -13.43,
+        "resid_deg": 0.23,
+        "gt_m": 1.9699004975124377,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 6.93,
+        "cam_bearing_deg": -18.2,
+        "gt_bearing_deg": -15.11,
+        "resid_deg": -3.09,
+        "gt_m": 1.9395522388059703,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 7.48,
+        "cam_bearing_deg": -19.2,
+        "gt_bearing_deg": -18.32,
+        "resid_deg": -0.88,
+        "gt_m": 1.895771144278607,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 7.76,
+        "cam_bearing_deg": -12.4,
+        "gt_bearing_deg": -18.33,
+        "resid_deg": 5.93,
+        "gt_m": 1.8753731343283582,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_194145",
+        "t": 11.54,
+        "cam_bearing_deg": -28.8,
+        "gt_bearing_deg": -31.91,
+        "resid_deg": 3.11,
+        "gt_m": 1.4435323383084575,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_195048",
+        "t": 5.34,
+        "cam_bearing_deg": -19.4,
+        "gt_bearing_deg": -21.0,
+        "resid_deg": 1.6,
+        "gt_m": 1.9002487562189054,
+        "gross_range": false
+      },
+      {
+        "session": "20260814_195048",
+        "t": 5.88,
+        "cam_bearing_deg": -11.4,
+        "gt_bearing_deg": -22.04,
+        "resid_deg": 10.64,
+        "gt_m": 1.8156716417910448,
+        "gross_range": false
+      }
+    ]
+  },
+  "availability": {
+    "per_session": [
+      {
+        "n_cycles": 85,
+        "n_transitions": 84,
+        "accept_rate": 0.4353,
+        "accept_rate_ci95": [
+          0.335,
+          0.5412
+        ],
+        "counts": {
+          "00": 45,
+          "01": 2,
+          "10": 2,
+          "11": 35
+        },
+        "iid_p": 0.4405,
+        "p01": 0.0426,
+        "p11": 0.9459,
+        "loglik_iid": -57.628,
+        "loglik_markov": -16.051,
+        "G2": 83.153,
+        "df": 1,
+        "p_value": 7.595017527764051e-20,
+        "aic_iid": 117.255,
+        "aic_markov": 36.103,
+        "favours": "markov",
+        "underpowered": false,
+        "cycle_period_s_median": 0.28,
+        "session": "20260814_193827",
+        "kind": "missions",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          0.9034,
+          0.8049,
+          0.803,
+          0.801,
+          0.7486,
+          0.695,
+          0.6401,
+          0.5838,
+          0.526,
+          0.4666
+        ],
+        "run_lengths_detect": [
+          35,
+          2
+        ],
+        "run_lengths_gap": [
+          32,
+          2,
+          14
+        ]
+      },
+      {
+        "n_cycles": 57,
+        "n_transitions": 56,
+        "accept_rate": 0.3684,
+        "accept_rate_ci95": [
+          0.2552,
+          0.4982
+        ],
+        "counts": {
+          "00": 30,
+          "01": 5,
+          "10": 5,
+          "11": 16
+        },
+        "iid_p": 0.375,
+        "p01": 0.1429,
+        "p11": 0.7619,
+        "loglik_iid": -37.048,
+        "loglik_markov": -25.88,
+        "G2": 22.334,
+        "df": 1,
+        "p_value": 2.2908818637385745e-06,
+        "aic_iid": 76.095,
+        "aic_markov": 55.761,
+        "favours": "markov",
+        "underpowered": false,
+        "cycle_period_s_median": 0.27,
+        "session": "20260814_194145",
+        "kind": "missions",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          0.619,
+          0.5378,
+          0.6104,
+          0.6427,
+          0.4772,
+          0.3888,
+          0.3805,
+          0.3265,
+          0.2308,
+          0.1317
+        ],
+        "run_lengths_detect": [
+          1,
+          1,
+          16,
+          2,
+          1
+        ],
+        "run_lengths_gap": [
+          3,
+          3,
+          2,
+          1,
+          13,
+          14
+        ]
+      },
+      {
+        "n_cycles": 52,
+        "n_transitions": 51,
+        "accept_rate": 0.0385,
+        "accept_rate_ci95": [
+          0.0106,
+          0.1298
+        ],
+        "counts": {
+          "00": 47,
+          "01": 2,
+          "10": 2,
+          "11": 0
+        },
+        "iid_p": 0.0392,
+        "p01": 0.0408,
+        "p11": 0.0,
+        "loglik_iid": -8.438,
+        "loglik_markov": -8.356,
+        "G2": 0.163,
+        "df": 1,
+        "p_value": 0.6861265759586634,
+        "aic_iid": 18.875,
+        "aic_markov": 20.712,
+        "favours": "iid_not_rejected",
+        "underpowered": true,
+        "cycle_period_s_median": 0.27,
+        "session": "20260814_195048",
+        "kind": "missions",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          -0.0408,
+          0.4792,
+          -0.0426,
+          -0.0435,
+          -0.0444,
+          -0.0455,
+          -0.0465,
+          -0.0476,
+          -0.0488,
+          -0.05
+        ],
+        "run_lengths_detect": [
+          1,
+          1
+        ],
+        "run_lengths_gap": [
+          19,
+          1,
+          30
+        ]
+      },
+      {
+        "n_cycles": 43,
+        "n_transitions": 42,
+        "accept_rate": 0.1628,
+        "accept_rate_ci95": [
+          0.0812,
+          0.2997
+        ],
+        "counts": {
+          "00": 31,
+          "01": 5,
+          "10": 4,
+          "11": 2
+        },
+        "iid_p": 0.1667,
+        "p01": 0.1389,
+        "p11": 0.3333,
+        "loglik_iid": -18.924,
+        "loglik_markov": -18.325,
+        "G2": 1.197,
+        "df": 1,
+        "p_value": 0.2738832777156426,
+        "aic_iid": 39.847,
+        "aic_markov": 40.65,
+        "favours": "iid_not_rejected",
+        "underpowered": true,
+        "cycle_period_s_median": 0.24,
+        "session": "run_20260814_184449",
+        "kind": "avoid_runs",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          0.1826,
+          0.1789,
+          0.3593,
+          0.2204,
+          0.4175,
+          0.0109,
+          0.2086,
+          0.0449,
+          0.0981,
+          0.3516
+        ],
+        "run_lengths_detect": [
+          2,
+          1,
+          2,
+          1,
+          1
+        ],
+        "run_lengths_gap": [
+          29,
+          1,
+          1,
+          3,
+          2
+        ]
+      },
+      {
+        "n_cycles": 57,
+        "n_transitions": 56,
+        "accept_rate": 0.0351,
+        "accept_rate_ci95": [
+          0.0097,
+          0.1192
+        ],
+        "counts": {
+          "00": 52,
+          "01": 2,
+          "10": 2,
+          "11": 0
+        },
+        "iid_p": 0.0357,
+        "p01": 0.037,
+        "p11": 0.0,
+        "loglik_iid": -8.628,
+        "loglik_markov": -8.554,
+        "G2": 0.148,
+        "df": 1,
+        "p_value": 0.7002787577905389,
+        "aic_iid": 19.257,
+        "aic_markov": 21.108,
+        "favours": "iid_not_rejected",
+        "underpowered": true,
+        "cycle_period_s_median": 0.23,
+        "session": "shadow_20260814_183518",
+        "kind": "avoid_runs",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          -0.037,
+          0.4811,
+          -0.0385,
+          -0.0392,
+          -0.04,
+          -0.0408,
+          -0.0417,
+          -0.0426,
+          -0.0435,
+          -0.0444
+        ],
+        "run_lengths_detect": [
+          1,
+          1
+        ],
+        "run_lengths_gap": [
+          14,
+          1,
+          40
+        ]
+      },
+      {
+        "n_cycles": 47,
+        "n_transitions": 46,
+        "accept_rate": 0.0638,
+        "accept_rate_ci95": [
+          0.0219,
+          0.1716
+        ],
+        "counts": {
+          "00": 40,
+          "01": 3,
+          "10": 3,
+          "11": 0
+        },
+        "iid_p": 0.0652,
+        "p01": 0.0698,
+        "p11": 0.0,
+        "loglik_iid": -11.09,
+        "loglik_markov": -10.881,
+        "G2": 0.419,
+        "df": 1,
+        "p_value": 0.5174639852605141,
+        "aic_iid": 24.18,
+        "aic_markov": 25.761,
+        "favours": "iid_not_rejected",
+        "underpowered": true,
+        "cycle_period_s_median": 0.24,
+        "session": "shadow_20260814_183600",
+        "kind": "avoid_runs",
+        "origin": "worktree",
+        "autocorr_lag1_10": [
+          -0.0698,
+          -0.0714,
+          -0.0732,
+          -0.0605,
+          0.475,
+          -0.0513,
+          -0.0526,
+          -0.0541,
+          -0.0556,
+          -0.0398
+        ],
+        "run_lengths_detect": [
+          1,
+          1,
+          1
+        ],
+        "run_lengths_gap": [
+          3,
+          33,
+          4,
+          4
+        ]
+      }
+    ],
+    "note": "acceptance = the gate in avoid_mission.accept(): found and score>=0.55 and height>=0.12 and width>=0.02",
+    "pooled": {
+      "cycle_period_s_median": 0.255,
+      "n_transitions": 335,
+      "counts": {
+        "00": 245,
+        "01": 19,
+        "10": 18,
+        "11": 53
+      },
+      "iid_p": 0.2149,
+      "p01": 0.072,
+      "p11": 0.7465,
+      "stationary_accept_rate": 0.2211,
+      "mean_detect_run_cycles": 3.944,
+      "mean_gap_run_cycles": 13.895,
+      "G2": 131.682,
+      "df": 1,
+      "p_value": 1.7557957741263376e-30,
+      "favours": "markov",
+      "run_lengths_detect_pool": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        16,
+        35
+      ],
+      "run_lengths_gap_pool": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        13,
+        14,
+        14,
+        14,
+        19,
+        29,
+        30,
+        32,
+        33,
+        40
+      ],
+      "caveat": "transitions are counted WITHIN sessions only, so no cross-session splice is created. Even so, pooling sessions whose acceptance rates differ by an order of magnitude (0.04 to 0.44) inflates apparent persistence: a mixture of Bernoulli rates looks bursty. The per-session tests are the trustworthy evidence; the pooled G2 is an upper bound."
+    }
+  },
+  "false_positives": {
+    "gross_range_failures": {
+      "n": 15,
+      "n_paired": 59,
+      "rate_of_accepted_samples": 0.2542,
+      "rate_ci95": [
+        0.1606,
+        0.378
+      ],
+      "gt_m_of_failures": [
+        0.371,
+        0.387,
+        0.527,
+        0.569,
+        0.611,
+        0.65,
+        0.693,
+        0.73,
+        0.764,
+        0.793,
+        0.83,
+        0.883,
+        0.917,
+        0.949,
+        0.993
+      ],
+      "gt_m_of_non_failures": [
+        1.936,
+        1.906,
+        1.855,
+        1.815,
+        1.768,
+        1.713,
+        1.648,
+        1.624,
+        1.571,
+        1.536,
+        1.488,
+        1.445,
+        1.394,
+        1.357,
+        1.325,
+        1.272,
+        1.231,
+        1.192,
+        1.159,
+        1.112,
+        1.074,
+        1.031,
+        2.376,
+        2.292,
+        2.273,
+        2.251,
+        2.233,
+        2.202,
+        2.179,
+        2.155,
+        2.136,
+        2.119,
+        2.085,
+        2.07,
+        2.039,
+        2.025,
+        1.994,
+        1.97,
+        1.94,
+        1.896,
+        1.875,
+        1.444,
+        1.9,
+        1.816
+      ],
+      "max_ratio": 25.11,
+      "separation": {
+        "max_gt_m_with_failure": 0.993,
+        "min_gt_m_without_failure": 1.031,
+        "perfectly_separated": true,
+        "note": "if perfectly separated, the threshold is a property of the mechanism (the arm span leaves the detector's search band), not a tuned cut"
+      },
+      "separation_bearing_consistent_only": {
+        "n": 59,
+        "n_gross": 15,
+        "max_gt_m_with_failure": 0.993,
+        "min_gt_m_without_failure": 1.031,
+        "why": "re-tests the range/GT separation after removing samples whose bearing proves the measured object was not the anchor; a separation that survives this is a property of the range mechanism alone"
+      }
+    },
+    "bearing_inconsistent_accepted": {
+      "criterion_deg": 45.0,
+      "half_fov_deg": 36.93,
+      "why_this_threshold": "a detection inside the image is at most 36.9 deg off the bow, so a disagreement past 45 deg cannot be a correct detection of the anchor under a correct overhead fix",
+      "n": 0,
+      "n_accepted_with_gt": 59,
+      "rate": 0.0,
+      "rate_ci95": [
+        0.0,
+        0.0611
+      ],
+      "sessions_affected": [],
+      "per_session_mean_resid_deg": {
+        "20260814_193827": -4.79,
+        "20260814_194145": -0.25,
+        "20260814_195048": 6.12
+      },
+      "samples": [],
+      "confound": "this criterion cannot separate a detector false positive from an overhead-tracker lock failure: both put the vehicle's line to the anchor somewhere it is not. Resolving it requires the recorded frames, not the logs.",
+      "interaction_with_gross_range": "gross range failures that coincide with a bearing inconsistency are better read as false positives than as range failures, since the object measured was not the anchor",
+      "n_gross_range_also_bad_bearing": 0
+    },
+    "detector_build_dating": {
+      "20260814_193827": {
+        "n_detections": 0,
+        "build": "undetermined",
+        "why": "no det block logged in this session"
+      },
+      "20260814_194145": {
+        "n_detections": 0,
+        "build": "undetermined",
+        "why": "no det block logged in this session"
+      },
+      "20260814_195048": {
+        "n_detections": 0,
+        "build": "undetermined",
+        "why": "no det block logged in this session"
+      },
+      "run_20260814_184449": {
+        "n_detections": 7,
+        "min_height_frac": 0.387,
+        "max_height_frac": 0.4306,
+        "n_below_v2_floor": 0,
+        "build": "v2-compatible",
+        "why": "the committed v2 shape prior skips candidates shorter than 0.25 of the frame, so detections below that floor cannot have come from it"
+      },
+      "shadow_20260814_183518": {
+        "n_detections": 57,
+        "min_height_frac": 0.0231,
+        "max_height_frac": 0.2,
+        "n_below_v2_floor": 57,
+        "build": "pre-v2",
+        "why": "the committed v2 shape prior skips candidates shorter than 0.25 of the frame, so detections below that floor cannot have come from it"
+      },
+      "shadow_20260814_183600": {
+        "n_detections": 47,
+        "min_height_frac": 0.0343,
+        "max_height_frac": 0.2148,
+        "n_below_v2_floor": 47,
+        "build": "pre-v2",
+        "why": "the committed v2 shape prior skips candidates shorter than 0.25 of the frame, so detections below that floor cannot have come from it"
+      }
+    },
+    "non_anchor_detections_shadow_runs": {
+      "sessions": [
+        "shadow_20260814_183518",
+        "shadow_20260814_183600"
+      ],
+      "n_cycles": 104,
+      "n_found": 104,
+      "found_rate": 1.0,
+      "n_passing_the_gate": 5,
+      "gate_pass_rate": 0.0481,
+      "gate_pass_rate_ci95": [
+        0.0207,
+        0.1076
+      ],
+      "heights_of_gate_passers": [
+        0.1296,
+        0.1361,
+        0.1463,
+        0.2,
+        0.2148
+      ],
+      "scores_of_gate_passers": [
+        0.569,
+        0.613,
+        0.622,
+        0.704,
+        0.721
+      ],
+      "implied_range_m": [
+        9.45,
+        11.35,
+        11.62,
+        13.44,
+        13.61
+      ],
+      "evidence": "the detector reported a box on EVERY cycle of these runs while 104/104 of those boxes were shorter than the v2 structural floor. Inspection of the recorded frames (f0001.png) shows the box on surface debris near the top of the image while the anchor's shank is visible elsewhere in the same frame: these are detections of the wrong object, not detections of a missing one.",
+      "what_it_does_NOT_estimate": "the false-positive rate of the CURRENT detector: these runs predate the v2 shape prior. The gate-pass rate below characterises the earlier build and is an upper bound on nothing else. The implied ranges (9-14 m) are far outside the pool, so a downstream range sanity bound would have rejected them independently of the detector.",
+      "n_absurd_range": 5
+    },
+    "aborted_at_t0_runs": {
+      "in_worktree": 0,
+      "note": "the task suggested using runs that aborted at t=0 as a false-positive source. No such run exists in the worktree; the aborted runs are among the git-only sessions and they logged 0-3 cycles in total, aborting on the overhead WALL GUARD rather than on perception. They carry no usable false-positive information.",
+      "git_only_records_loaded": 0
+    }
+  },
+  "score_distribution": {
+    "available": true,
+    "sessions": [
+      "run_20260814_184449",
+      "shadow_20260814_183518",
+      "shadow_20260814_183600"
+    ],
+    "n_detections": 111,
+    "accepted": {
+      "name": "score | accepted",
+      "n": 12,
+      "mean": 0.8462,
+      "median": 0.8685,
+      "std": 0.1965,
+      "mad": 0.1685,
+      "mae": 0.8462,
+      "rms": 0.8668,
+      "min": 0.569,
+      "max": 1.131,
+      "q25": 0.6835,
+      "q75": 0.9952
+    },
+    "rejected": {
+      "name": "score | rejected",
+      "n": 99,
+      "mean": 0.6758,
+      "median": 0.52,
+      "std": 0.4681,
+      "mad": 0.122,
+      "mae": 0.6758,
+      "rms": 0.8208,
+      "min": 0.173,
+      "max": 3.504,
+      "q25": 0.4325,
+      "q75": 0.7555
+    },
+    "n_rejected_despite_score_gate": 42,
+    "frac_rejections_not_caused_by_score": 0.4242,
+    "height_accepted": {
+      "name": "",
+      "n": 12,
+      "mean": 0.3045,
+      "median": 0.388,
+      "std": 0.1256,
+      "mad": 0.0347,
+      "mae": 0.3045,
+      "rms": 0.3273,
+      "min": 0.1296,
+      "max": 0.4306,
+      "q25": 0.1866,
+      "q75": 0.4028
+    },
+    "height_rejected": {
+      "name": "",
+      "n": 99,
+      "mean": 0.0805,
+      "median": 0.0704,
+      "std": 0.0326,
+      "mad": 0.025,
+      "mae": 0.0805,
+      "rms": 0.0868,
+      "min": 0.0231,
+      "max": 0.1898,
+      "q25": 0.0616,
+      "q75": 0.1009
+    },
+    "auc_score_vs_gate_label": 0.7723,
+    "caveat": "accepted/rejected is the ACCEPTANCE GATE's label, not ground truth. 42 of 99 rejected detections passed the score threshold and were rejected on bbox size, and the single highest score in the dataset (3.504) belongs to a REJECTED detection. Score alone does not separate anchor from clutter here."
+  }
+}

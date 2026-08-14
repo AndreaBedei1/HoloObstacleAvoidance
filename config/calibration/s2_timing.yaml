@@ -1,0 +1,128 @@
+# S2 = S1 + ONE effect class: TIMING AND TRANSPORT of the observation stream.
+#
+# WHY this rung exists: S1 makes each observation as wrong as the real one,
+# but still delivers it instantly, every tick, forever.  The real stream is
+# camera- and detector-paced, arrives late by an unmeasured amount, and goes
+# BLIND IN BURSTS.  S2 adds when-and-whether-it-arrives, and nothing else.
+#
+# WHAT S2 OWNS (and no other level may touch):
+#   timing.*  - observation rate and its source, inter-arrival jitter,
+#               end-to-end observation latency and its jitter, the arrival
+#               process, the timestamp source, and the BURST structure of
+#               missing observations.
+#
+# THE ONE PLACE DOUBLE COUNTING WOULD HAPPEN, AND THE RULE THAT PREVENTS IT:
+#   S1 owns the MARGINAL per-frame detection probability p.  S2 owns the
+#   BURST STRUCTURE of the misses.  A two-state visible/blind process has a
+#   marginal of its own, so the S2 fit is CONSTRAINED:
+#       mean_visible_run_s / (mean_visible_run_s + mean_blind_run_s) == p
+#   The burst process is fitted SUBJECT TO reproducing S1's p, never in
+#   addition to it.  Fitting both freely would thin the stream twice and
+#   silently make S2 a harsher condition than the real vehicle.
+#
+# WHAT S2 MUST NOT TOUCH:
+#   camera.*, observation.* -> S1 (including p itself).
+#   vehicle.*               -> S3.  Command latency is the ACTUATION path
+#                              and is owned by S3; timing.observation_latency_s
+#                              is the PERCEPTION path.  They are different
+#                              delays measured on different signals.
+#   simulator.ticks_per_sec -> S0, IMMUTABLE.  A slower observation rate is
+#                              modelled by DELIVERING FEWER observations, not
+#                              by slowing the physics: D-010 showed that
+#                              deviating from 30 ticks/s desynchronizes
+#                              physics time from declared sim time and
+#                              corrupts every wall-clock estimator.
+#
+# STATUS: STRUCTURE FROZEN, VALUES INCOMPLETE.  Every null is an unmeasured
+# quantity, not a zero.
+#
+# DATA ADMISSIBILITY: 2026-08-14 wet-run material is PILOT/CALIBRATION data
+# (experiments/real/README.md); admissible as fitting input only.
+
+profile:
+  id: S2
+  name: s2_timing
+  parent: s1_observation.yaml
+  status: STRUCTURE_FROZEN_VALUES_INCOMPLETE
+  owns:
+    - timing
+  effect_class: "arrival process, latency and burst availability of observations"
+  not_owned_here:
+    camera: "S1"
+    observation: "S1 (including the marginal detection probability)"
+    vehicle: "S3 (command latency lives there, not here)"
+    simulator: "S0 (immutable; the 30 tick/s contract is not negotiable)"
+
+overrides:
+
+  timing:
+    observation_rate_hz: null
+    # Categorical finding rather than a fitted number: the onboard detector
+    # costs more per frame than the camera's frame interval, so the boundary
+    # rate is detector-limited, not camera-limited.
+    observation_rate_source: detector_limited
+    observation_interval_jitter_std_s: null
+    observation_latency_s: null
+    observation_latency_jitter_std_s: null
+    arrival_process: null
+    stamp_source: null
+    burst_dropout:
+      # Structural finding: the real observation stream IS intermittent.
+      enabled: true
+      model: null
+      mean_visible_run_s: null      # introduced at S2 (no S0 counterpart)
+      mean_blind_run_s: null        # introduced at S2 (no S0 counterpart)
+
+provenance:
+  timing.observation_rate_source: "docs/REAL_POOL_EXPERIMENT_LOG.md (onboard camera ~25 fps, i.e. 40 ms/frame) vs measured detector cost 102.1-108.5 ms/frame in experiments/real/approach_dataset/20260814_181721/records.json -> the detector, not the camera, sets the boundary rate"
+  timing.burst_dropout.enabled: "docs/REAL_POOL_EXPERIMENT_LOG.md - detection acceptance 8-46% of frames, dominated by dome bubbles/glare, i.e. the stream is intermittent by nature and not merely thinned uniformly"
+
+todo:
+  timing.observation_rate_hz: >
+    MEASURE. Effective rate of ACCEPTED detections at the boundary, from
+    experiments/real/observation_model/ (parallel task). Components measured
+    so far: camera ~25 fps and detector 102-109 ms per frame, which bound it
+    near 9-10 Hz BEFORE acceptance; the accepted rate is lower and is what
+    the sim must reproduce. Do not compute it as 30 Hz times an acceptance
+    ratio: the sim tick rate is not a camera rate.
+  timing.observation_interval_jitter_std_s: >
+    MEASURE. Standard deviation of inter-arrival intervals of accepted
+    detections. Note the only jitter measured to date (sigma 2.8 ms, p95
+    36.1 ms) belongs to the OVERHEAD RealSense ground-truth camera (D-007),
+    NOT to the onboard H.264 RTP stream, and must not be reused for it.
+  timing.observation_latency_s: >
+    MEASURE. End-to-end glass-to-boundary delay: capture + H.264 encode +
+    RTP transport + decode + detector (102-109 ms of it measured) + publish.
+    Blocked by a known code debt: the perception nodes stamp at publish time
+    and discard image stamps (D-003), so the delay is currently unobservable
+    downstream. Fix the stamping first, then measure with a synchronized
+    event visible to both the onboard camera and the overhead GT camera.
+  timing.observation_latency_jitter_std_s: >
+    MEASURE. Same experiment as observation_latency_s; report the
+    distribution, since a variable delay and a constant delay have different
+    closed-loop consequences.
+  timing.arrival_process: >
+    FIT + DECIDE. Choose and justify the family (periodic-with-loss,
+    renewal, or two-state Markov) from the measured inter-arrival
+    distribution rather than assuming Poisson.
+  timing.stamp_source: >
+    DECIDE + IMPLEMENT. Propagate image acquisition stamps end to end so
+    that latency is representable at all; until then any latency value here
+    is unverifiable. Tracked as a Phase-7 debt in D-003.
+  timing.burst_dropout.model: >
+    FIT. Replace the scripted trigger/delay/duration window inherited from
+    S0 (a robustness-test device, not a model of reality) with a fitted
+    availability process. The S0 scripted keys (delay_s, duration_s, mode,
+    repeat_*) become INAPPLICABLE once this is set and must be recorded as
+    such rather than left to look meaningful.
+  timing.burst_dropout.mean_visible_run_s: >
+    FIT from the detection/miss run lengths in the mission logs
+    (experiments/real/missions/*/log.json, pilot data - fitting input only),
+    SUBJECT TO the marginal constraint stated in the header: the fitted
+    process must reproduce S1's detection_probability exactly, not
+    additionally thin the stream.
+  timing.burst_dropout.mean_blind_run_s: >
+    FIT together with mean_visible_run_s under the same marginal constraint.
+    Report the longest observed blind run separately: it, not the mean, is
+    what decides whether a bridged dropout can outlast the estimator's 2.5 s
+    prediction horizon and the 4.0 s source-restart silence frozen in D-012.

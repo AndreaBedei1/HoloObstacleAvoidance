@@ -1,0 +1,214 @@
+# S3 = S2 + ONE effect class: VEHICLE / ACTUATION RESPONSE.
+#
+# WHY this rung exists: at S2 the planner receives real-looking observations
+# at real-looking times, but its commands are still executed by a vehicle
+# that has no deadband, no left/right asymmetry, no command delay, and stops
+# when told to.  The real BlueROV2 does none of that.  S3 makes the command
+# -> motion map the measured one, and nothing else.
+#
+# WHAT S3 OWNS (and no other level may touch):
+#   vehicle.*  - signed surge/sway/yaw axis mapping, per-axis authority
+#                limits, deadband, directional gain asymmetry, rise and
+#                decay time constants, coasting, and COMMAND latency.
+#
+# COMMAND LATENCY vs OBSERVATION LATENCY - the double-counting trap:
+#   timing.observation_latency_s (S2) is the PERCEPTION delay, measured on
+#   the camera path.  vehicle.command_latency_s (S3) is the ACTUATION delay,
+#   measured from MANUAL_CONTROL to thruster PWM.  They are separate
+#   measurements on separate signals and must never be merged into one
+#   "loop delay": doing so would put the same milliseconds on two rungs and
+#   destroy the attribution the ladder exists to provide.
+#
+# TAUS ARE TARGETS, NOT KNOBS:
+#   The simulator has no tau parameter; the closed-loop response emerges
+#   from setpoint_rate_limits and the PI gains in bluerov2_dynamics.py.
+#   vehicle.response.* records the MEASURED target response; reaching it is
+#   a fitting step over setpoint_rate_limits (and, only if necessary, the
+#   controller gains).  If a controller gain has to change, it must be added
+#   to this file as an explicit override so the change is attributable to S3.
+#
+# STATUS: STRUCTURE FROZEN, VALUES MOSTLY UNMEASURED.  This is the rung with
+# the weakest measurement support today, and the file says so per key rather
+# than filling plausible numbers:
+#   - yaw directional asymmetry: MEASURED (2.14x), n = 1 per direction
+#   - surge and yaw rise time constants: MEASURED (1.44 s, 1.04 s)
+#   - yaw decay: MEASURED (0.21 s)
+#   - SWAY: NOTHING is measured. No displacement ground truth exists for any
+#     sway command.
+#   - SURGE forward/reverse asymmetry: AMBIGUOUS. See the TODO; a ~1.8x
+#     figure circulates but no committed artifact supports it.
+#
+# DATA ADMISSIBILITY: the 2026-08-14 bring-up and wet runs are PILOT/
+# CALIBRATION data (experiments/real/README.md); admissible as calibration
+# input only, never as results.
+
+profile:
+  id: S3
+  name: s3_vehicle
+  parent: s2_timing.yaml
+  status: STRUCTURE_FROZEN_VALUES_INCOMPLETE
+  owns:
+    - vehicle
+  effect_class: "command-to-motion map: signs, authority, deadband, asymmetry, rise/decay, command latency"
+  not_owned_here:
+    camera: "S1"
+    observation: "S1"
+    timing: "S2 (observation latency lives there, not here)"
+    simulator: "S0 (immutable)"
+
+overrides:
+
+  vehicle:
+    axis_sign_convention:
+      # The real command frame is NOT the sim body frame. MANUAL_CONTROL
+      # uses y = RIGHT and r = CW positive; the sim uses REP-103 (y LEFT,
+      # yaw CCW positive). The sim->real sign map below is what the real
+      # bridge must apply; recording it here keeps the two domains running
+      # the SAME planner output rather than a silently mirrored one.
+      real_command_frame: "MANUAL_CONTROL: x forward, y RIGHT, r clockwise-positive"
+      sim_to_real_sign_map:
+        surge: 1
+        sway: -1
+        yaw_rate: -1
+
+    limits:
+      max_surge_ms: null
+      max_sway_ms: null
+      max_heave_ms: null
+      max_yaw_rate_rads: null
+
+    command_latency_s: null
+
+    deadband:
+      surge_frac: null
+      sway_frac: null
+      yaw_frac: null
+
+    gain_asymmetry:
+      # Measured: identical 15% / 1.2 s pulses produced 6.4 deg (yaw+, CW)
+      # and 13.7 deg (yaw-, CCW) -> 13.7 / 6.4 = 2.14. n = 1 per direction.
+      yaw_neg_over_pos: 2.14
+      surge_fwd_over_rev: null
+      sway_right_over_left: null
+
+    response:
+      surge_tau_rise_s: 1.44
+      yaw_tau_rise_s: 1.04
+      yaw_tau_decay_s: 0.21
+      surge_tau_decay_s: null
+      sway_tau_rise_s: null
+      sway_tau_decay_s: null
+
+    setpoint_rate_limits:
+      max_lin_accel: null
+      max_yaw_accel: null
+
+    coasting_model: null
+
+provenance:
+  vehicle.axis_sign_convention.real_command_frame: "docs/real_vehicle_reference/README.md - verified thruster mixing table (2026-08-14, 15% pulses, in water): sway+ = right, yaw+ = CW, all 6 DOF directions correct"
+  vehicle.axis_sign_convention.sim_to_real_sign_map: "derived from the two documented frames: src/rov_obstacle_sim_bridge/holoocean_server/bluerov2_dynamics.py (client/ROS body frame x fwd, y LEFT, z up, yaw CCW positive) vs the MANUAL_CONTROL frame verified in docs/real_vehicle_reference/README.md"
+  vehicle.gain_asymmetry.yaw_neg_over_pos: "docs/real_vehicle_reference/README.md mixing table (yaw+ +6.4 deg, yaw- -13.7 deg under identical 15% / 1.2 s pulses; ratio 2.14); raw telemetry experiments/real/motion_tests/yaw+_20260814_155851.jsonl and yaw-_20260814_155905.jsonl (recomputed from ATTITUDE: +6.4 deg / -13.7 deg). n = 1 per direction - see the todo for the replication requirement"
+  vehicle.response.surge_tau_rise_s: "docs/real_vehicle_reference/README.md measured dynamic response (20% step, 3 s): surge rise t63 ~1.44 s; docs/REAL_POOL_EXPERIMENT_LOG.md vehicle characterization table; raw experiments/real/motion_tests/step_surge_20260814_160629.jsonl"
+  vehicle.response.yaw_tau_rise_s: "docs/real_vehicle_reference/README.md (yaw rise t63 ~1.04 s, 3x slower than the sim's 0.3 s); docs/REAL_POOL_EXPERIMENT_LOG.md; raw experiments/real/motion_tests/step_yaw_20260814_160514.jsonl"
+  vehicle.response.yaw_tau_decay_s: "docs/real_vehicle_reference/README.md (yaw decay after release 0.21 s, drag-dominated)"
+
+todo:
+  vehicle.gain_asymmetry.yaw_neg_over_pos: >
+    REPLICATE (value present but weakly supported). The 2.14x ratio rests on
+    ONE pulse per direction at 15% authority, and the separate yaw-authority
+    sweep (experiments/real/yaw_authority/yaw_authority_20260814_182830.json)
+    is not monotonic in commanded level (0.15 -> 140.1 deg, 0.30 -> 2.5 deg,
+    0.45 -> 2.8 deg, 0.60 -> 31.6 deg), which indicates the sweep was
+    contaminated (tether, wall contact, or lost telemetry) and cannot
+    corroborate it. Repeat n >= 5 pulses per direction at two authority
+    levels with overhead ground truth before this number is used in a
+    frozen campaign.
+  vehicle.gain_asymmetry.surge_fwd_over_rev: >
+    MEASURE. AMBIGUOUS TODAY - do not fill from memory. A ~1.8x
+    forward/reverse figure has been quoted, but no committed artifact
+    supports it: the paired 15% pulses give a peak EKF groundspeed ratio of
+    only 1.05 (0.038 vs 0.040 m/s, and that estimate is IMU-drift
+    contaminated with no DVL, D-006), while the overhead supervised runs
+    that would settle it are ABORTED with implausible tracks
+    (experiments/real/supervised/surge+_20260814_180927/summary.json records
+    1520 px of travel in 0.19 s; the surge- session contains only a
+    reference frame). Measure signed surge displacement over a fixed pulse
+    with the overhead camera, n >= 5 per direction.
+  vehicle.gain_asymmetry.sway_right_over_left: >
+    MEASURE. NOTHING is measured for sway. The only sway records are yaw
+    disturbances during 15% pulses (+3.8 deg for sway+, +0.2 deg for sway-,
+    docs/real_vehicle_reference/README.md); no lateral displacement was ever
+    ground-truthed. Same protocol as surge, with the overhead camera.
+  vehicle.response.sway_tau_rise_s: >
+    MEASURE. No sway step response exists. The sim currently assumes 1.15 s
+    (D-013, identified in simulation only). Since the adopted real behaviour
+    is a LATERAL clearing maneuver (docs/PHASE9_REAL_CAMPAIGN_PROTOCOL.md),
+    this is the single most consequential unmeasured vehicle parameter in
+    the whole ladder.
+  vehicle.response.sway_tau_decay_s: >
+    MEASURE. Same experiment as sway_tau_rise_s; capture the release
+    transient, since the real vehicle coasts.
+  vehicle.response.surge_tau_decay_s: >
+    MEASURE. A ~1.2 s coast-to-37% figure exists but the source flags it as
+    IMU-drift contaminated (docs/real_vehicle_reference/README.md), so it is
+    deliberately NOT adopted here. Re-measure from overhead ground truth.
+  vehicle.command_latency_s: >
+    DECIDE from measured data. The MANUAL_CONTROL-to-thruster-PWM delay was
+    measured as a 53-89 ms BRACKET (docs/real_vehicle_reference/README.md,
+    resolution-limited by one ~12 Hz telemetry frame). A single number is a
+    modelling choice, not a measurement: either adopt a justified point
+    estimate from the per-command deltas in
+    experiments/real/motion_tests/*.jsonl, or model the delay as a
+    distribution. Record which was done. Do NOT confuse this with
+    timing.observation_latency_s (S2).
+  vehicle.deadband.surge_frac: >
+    MEASURE per axis. Evidence today is a mixed bracket, not a per-axis
+    value: commands <= 15-22% do not move the vehicle, and >= 30-35% was
+    needed for reliable surge against tether drag (D-016,
+    docs/REAL_POOL_EXPERIMENT_LOG.md). Run an authority staircase per axis
+    with overhead ground truth and report the motion-onset threshold with
+    its spread; the tether state must be recorded, since it is part of the
+    effect.
+  vehicle.deadband.sway_frac: >
+    MEASURE. Unmeasured. Do not reuse the surge threshold: the lateral
+    thrust geometry and the tether load differ.
+  vehicle.deadband.yaw_frac: >
+    MEASURE. Unmeasured as a threshold; the 15% yaw pulses DID rotate the
+    vehicle, so the yaw deadband is below the surge one, which is all that
+    can be said today.
+  vehicle.limits.max_surge_ms: >
+    MEASURE. The only figure is an EXTRAPOLATION (0.102 m/s at 20% ->
+    "~0.5 m/s at full", docs/real_vehicle_reference/README.md) from a single
+    step, and it is contradicted in practice by the 0.35-authority operating
+    point the campaign had to adopt. Measure sustained speed at 3-4
+    authority levels with overhead ground truth, in the pool, with the
+    tether attached.
+  vehicle.limits.max_sway_ms: >
+    MEASURE. Unmeasured.
+  vehicle.limits.max_heave_ms: >
+    MEASURE or DECLARE OUT OF SCOPE. The campaign runs at a fixed depth with
+    ALT_HOLD/STABILIZE holding the verticals, so heave may legitimately be
+    declared non-transferable rather than measured - but the decision must
+    be recorded here, not left implicit.
+  vehicle.limits.max_yaw_rate_rads: >
+    MEASURE. Only one point exists (0.192 rad/s at 20%,
+    docs/real_vehicle_reference/README.md). Measure the saturation rate per
+    direction, given the 2.14x directional asymmetry above.
+  vehicle.setpoint_rate_limits.max_lin_accel: >
+    FIT. Choose the value that makes the SIMULATED closed-loop surge rise
+    match the measured 1.44 s t63, verified by re-running the step-response
+    identification in sim (scripts/run_bluerov2_step_response.py). Fitting,
+    not measuring: record the achieved sim tau next to the target.
+  vehicle.setpoint_rate_limits.max_yaw_accel: >
+    FIT to the measured 1.04 s yaw t63 by the same procedure. The current
+    sim value produces ~0.3 s, i.e. the simulator over-estimates yaw agility
+    by ~3x (docs/REAL_POOL_EXPERIMENT_LOG.md), which is the largest single
+    dynamic discrepancy known today.
+  vehicle.coasting_model: >
+    DECIDE + FIT. The real vehicle keeps translating and rotating after the
+    thrusters stop, so every stop must be an ACTIVE hold
+    (docs/REAL_POOL_EXPERIMENT_LOG.md); the simulated vehicle stops far more
+    readily. Fit the decay behaviour from the release transients once
+    surge/sway decay constants exist, and state whether the sim reproduces
+    it by damping or by an explicit hold.
