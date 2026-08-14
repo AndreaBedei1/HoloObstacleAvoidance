@@ -59,6 +59,15 @@ Detection acceptance rate is dominated by dome cleanliness:
 Zero collisions, zero uncommanded excursions, every run ended in an
 active heading hold.
 
+Additional runs after the D-016 freeze: pilot 1 (19:38) drove into the
+anchor (closest approach 0.32 m) because the configuration forced
+"always clear right" while the anchor was itself to the right; the rule
+was corrected to clear-away-from-bearing before the campaign. Pilot 2
+(19:41) and pilot 3 (19:50) passed at 0.91 m and 0.85 m. One further run
+(19:45) was TERMINATED ABNORMALLY (process killed mid-run): the trial
+never completed, its outcome is undefined, and it is excluded from every
+results artifact — recorded here so the total run count reconciles.
+
 ### Behaviour finally adopted (operator-driven)
 
 APPROACH straight -> TRIGGER on monocular range -> LATERAL clearing to

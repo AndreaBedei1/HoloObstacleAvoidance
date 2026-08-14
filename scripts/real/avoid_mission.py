@@ -91,6 +91,16 @@ def main() -> int:
     ap.add_argument("--anchor-px", nargs=2, type=float, default=ANCHOR_PX)
     ap.add_argument("--centre-s", type=float, default=8.0,
                     help="visual centring window before the approach")
+    ap.add_argument("--preroll-s", type=float, default=4.0,
+                    help="record the stationary start pose before moving")
+    ap.add_argument("--outrun-s", type=float, default=7.0,
+                    help="keep going straight AFTER the anchor is passed "
+                         "so the departure leg is visible")
+    ap.add_argument("--confirm", type=int, default=3,
+                    help="consecutive confirmations below the trigger "
+                         "range before committing")
+    ap.add_argument("--range-window", type=int, default=5,
+                    help="median filter length on the monocular range")
     args = ap.parse_args()
     stamp = time.strftime("%Y%m%d_%H%M%S")
     sess = os.path.join(OUT, stamp)
@@ -106,6 +116,47 @@ def main() -> int:
     cam = CameraStream()
     tracker = OverheadTracker()
     log, onboard_frames, overhead_frames, traj = [], [], [], []
+    # Overhead video is written INCREMENTALLY (a run's worth of 1080p
+    # frames does not fit in RAM). RECORDING ONLY: no effect on
+    # perception or control, so the D-016 freeze is unaffected.
+    ov_w, ov_h = 960, 540
+    ov_writer = cv2.VideoWriter(
+        os.path.join(sess, "overhead_live.mp4"),
+        cv2.VideoWriter_fourcc(*"mp4v"), 7, (ov_w, ov_h))
+    ov_scale = ov_w / 1920.0
+
+    def write_overhead(det_ov, state, rng, gt_dist, t_el):
+        img = tracker.last_frame
+        if img is None:
+            return
+        vis = cv2.resize(img, (ov_w, ov_h))
+        ax_, ay_ = int(apx[0] * ov_scale), int(apx[1] * ov_scale)
+        cv2.circle(vis, (ax_, ay_), 13, (255, 0, 255), 2)
+        cv2.line(vis, (ax_ - 18, ay_), (ax_ + 18, ay_), (255, 0, 255), 1)
+        cv2.line(vis, (ax_, ay_ - 18), (ax_, ay_ + 18), (255, 0, 255), 1)
+        cv2.putText(vis, "ANCHOR", (ax_ + 16, ay_ - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+        if len(traj) > 1:
+            pts = (np.array(traj) * ov_scale).astype(np.int32)
+            cv2.polylines(vis, [pts], False, (0, 255, 255), 2)
+            cv2.circle(vis, tuple(pts[0]), 7, (0, 255, 0), -1)
+        if det_ov and det_ov.get("found"):
+            bx, by, bw_, bh_ = det_ov["bbox"]
+            p1 = (int(bx * ov_scale), int(by * ov_scale))
+            p2_ = (int((bx + bw_) * ov_scale), int((by + bh_) * ov_scale))
+            cv2.rectangle(vis, p1, p2_, (0, 0, 255), 2)
+            cx_, cy_ = det_ov["pixel"]
+            cv2.circle(vis, (int(cx_ * ov_scale), int(cy_ * ov_scale)),
+                       5, (0, 0, 255), -1)
+        cv2.rectangle(vis, (0, 0), (ov_w, 30), (0, 0, 0), -1)
+        txt = f"t={t_el:5.1f}s  {state:9s}"
+        if rng is not None:
+            txt += f"  camera range {rng:.2f} m"
+        if gt_dist is not None:
+            txt += f"  |  GT {gt_dist / 402.0:.2f} m"
+        cv2.putText(vis, txt, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                    (255, 255, 255), 1)
+        ov_writer.write(vis)
     print("camera + overhead ready", flush=True)
     try:
         ov = tracker.detect()
@@ -156,7 +207,11 @@ def main() -> int:
                       f"{math.degrees(yaw_target):.0f} deg", flush=True)
                 rov.hold_heading(1.5, target_yaw=yaw_target)
 
-            state, side, t_trig = "APPROACH", 0, None
+            state, side, t_trig = "PREROLL", 0, None
+            t_pre = time.time()
+            t_out = None
+            rng_hist = []
+            confirm = 0
             start_frac = None
             lim_x = lim_y = 0.02
             lim_x2 = lim_y2 = 0.98
@@ -173,8 +228,20 @@ def main() -> int:
                     fr, _ = cam.latest()
                     det = detect_anchor(fr)
                     ok = accept(det)
-                    rng = rng_of(det) if ok else None
+                    rng_raw = rng_of(det) if ok else None
                     brg = brg_of(det) if ok else None
+                    # MEDIAN-FILTERED range + CONFIRMATION (imported from
+                    # the Phase-7B qualification used in simulation).
+                    # Pilot evidence 2026-08-14: a single noisy sample
+                    # (monocular MAE 0.44 m) fired the trigger on the
+                    # FIRST frame that saw the anchor, so the vehicle
+                    # curved immediately instead of running straight
+                    # first (run 19:41 triggered at t=1.06 s).
+                    if rng_raw is not None:
+                        rng_hist.append(rng_raw)
+                        del rng_hist[:-args.range_window]
+                    rng = (float(np.median(rng_hist)) if rng_hist
+                           else None)
 
                     att = rov.recv_match("ATTITUDE", timeout=0.15)
                     yaw = att.yaw if att else yaw_target
@@ -231,7 +298,21 @@ def main() -> int:
                             break
 
                     x, y = surge, 0
-                    if state == "APPROACH" and rng is not None                             and rng <= args.trigger_m:
+                    if state == "PREROLL":
+                        # stationary, recorded: the video must show where
+                        # the vehicle starts before anything happens
+                        x, y = 0, 0
+                        if time.time() - t_pre > args.preroll_s:
+                            state = "APPROACH"
+                            print("== APPROACH (straight)", flush=True)
+                    elif state == "APPROACH" and rng is not None                             and rng <= args.trigger_m:
+                        confirm += 1
+                        if confirm < args.confirm:
+                            print(f"  candidate {confirm}/{args.confirm} "
+                                  f"at {rng:.2f} m", flush=True)
+                    elif state == "APPROACH":
+                        confirm = 0
+                    if state == "APPROACH" and confirm >= args.confirm:
                         # PILOT-1 DEFECT (2026-08-14, before the
                         # campaign): forcing "always pass right" steered
                         # the vehicle INTO the anchor when the anchor was
@@ -295,9 +376,20 @@ def main() -> int:
                             state = "PASSED"
                             print("== straight leg complete", flush=True)
                     if state == "PASSED":
-                        break
+                        state = "OUTRUN"
+                        t_out = time.time()
+                        print("== OUTRUN: straight departure leg",
+                              flush=True)
+                    if state == "OUTRUN":
+                        x, y = surge, 0
+                        if time.time() - t_out > args.outrun_s:
+                            state = "DONE"
+                            print("== DONE", flush=True)
+                            break
 
                     rov.manual(x=x, y=y, r=r)
+                    write_overhead(ovd, state, rng, gt_dist,
+                                   time.time() - t0)
                     log.append({"t": round(time.time() - t0, 2),
                                 "state": state, "x": x, "y": y, "r": r,
                                 "accepted": ok,
@@ -322,18 +414,58 @@ def main() -> int:
                               flush=True)
                     time.sleep(0.1)
             finally:
-                print("active hold...", flush=True)
-                rov.hold_heading(args.hold_s, target_yaw=yaw_target)
+                print("active hold (recorded)...", flush=True)
+
+                def _hold_sample(el, err, cmd):
+                    if int(el * 7) != getattr(_hold_sample, "_k", -1):
+                        _hold_sample._k = int(el * 7)
+                        ovh = tracker.detect(near=near)
+                        if ovh and ovh.get("found"):
+                            traj.append(list(ovh["pixel"]))
+                        write_overhead(ovh, "HOLD", None, None,
+                                       time.time() - t0)
+
+                rov.hold_heading(args.hold_s, target_yaw=yaw_target,
+                                 on_sample=_hold_sample)
                 print("disarm:", rov.disarm(), flush=True)
 
         # ---------- media ----------
+        for _ in range(10):        # a couple of seconds of the hold
+            ovd2 = tracker.detect(near=near)
+            if ovd2 and ovd2.get("found"):
+                near = ovd2["pixel"]
+                traj.append(list(near))
+            write_overhead(ovd2, "HOLD", None,
+                           None if not ovd2 or not ovd2.get("found")
+                           else float(np.linalg.norm(
+                               np.array(near) - apx)),
+                           time.time() - t0)
+        ov_writer.release()
         ovimg, _ = tracker.grab()
         vis_ov = ovimg.copy()
+        ovf_probe = tracker.detect(near=near)
+        ovf_box = ovf_probe.get("bbox") if ovf_probe.get("found") else None
         pts = np.array(traj, dtype=np.int32)
         if len(pts) > 1:
-            cv2.polylines(vis_ov, [pts], False, (0, 255, 255), 3)
-            cv2.circle(vis_ov, tuple(pts[0]), 12, (0, 255, 0), -1)
-            cv2.circle(vis_ov, tuple(pts[-1]), 12, (0, 0, 255), -1)
+            # thicker trail + direction arrows so the motion reads at a
+            # glance (a thin polyline was hard to see)
+            cv2.polylines(vis_ov, [pts], False, (0, 0, 0), 9)
+            cv2.polylines(vis_ov, [pts], False, (0, 255, 255), 5)
+            for i in range(0, len(pts) - 1, max(1, len(pts) // 8)):
+                cv2.arrowedLine(vis_ov, tuple(pts[i]), tuple(pts[i + 1]),
+                                (0, 200, 255), 3, tipLength=1.2)
+            cv2.circle(vis_ov, tuple(pts[0]), 16, (0, 0, 0), -1)
+            cv2.circle(vis_ov, tuple(pts[0]), 13, (0, 255, 0), -1)
+            cv2.putText(vis_ov, "START", (pts[0][0] + 18, pts[0][1] + 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            cv2.circle(vis_ov, tuple(pts[-1]), 16, (0, 0, 0), -1)
+            cv2.circle(vis_ov, tuple(pts[-1]), 13, (0, 0, 255), -1)
+            cv2.putText(vis_ov, "END", (pts[-1][0] + 18, pts[-1][1] + 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+        if ovf_box is not None:
+            bx, by, bw_, bh_ = ovf_box
+            cv2.rectangle(vis_ov, (bx, by), (bx + bw_, by + bh_),
+                          (0, 0, 255), 3)
         cv2.circle(vis_ov, (int(apx[0]), int(apx[1])), 16, (255, 0, 255), 3)
         cv2.putText(vis_ov, "ANCHOR", (int(apx[0]) + 20, int(apx[1])),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 255), 2)

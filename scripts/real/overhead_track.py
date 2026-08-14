@@ -54,6 +54,7 @@ class OverheadTracker:
         self._latest = None
         self._stop = threading.Event()
         self._thread = None
+        self.last_frame = None
 
     def close(self):
         self._stop.set()
@@ -111,6 +112,7 @@ class OverheadTracker:
         if self.intr is None:
             self.intr = color.get_profile().as_video_stream_profile()                 .get_intrinsics()
         img = np.asanyarray(color.get_data())
+        self.last_frame = img          # for overlay rendering
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (11, 11), 0)
         # Adaptive darkness percentile: at a loose threshold the vehicle

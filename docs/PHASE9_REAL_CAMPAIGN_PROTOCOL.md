@@ -52,12 +52,33 @@ trials?
    from the record.
 4. No operator intervention between release and the end of the hold.
 
+   AMENDMENT 2 (pilot analysis, 2026-08-14 evening, BEFORE the
+   campaign): the trigger fired on the FIRST frame that accepted a
+   detection, so the vehicle curved immediately instead of running
+   straight first (run 19:41 triggered at t = 1.06 s with only 0.8 s of
+   approach). Cause: a single monocular sample (MAE 0.44 m) can read
+   1.4 m while the vehicle is at 2 m. Fix: the trigger now needs
+   **3 consecutive confirmations** on a **median-filtered range**
+   (window 5) — the same confirmation principle as the Phase-7B
+   qualification used in simulation, so this brings the real pipeline
+   CLOSER to the simulated one. Trigger range lowered to 1.20 m to keep
+   it separated from the release distance (now 2.5-3.0 m).
+
+   AMENDMENT 3 (presentation, no effect on behaviour): the run now
+   records a stationary PREROLL (4 s), continues straight for an OUTRUN
+   leg (7 s) after the anchor plane is passed, and records the final
+   hold, so the full trajectory — before, during and after the
+   avoidance — is visible in one overhead video.
+
 ## 4. Frozen parameters (D-016)
 
 | Parameter | Value |
 |---|---|
 | surge / sway | 0.35 / 0.45 of full authority |
-| trigger range | 1.50 m |
+| trigger range | 1.20 m (amendment 2) |
+| trigger confirmation | 3 consecutive samples, median range over 5 (amendment 2) |
+| preroll / outrun | 4 s stationary / 7 s straight departure (amendment 3) |
+| release distance | 2.5-3.0 m from the anchor |
 | lateral clearing max | 7 s; ends after 5 consecutive non-detections or bearing > 35° |
 | straight leg | 7 s (or until the anchor plane is passed) |
 | centring window | 6 s |

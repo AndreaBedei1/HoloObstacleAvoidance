@@ -27,6 +27,16 @@ OUTDIR = os.path.join(ROOT, "visualizations", "real_mission_package")
 
 PX_PER_M = 402.0     # overhead scale (from the metric survey)
 
+# Sessions excluded from the package, with the reason. These are NOT
+# results: the process was killed mid-run, so the trial never completed
+# and its outcome is undefined (the protocol classifies an interrupted
+# run as technically invalid). The exclusion is listed here rather than
+# silently dropped, and the run remains in the experiment log.
+EXCLUDED = {
+    "20260814_194529": "process terminated mid-run (exit 137); trial "
+                       "never completed",
+}
+
 
 def load(sess):
     with open(os.path.join(sess, "log.json")) as f:
@@ -105,9 +115,12 @@ def main():
     for sess in sessions:
         if not os.path.isfile(os.path.join(sess, "log.json")):
             continue
+        tag = os.path.basename(sess)
+        if tag in EXCLUDED:
+            print(f"[excluded] {tag}: {EXCLUDED[tag]}")
+            continue
         d = load(sess)
         s = d["summary"]
-        tag = os.path.basename(sess)
         ok = s.get("final_state") == "PASSED" and not s.get("aborted")
         rows.append({
             "session": tag, "passed": ok,
