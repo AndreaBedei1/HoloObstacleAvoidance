@@ -25,13 +25,16 @@ speeds:
   max_yaw_rate_rads: 0.3
 
 vertical_envelope:
-  # BlueROV2 Heavy height ~0.37 m (0.40 conservative). depth = of the
-  # pressure sensor (hull mid). Bottom profile from the survey.
+  # BlueROV2 Heavy height ~0.37 m (0.40 conservative). CONFIRMED
+  # 2026-08-14: the pressure sensor sits at the BOTTOM of the frame
+  # (reads 0.45 m when floating with the top at the surface), so depth
+  # setpoints are KEEL depths: vehicle spans [setpoint-0.45, setpoint],
+  # camera ~= setpoint-0.2. Bottom profile from the survey.
   segments:
     - {x_range_m: [0.0, 2.0], water_m: 0.57-0.8, note: "NO-GO at depth:
         keel clearance < 0.1 m; surface transit only"}
     - {x_range_m: [2.3, 5.0], water_m: 1.2-1.3, depth_setpoint_m: 0.55,
-        keel_m: 0.75, bottom_clearance_m: ~0.5}
+        keel_m: 0.55, bottom_clearance_m: ~0.7, camera_depth_m: ~0.35}
     - {x_range_m: [5.0, 6.0], water_m: rising to ~0.8 (TBC),
         depth_setpoint_m: 0.25, note: "end-of-run zone; stop before the
         shelf until the 0.80 m line is confirmed"}

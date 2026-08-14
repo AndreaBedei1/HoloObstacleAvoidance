@@ -132,9 +132,13 @@ SCALED_IMU2 is all zeros (no secondary IMU) - use RAW_IMU.
 ## Sensors
 
 - IMU/AHRS: ATTITUDE ~12 Hz; compass heading in VFR_HUD.
-- Depth: SCALED_PRESSURE2 (external barometer, mbar) → ArduSub fuses to
-  VFR_HUD.alt (= −depth). In air 1015 mbar; in water reads 0.45 m at
-  float trim.
+- Depth: SCALED_PRESSURE2 (external barometer, mbar) -> ArduSub fuses to
+  VFR_HUD.alt (= -depth). In air 1015 mbar. SENSOR POSITION (operator
+  confirmed 2026-08-14): the pressure sensor sits at the BOTTOM of the
+  frame - floating with the top at the surface it reads 0.45 m, i.e.
+  **depth readings are ~keel depth**, vehicle occupies
+  [reading-0.45, reading]. ALT_HOLD setpoints are therefore keel-depth
+  setpoints; camera (front, mid-height) ~= reading - 0.2 m.
 - Ping1D: /dev/ttyAMA3, DISTANCE_SENSOR id 1 comp 194, min 20 cm,
   "max 120 m" configured; first reading 75.29 m = NO LOCK (orientation
   and in-water behavior to be characterized). NOT the primary perception
