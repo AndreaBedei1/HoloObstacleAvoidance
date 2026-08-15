@@ -48,10 +48,15 @@ STYLE = {("K0", "committed"): ("o-", "#1f77b4"),
          ("K0", "dwa"): ("s--", "#ff7f0e"),
          ("K1", "committed"): ("^-", "#2ca02c"),
          ("K1", "dwa"): ("v--", "#d62728")}
+# The commanded lateral peak is deliberately NOT a panel: it is a
+# control variable, constant at 0.300 m/s across all four levels because
+# it is measured on the frozen boundary and the planner configuration is
+# identical everywhere. Its constancy is stated in the caption, where it
+# belongs, rather than drawn as a flat line in place of a result.
 METRICS = [("min_clearance_m", "distanza minima (m)"),
            ("max_lat_dev_m", "escursione laterale (m)"),
            ("path_length_m", "lunghezza percorso (m)"),
-           ("lateral_peak_m_s", "picco velocita laterale (m/s)")]
+           ("lateral_commit_dist_m", "distanza all'ingaggio (m)")]
 
 
 def load_predictions():

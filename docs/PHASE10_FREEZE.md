@@ -1,7 +1,8 @@
 # Phase 10 — freeze record
 
-STATUS: filled as the simulated side closes. No real validation run
-happens until every line below is complete and this file is committed.
+STATUS: **FROZEN 2026-08-15.** The 80 simulated predictions exist, are
+verified and are hashed. The real campaign may begin. Nothing below may
+change without re-running all 80 predictions first.
 
 The freeze exists so the 20 real runs test a prediction rather than
 illustrate one. Everything a real run could otherwise be tuned against
@@ -14,7 +15,7 @@ possible.
 |---|---|
 | repository | `HoloObstacleAvoidance` |
 | branch | `feature/scientific-sim-to-real-obstacle-avoidance` |
-| freeze commit | TO BE FILLED at freeze |
+| code state that produced the predictions | `338ac09` |
 | ROS 2 | lyrical, `C:/dev/ros2_lyrical`, env `ros2_lyrical` |
 | simulator | HoloOcean 2.3.0, prebuilt Ocean worlds |
 | tick rate | 30 ticks/s (D-010: below this the vehicle moves slower than the reported velocity) |
@@ -88,7 +89,7 @@ would invalidate the whole S3 profile with no outward sign.
 | design | 4 levels x 2 planners x 2 geometries x 5 repetitions = 80 |
 | location | `experiments/simulation/phase10_<level>/` |
 | aggregate | `experiments/simulation/phase10_predictions/predictions.json` |
-| sha256 | TO BE FILLED at freeze |
+| sha256 | `2f51abbdc57b04f250cac7246479525b35427e91b13c46a708963d09780d9b9e` |
 | verification | every run's relay and plant sentinel matches its level; no technical invalid |
 
 ## 6. Analysis, fixed before the real runs
@@ -101,6 +102,23 @@ would invalidate the whole S3 profile with no outward sign.
 | primary question | absolute error \|sim - real\| per level, and whether it shrinks S0 -> S3 |
 | planner comparison | ranking agreement and direction of effect; NO rank correlation, which is not meaningful with two planners |
 | never manoeuvred | recorded as None, never as zero |
+| manoeuvre duration | SPAN from first commitment to last lateral command, plus the active time separately. Ending the manoeuvre at the first gap longer than the hold time chopped every S2 manoeuvre systematically, because at S2 the vehicle is blind for 2.6 s at a stretch: the gap is a property of the perception being modelled, not the end of the manoeuvre |
+| commanded lateral peak | CONTROL variable, not an outcome. Measured on the frozen boundary, so it is the command and not what the vehicle achieves; its constancy at 0.300 m/s across all four levels is evidence the planner configuration really was identical |
+
+### What the predictions say, before any real run
+
+| Prediction | Value |
+|---|---|
+| minimum clearance, committed, K0 | 1.48 m at S0 falling to 0.58 m at S3 |
+| minimum clearance, DWA, K0 | 2.14 m at S0 falling to 0.86 m at S3 |
+| commitment distance, committed | 1.87 m at S0, 3.01 m at S1, 1.16 m at S3 |
+| commitment distance, DWA | 3.50 m at every level: it strafes from the first cycle regardless of calibration |
+| manoeuvre span, committed | shortens, 64 s to 50 s |
+| manoeuvre span, DWA | lengthens, 60 s to 92 s |
+
+The two planners are predicted to respond to calibration in OPPOSITE
+directions on manoeuvre duration. That is the sharpest testable claim in
+the set and it does not depend on absolute agreement.
 
 ## 7. Real campaign
 

@@ -71,8 +71,16 @@ METRICS = [
     ("commit_distance_m", "distanza all'ingaggio", "m", "neutral"),
     ("max_lat_dev_m", "escursione laterale", "m", "neutral"),
     ("path_length_m", "lunghezza percorso", "m", "lower_is_better"),
-    ("maneuver_s", "durata manovra", "s", "neutral"),
-    ("lateral_peak_m_s", "picco velocita laterale", "m/s", "neutral"),
+    ("maneuver_s", "durata manovra (span)", "s", "neutral"),
+    ("maneuver_active_s", "tempo di comando laterale", "s", "neutral"),
+    # CONTROL VARIABLE, not an outcome. It is measured on the frozen
+    # boundary, so it is the COMMANDED lateral speed and cannot change
+    # with calibration: at S3 the plant saturates downstream of it. Its
+    # constancy across all four levels is evidence that the planner
+    # configuration really was identical, which is the property the
+    # ladder depends on.
+    ("lateral_peak_m_s", "picco laterale comandato (controllo)",
+     "m/s", "control"),
 ]
 
 
@@ -89,6 +97,8 @@ def commitment(trace):
     start = None
     last = None
     peak = 0.0
+    active = 0.0
+    prev_t = None
     for s in trace:
         lat = abs(s.get("y") or 0.0)
         peak = max(peak, lat)
@@ -96,18 +106,29 @@ def commitment(trace):
             if start is None:
                 start = s
             last = s
-        elif start is not None and last is not None and \
-                (s["t"] - last["t"]) > COMMIT_HOLD_S:
-            break
-    if start is None or last is None:
+            if prev_t is not None:
+                # capped so one long gap in the trace cannot be counted
+                # as continuous lateral command
+                active += min(s["t"] - prev_t, 0.5)
+        prev_t = s["t"]
+    if start is None or last is None or \
+            (last["t"] - start["t"]) < COMMIT_HOLD_S:
         return {"commit_distance_m": None, "commit_t_s": None,
-                "maneuver_s": None, "lateral_peak_m_s": round(peak, 4)}
-    if (last["t"] - start["t"]) < COMMIT_HOLD_S:
-        return {"commit_distance_m": None, "commit_t_s": None,
-                "maneuver_s": None, "lateral_peak_m_s": round(peak, 4)}
+                "maneuver_s": None, "maneuver_active_s": None,
+                "lateral_peak_m_s": round(peak, 4)}
     return {"commit_distance_m": start.get("d"),
             "commit_t_s": round(start["t"], 3),
+            # SPAN from first commitment to the last lateral command. An
+            # earlier version ended the manoeuvre at the first gap longer
+            # than the hold time, which under S2 -- where the vehicle is
+            # blind for 2.6 s at a stretch -- chopped every manoeuvre
+            # systematically and reported DWA at 1.4 s against 22.3 s at
+            # S0. The gap is a property of the perception being modelled,
+            # not the end of the manoeuvre.
             "maneuver_s": round(last["t"] - start["t"], 3),
+            # Time actually spent commanding laterally, which separates a
+            # long intermittent manoeuvre from a long continuous one.
+            "maneuver_active_s": round(active, 3),
             "lateral_peak_m_s": round(peak, 4)}
 
 
