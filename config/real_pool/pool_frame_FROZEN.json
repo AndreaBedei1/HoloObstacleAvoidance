@@ -1,0 +1,147 @@
+{
+  "generated_utc": "2026-08-15T07:19:47Z",
+  "produced_by": "scripts/real/pool_remap.py",
+  "supersedes": "config/real_pool/pool_geometry.yaml (camera-frame entries only; the pool dimensions in that file are unaffected by a camera move)",
+  "valid": true,
+  "warnings": [
+    "surface plane fit rms 10.9 cm - ripple or a mixed surface/bottom selection; the vertical is the weakest axis of this frame"
+  ],
+  "frame_definition": {
+    "origin": "the detected rod line at a FIXED IMAGE ROW (default: the image mid-row). Pool-fixed and independent of where the anchor hangs, so moving the anchor between the two final geometries does NOT change this transform.",
+    "origin_source": "rod_at_fixed_image_row",
+    "x_approach": "perpendicular to the rod in the surface plane, along-pool approach direction",
+    "y_along_rod": "along the rod, cross-pool, toward the far rim",
+    "z_up": "surface normal, pointing back at the camera",
+    "usage": "p_pool = R @ (p_cam - t)"
+  },
+  "R_rows_pool_axes_in_camera": {
+    "x_approach": [
+      0.993865,
+      0.035519,
+      0.104742
+    ],
+    "y_along_rod": [
+      0.037763,
+      -0.999096,
+      -0.019515
+    ],
+    "z_up": [
+      0.103955,
+      0.023351,
+      -0.994308
+    ]
+  },
+  "t_pool_origin_in_camera": [
+    0.18583,
+    -0.00571,
+    3.174
+  ],
+  "anchor_pose_pool_m": {
+    "x": -0.016,
+    "y": -0.188,
+    "z": 0.103,
+    "yaw_deg": null,
+    "note": "the OBSTACLE's pose inside the pool frame. Moving the anchor changes only this block; re-measure it with scripts/real/locate_anchor.py against the saved transform, do NOT re-run the remap."
+  },
+  "frame_checks": {
+    "det_R": 1.0,
+    "orthonormality_err": 0.0,
+    "rod_out_of_plane_deg": -2.575,
+    "z_source": "surface_plane_fit",
+    "surface_plane_rms_m": 0.1092,
+    "surface_plane_inliers": 287
+  },
+  "anchor": {
+    "pixel_given": [
+      1059.0,
+      626.0
+    ],
+    "pixel_on_rod": [
+      1044.3,
+      625.5
+    ],
+    "snap_distance_px": 14.8,
+    "depth_m": 3.074,
+    "depth_source": "direct",
+    "xyz_camera_m": [
+      0.1858,
+      -0.0057,
+      3.174
+    ]
+  },
+  "rod": {
+    "endpoint_top_px": [
+      1064.0,
+      0.0
+    ],
+    "endpoint_bottom_px": [
+      1029.9,
+      1078.8
+    ],
+    "sample_px": [
+      [
+        1058.9,
+        161.9
+      ],
+      [
+        1035.0,
+        917.0
+      ]
+    ],
+    "sample_depth_m": [
+      3.088,
+      3.046
+    ],
+    "sampled_span_m": 1.6685,
+    "estimated_length_m": 2.3836,
+    "tilt_from_image_vertical_deg": 1.81,
+    "width_px": 30.8,
+    "threshold_percentile": 0.5,
+    "gated_by_anchor_pixel": true
+  },
+  "scale": {
+    "px_per_m_rod": 452.8,
+    "px_per_m_anchor_plane": 451.7,
+    "note": "the camera is oblique, so a single px/m is an approximation; use the transform for anything metric and these scales only for quick reads"
+  },
+  "intrinsics": {
+    "width": 1920,
+    "height": 1080,
+    "fx": 1387.93701171875,
+    "fy": 1389.3441162109375,
+    "ppx": 965.6937866210938,
+    "ppy": 542.4998779296875,
+    "model": "distortion.inverse_brown_conrady",
+    "coeffs": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "capture": {
+    "serial": "745612070219",
+    "frames": 30,
+    "exposure": 5.0,
+    "depth_scale": 0.0010000000474974513,
+    "depth_valid_fraction": 0.987,
+    "color_median_frames": 9,
+    "color_stream": "1920x1080",
+    "depth_stream": "848x480"
+  },
+  "images": {
+    "reference": "visualizations/pool_remap_20260815/pool_frame_axes.png",
+    "reference_beside_config": "config/real_pool/pool_frame_20260815.png",
+    "median_rgb": "visualizations/pool_remap_20260815/median_rgb.png",
+    "median_depth": "visualizations/pool_remap_20260815/median_depth.png",
+    "rod_mask": "visualizations/pool_remap_20260815/rod_mask.png"
+  },
+  "FROZEN": {
+    "status": "FROZEN for the Phase-10 campaign",
+    "date": "2026-08-15",
+    "anchor_pixel_source": "physically marked with a cross tube by the operator and measured from it; the previous value was biased by the anchor's shadow",
+    "rule": "the camera must not move for the rest of the campaign. Moving the ANCHOR does not invalidate this transform: re-measure only anchor_pose_pool_m.",
+    "known_limitation": "the surface-plane fit has ~10 cm rms (ripple), so the VERTICAL axis is the weakest. The ground truth used by the experiment is horizontal (x, y, yaw); horizontal consistency is validated by the paired dataset."
+  }
+}

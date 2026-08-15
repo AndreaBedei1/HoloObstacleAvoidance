@@ -249,6 +249,74 @@ def _fit_segment(pts) -> dict:
             "tilt_deg": float(math.degrees(math.atan2(abs(d[0]), abs(d[1]))))}
 
 
+def extend_rod_along_line(gray, seg, margin=6.0, step=2.0,
+                          max_gap_px=60.0):
+    """Grow the detected rod segment along its own line.
+
+    WHY: the rod's brightness is not uniform - it is wet in places, dry
+    in others, shaded at the ends, and the sun angle changes between
+    sessions. A single thresholded mask therefore breaks into fragments
+    and the component-based detector returns only the LONGEST fragment,
+    which under-reports the rod (operator, 2026-08-15: "the yellow line
+    stops short at both ends").
+
+    The line direction is well determined by that fragment; the EXTENT
+    is not. So: keep the fitted line, then walk outward from both ends
+    and keep going while the pixels across the line are still brighter
+    than the local background by `margin`, tolerating gaps up to
+    `max_gap_px` (a shaded stretch is not the end of the rod).
+    """
+    h, w = gray.shape[:2]
+    d = seg["dir"] / (np.linalg.norm(seg["dir"]) + 1e-9)
+    n = np.array([-d[1], d[0]])
+    half = max(3.0, 0.5 * seg["width_px"] + 2.0)
+
+    def bright_at(uv):
+        pts_on, pts_off = [], []
+        for a in np.arange(-half, half + 0.1, 1.0):
+            q = uv + a * n
+            x, y = int(round(q[0])), int(round(q[1]))
+            if 0 <= x < w and 0 <= y < h:
+                pts_on.append(float(gray[y, x]))
+        for a in (2.5 * half, -2.5 * half):
+            q = uv + a * n
+            x, y = int(round(q[0])), int(round(q[1]))
+            if 0 <= x < w and 0 <= y < h:
+                pts_off.append(float(gray[y, x]))
+        if not pts_on or not pts_off:
+            return None
+        return max(pts_on) - float(np.median(pts_off))
+
+    def walk(start, direction):
+        best = start
+        gap = 0.0
+        cur = np.array(start, dtype=float)
+        while True:
+            cur = cur + direction * step
+            if not (0 <= cur[0] < w and 0 <= cur[1] < h):
+                break
+            b = bright_at(cur)
+            if b is not None and b >= margin:
+                best = cur.copy()
+                gap = 0.0
+            else:
+                gap += step
+                if gap > max_gap_px:
+                    break
+        return best
+
+    p_top = walk(np.array(seg["p_top"], dtype=float), -d)
+    p_bot = walk(np.array(seg["p_bottom"], dtype=float), d)
+    out = dict(seg)
+    out["p_top"] = p_top
+    out["p_bottom"] = p_bot
+    out["length_px"] = float(np.linalg.norm(p_bot - p_top))
+    out["extended"] = True
+    out["extension_px"] = float(
+        out["length_px"] - seg["length_px"])
+    return out
+
+
 def _point_line_dist(seg: dict, uv) -> float:
     rel = np.asarray(uv, dtype=float) - seg["point"]
     n = np.array([-seg["dir"][1], seg["dir"][0]])
@@ -402,13 +470,19 @@ def surface_points(depth_m, intr, ref_depth, band=PLANE_BAND_M, step=16):
 # the analysis proper
 # ---------------------------------------------------------------------
 
-def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
+def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX,
+            origin_row_px=None, **rod_kw) -> dict:
     """Everything between "we have a frame" and "we have a transform".
 
     Separated from the capture so it can be exercised on a synthetic
     scene with no camera attached (--self-test)."""
     warnings = []
     rod = find_rod(color, anchor_px=anchor_px, **rod_kw)
+    # The component detector fixes the LINE well but under-reports the
+    # EXTENT when the rod's brightness is patchy; extend along the line.
+    _gray_for_ext = (cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+                     if color.ndim == 3 else color)
+    rod = extend_rod_along_line(_gray_for_ext, rod)
     p_top, p_bot = rod["p_top"], rod["p_bottom"]
     span = p_bot - p_top
 
@@ -470,8 +544,33 @@ def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
     # frame, below, and can be re-measured on its own.
     p_lo = deproject(intr, uv_lo, z_lo)
     p_hi = deproject(intr, uv_hi, z_hi)
-    origin = 0.5 * (p_lo + p_hi)
     anchor_cam = deproject(intr, anchor_snap, z_anchor)
+    # ORIGIN: a POOL-FIXED point, deliberately NOT the anchor. The anchor
+    # is movable and the two final geometries differ by where it hangs,
+    # so a frame tied to it would be invalidated by the reconfiguration
+    # and start poses, wall distances and clearances would stop being
+    # comparable across configurations.
+    #
+    # The camera is fixed for the whole campaign (a camera move
+    # invalidates every measurement anyway and forces a full redo), so a
+    # fixed IMAGE ROW on the detected rod line is a fixed physical point
+    # of the pool. `origin_row` defaults to the middle row of the image,
+    # i.e. the rod point nearest the optical axis, where the depth is
+    # most reliable and the obliquity smallest.
+    origin_row = float(origin_row_px if origin_row_px is not None
+                       else 0.5 * depth_m.shape[0])
+    d_rod = rod["dir"] / (abs(rod["dir"][1]) + 1e-9)
+    s_row = (origin_row - rod["point"][1]) / (rod["dir"][1] + 1e-9)
+    uv_origin = rod["point"] + s_row * rod["dir"]
+    z_origin = sample_depth(depth_m, uv_origin)
+    origin_source = "rod_at_fixed_image_row"
+    if z_origin is None:
+        s_lo = float((uv_lo - rod["point"]) @ rod["dir"])
+        s_hi = float((uv_hi - rod["point"]) @ rod["dir"])
+        w = 0.5 if abs(s_hi - s_lo) < 1e-6 else (s_row - s_lo) / (s_hi - s_lo)
+        z_origin = float(z_lo + w * (z_hi - z_lo))
+        origin_source = "rod_at_fixed_image_row_interpolated_depth"
+    origin = deproject(intr, uv_origin, z_origin)
 
     # Vertical from the surface plane.
     ref_depth = 0.5 * (z_lo + z_hi)
@@ -500,6 +599,7 @@ def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
 
     frame = build_pool_frame(origin, rod_dir, up)
     R = frame["R"]
+    anchor_pool = R @ (anchor_cam - origin)
 
     # The obstacle's pose INSIDE the pool frame. Re-measuring this after
     # moving the anchor does NOT change the camera->pool transform.
@@ -554,6 +654,9 @@ def analyse(color, depth_m, intr, anchor_px=ANCHOR_PX, **rod_kw) -> dict:
         "anchor_depth_source": anchor_depth_source,
         "origin_cam": origin, "rod_dir_cam": rod_dir, "up_cam": up,
         "frame": frame,
+        "anchor_pool": anchor_pool,
+        "origin_source": origin_source,
+        "origin_px": [float(uv_origin[0]), float(uv_origin[1])],
         "anchor_px_given": [float(anchor_px[0]), float(anchor_px[1])],
         "anchor_px_on_rod": anchor_snap,
         "anchor_snap_px": snap_px,
@@ -640,7 +743,12 @@ def to_json(res, meta: dict, image_paths: dict) -> dict:
         "valid": res["z_source"] != "camera_axis_fallback",
         "warnings": res["warnings"],
         "frame_definition": {
-            "origin": "anchor attachment point on the rod",
+            "origin": "the detected rod line at a FIXED IMAGE ROW "
+                      "(default: the image mid-row). Pool-fixed and "
+                      "independent of where the anchor hangs, so moving "
+                      "the anchor between the two final geometries does "
+                      "NOT change this transform.",
+            "origin_source": res.get("origin_source"),
             "x_approach": "perpendicular to the rod in the surface "
                           "plane, along-pool approach direction",
             "y_along_rod": "along the rod, cross-pool, toward the far rim",
@@ -651,6 +759,15 @@ def to_json(res, meta: dict, image_paths: dict) -> dict:
             "y_along_rod": [round(float(v), 6) for v in R[1]],
             "z_up": [round(float(v), 6) for v in R[2]]},
         "t_pool_origin_in_camera": [round(float(v), 5) for v in t],
+        "anchor_pose_pool_m": {
+            "x": round(float(res["anchor_pool"][0]), 3),
+            "y": round(float(res["anchor_pool"][1]), 3),
+            "z": round(float(res["anchor_pool"][2]), 3),
+            "yaw_deg": None,
+            "note": "the OBSTACLE's pose inside the pool frame. Moving "
+                    "the anchor changes only this block; re-measure it "
+                    "with scripts/real/locate_anchor.py against the "
+                    "saved transform, do NOT re-run the remap."},
         "frame_checks": {
             "det_R": round(res["frame"]["det_R"], 9),
             "orthonormality_err": round(
