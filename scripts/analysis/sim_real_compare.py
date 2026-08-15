@@ -66,6 +66,37 @@ PLANNERS = ["committed", "dwa"]
 COMMIT_LATERAL_M_S = 0.05
 COMMIT_HOLD_S = 1.0
 
+# LEFT CENSORING. If the vehicle is already commanding laterally at the
+# FIRST recorded sample, the manoeuvre began at or before the start of
+# the window and its true commitment distance is unknown: all we know is
+# that it is at least the start distance. Reporting that as an exact
+# measurement would be wrong in a specific and misleading direction --
+# it would look like the vehicle committed exactly where the recording
+# happened to begin.
+#
+# This is not hypothetical. In the frozen predictions DWA commits at
+# 3.500 m in K0 and 3.517 m in K1 at every calibration level: exactly the
+# simulated start distance, because it trims laterally from its first
+# cycle. The real runs start at 1.86 m, so the same behaviour there will
+# produce a censored value of >= 1.86 m, and comparing 3.50 against 1.86
+# as if both were measurements would manufacture a sim-to-real error of
+# 1.6 m out of two numbers that are both just "the start".
+#
+# The censoring threshold is LOWER than the commitment threshold on
+# purpose: a lower bar for "already moving" flags more runs as censored,
+# which is the conservative direction.
+CENSOR_LATERAL_M_S = 0.02
+
+# COMMON OBSERVABLE WINDOW. The simulated geometries start the vehicle
+# 3.5 m from the obstacle; the real runs start at 1.86 m, because that
+# is the furthest a wholly visible start fits in the overhead frame. The
+# extra 1.6 m of simulated approach is not observable in reality, so a
+# second view of the SAME simulated traces is computed with everything
+# beyond this distance discarded. That view and the real runs cover the
+# same window and can be compared directly; the frozen predictions are
+# left exactly as they are and are reported alongside it.
+COMMON_WINDOW_M = 1.86
+
 METRICS = [
     ("min_clearance_m", "distanza minima", "m", "higher_is_safer"),
     ("commit_distance_m", "distanza all'ingaggio", "m", "neutral"),
@@ -99,6 +130,9 @@ def commitment(trace):
     peak = 0.0
     active = 0.0
     prev_t = None
+    # Already manoeuvring at the first sample: the commitment happened at
+    # or before the window opened and its distance is a LOWER BOUND.
+    censored = abs(trace[0].get("y") or 0.0) > CENSOR_LATERAL_M_S
     for s in trace:
         lat = abs(s.get("y") or 0.0)
         peak = max(peak, lat)
@@ -114,10 +148,18 @@ def commitment(trace):
     if start is None or last is None or \
             (last["t"] - start["t"]) < COMMIT_HOLD_S:
         return {"commit_distance_m": None, "commit_t_s": None,
+                "commit_censored": censored,
                 "maneuver_s": None, "maneuver_active_s": None,
+                "maneuver_censored_start": censored,
                 "lateral_peak_m_s": round(peak, 4)}
     return {"commit_distance_m": start.get("d"),
             "commit_t_s": round(start["t"], 3),
+            # True = the value above is ">= that distance", not a
+            # measurement of where the manoeuvre began.
+            "commit_censored": censored,
+            # The span shares the censoring: if the start is unknown the
+            # duration is a lower bound too.
+            "maneuver_censored_start": censored,
             # SPAN from first commitment to the last lateral command. An
             # earlier version ended the manoeuvre at the first gap longer
             # than the hold time, which under S2 -- where the vehicle is
@@ -132,12 +174,50 @@ def commitment(trace):
             "lateral_peak_m_s": round(peak, 4)}
 
 
+def clip_to_window(trace, max_d=COMMON_WINDOW_M):
+    """The part of a trace inside the commonly observable window.
+
+    Everything before the vehicle first comes within `max_d` of the
+    obstacle is discarded, so a simulated run that started at 3.5 m is
+    reduced to the stretch a real run could have been watched over.
+    Samples without a ground-truth distance are dropped: they carry no
+    information about which side of the window they fall on.
+    """
+    out, inside = [], False
+    for s in trace:
+        d = s.get("d")
+        if d is None:
+            continue
+        if not inside and d <= max_d:
+            inside = True
+        if inside:
+            out.append(s)
+    if not out:
+        return []
+    t0 = out[0]["t"]
+    return [dict(s, t=round(s["t"] - t0, 3)) for s in out]
+
+
 def run_metrics(assessment, trace):
-    """One run's metric row, from the frozen boundary output only."""
+    """One run's metric row, from the frozen boundary output only.
+
+    Two views of the same trace: the full one, which reproduces the
+    frozen predictions unchanged, and the common-window one, restricted
+    to the stretch both domains can observe.
+    """
     m = dict(commitment(trace))
     for k in ("min_clearance_m", "max_lat_dev_m", "path_length_m",
               "collision"):
         m[k] = (assessment or {}).get(k)
+    clipped = clip_to_window(trace)
+    # A run can miss the common window entirely: at S0 and S1 the DWA
+    # planner keeps 2.1-2.5 m of clearance, so the simulated vehicle
+    # never comes as close as the real one STARTS. That is not missing
+    # data, it is a fact about the trajectory, and it means the two
+    # domains cannot be compared on this window for that cell at all.
+    m["cw_in_window"] = bool(clipped)
+    for k, v in commitment(clipped).items():
+        m["cw_" + k] = v
     return m
 
 
@@ -192,6 +272,49 @@ def med(rows, scen, plan, key):
     return (statistics.median(v), len(v)) if v else (None, 0)
 
 
+# Metrics whose value is a LOWER BOUND when the manoeuvre was already
+# under way at the first sample, and the flag that says so.
+CENSORED_BY = {"commit_distance_m": "commit_censored",
+               "maneuver_s": "maneuver_censored_start",
+               "cw_commit_distance_m": "cw_commit_censored",
+               "cw_maneuver_s": "cw_maneuver_censored_start"}
+
+
+def censored_count(rows, scen, plan, key):
+    flag = CENSORED_BY.get(key)
+    if flag is None:
+        return 0, 0
+    sel = [r for r in rows
+           if r["scenario"] == scen and r["planner"] == plan
+           and isinstance(r.get(key), (int, float))]
+    return sum(1 for r in sel if r.get(flag)), len(sel)
+
+
+def cell(rows, scen, plan, key):
+    """A table cell that shows censoring instead of hiding it.
+
+    A median taken over lower bounds is itself a lower bound. When every
+    contributing run is censored the cell is prefixed ">="; when only
+    some are, the count is shown, because mixing bounds and measurements
+    in one median is exactly the sort of quiet averaging that turns an
+    artefact into a finding.
+    """
+    v, n = med(rows, scen, plan, key)
+    if v is None:
+        if key.startswith("cw_"):
+            sel = [r for r in rows if r["scenario"] == scen
+                   and r["planner"] == plan]
+            if sel and not any(r.get("cw_in_window") for r in sel):
+                return "mai in finestra"
+        return "-"
+    cens, tot = censored_count(rows, scen, plan, key)
+    if cens and cens == tot:
+        return ">=%.3f" % v
+    if cens:
+        return "%.3f (%d/%d cens.)" % (v, cens, tot)
+    return "%.3f" % v
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", default=os.path.join(
@@ -210,17 +333,44 @@ def main() -> int:
              "domini." % (COMMIT_LATERAL_M_S, COMMIT_HOLD_S), ""]
 
     # ---- simulation side is always reportable -------------------------
-    lines += ["## Previsioni simulate (mediane su 5 ripetizioni)", ""]
+    lines += ["## Previsioni simulate (mediane su 5 ripetizioni)", "",
+              "`>=` indica una misura CENSURATA A SINISTRA: il veicolo "
+              "gia manovrava al primo campione, quindi l'inizio e "
+              "precedente alla finestra e il valore e un limite "
+              "inferiore, non una misura.", ""]
     for key, label, unit, _ in METRICS:
         lines += ["### %s (%s)" % (label, unit), "",
                   "| geometria | planner | " + " | ".join(LEVELS) + " |",
                   "|---|---|" + "---|" * len(LEVELS)]
         for g in GEOMETRIES:
             for p in PLANNERS:
-                cells = []
-                for lv in LEVELS:
-                    v, n = med(sim[lv], g, p, key)
-                    cells.append("-" if v is None else "%.3f" % v)
+                cells = [cell(sim[lv], g, p, key) for lv in LEVELS]
+                lines.append("| %s | %s | %s |" % (g, p, " | ".join(cells)))
+        lines.append("")
+
+    # ---- common observable window -------------------------------------
+    lines += ["## Finestra osservabile comune (<= %.2f m)"
+              % COMMON_WINDOW_M, "",
+              "Le STESSE tracce simulate, con tutto cio che sta oltre "
+              "%.2f m scartato. La simulazione parte a 3.5 m e il reale "
+              "a %.2f m, quindi 1.6 m di avvicinamento simulato non sono "
+              "osservabili in vasca: confrontare l'ingaggio su finestre "
+              "diverse fabbricherebbe un errore sim-reale a partire da "
+              "due numeri che sono entrambi solo \"la partenza\". Le "
+              "previsioni congelate restano invariate e sono riportate "
+              "sopra."
+              % (COMMON_WINDOW_M, COMMON_WINDOW_M), ""]
+    for key, label, unit, kind in METRICS:
+        cw_key = "cw_" + key
+        if kind == "control" or not any(
+                cw_key in r for r in sim[LEVELS[0]]):
+            continue
+        lines += ["### %s, finestra comune (%s)" % (label, unit), "",
+                  "| geometria | planner | " + " | ".join(LEVELS) + " |",
+                  "|---|---|" + "---|" * len(LEVELS)]
+        for g in GEOMETRIES:
+            for p in PLANNERS:
+                cells = [cell(sim[lv], g, p, cw_key) for lv in LEVELS]
                 lines.append("| %s | %s | %s |" % (g, p, " | ".join(cells)))
         lines.append("")
 

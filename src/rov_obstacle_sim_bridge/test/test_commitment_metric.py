@@ -73,3 +73,74 @@ def test_sign_does_not_matter():
 
 def test_empty_trace_is_empty_not_a_crash():
     assert commitment([]) == {}
+
+
+# --- left censoring and the common observable window -------------------
+
+clip_to_window = _m.clip_to_window
+CENSOR = _m.CENSOR_LATERAL_M_S
+WINDOW = _m.COMMON_WINDOW_M
+
+
+def test_already_manoeuvring_at_first_sample_is_censored():
+    """The manoeuvre began at or before the window opened, so its
+    distance is a lower bound and must be flagged as one. Reporting it
+    as a measurement would say the vehicle committed exactly where the
+    recording happened to start."""
+    out = commitment(trace([(i * 0.1, THR * 2, 1.86 - i * 0.01)
+                            for i in range(40)]))
+    assert out["commit_censored"] is True
+    assert out["maneuver_censored_start"] is True
+    assert out["commit_distance_m"] is not None
+
+
+def test_manoeuvre_starting_inside_the_window_is_not_censored():
+    s = [(i * 0.1, 0.0, 3.5 - i * 0.02) for i in range(20)]
+    s += [(2.0 + i * 0.1, THR * 2, 3.1 - i * 0.02) for i in range(40)]
+    out = commitment(trace(s))
+    assert out["commit_censored"] is False
+    assert out["maneuver_censored_start"] is False
+
+
+def test_censoring_threshold_is_lower_than_the_commit_threshold():
+    """A lower bar for 'already moving' flags more runs as censored,
+    which is the conservative direction."""
+    assert CENSOR < THR
+
+
+def test_window_drops_the_unobservable_approach_and_rebases_time():
+    s = [(i * 0.1, 0.0, 3.5 - i * 0.05) for i in range(40)]
+    clipped = clip_to_window(trace(s))
+    assert clipped, "the run does enter the window"
+    assert all(x["d"] <= WINDOW for x in clipped)
+    assert clipped[0]["t"] == 0.0, "time re-based to the window opening"
+
+
+def test_window_is_empty_when_the_run_never_gets_that_close():
+    """At S0 and S1 the DWA planner keeps 2.1-2.5 m of clearance, so the
+    simulated vehicle never comes as close as the real one STARTS. That
+    is a fact about the trajectory, not missing data, and the analysis
+    must be able to say so."""
+    s = [(i * 0.1, 0.1, 2.4) for i in range(40)]
+    assert clip_to_window(trace(s)) == []
+
+
+def test_window_view_censors_a_manoeuvre_already_under_way():
+    """Clipping starts the trace mid-manoeuvre, which is exactly the
+    case censoring exists for."""
+    s = [(i * 0.1, 0.0, 3.5 - i * 0.05) for i in range(20)]     # 3.5->2.55
+    s += [(2.0 + i * 0.1, THR * 2, 2.5 - i * 0.05) for i in range(30)]
+    out = commitment(clip_to_window(trace(s)))
+    assert out["commit_censored"] is True
+
+
+def test_samples_without_ground_truth_are_dropped():
+    """A sample with no distance carries no information about which side
+    of the window it falls on."""
+    s = [{"t": i * 0.1, "x": 0.1, "y": 0.0, "r": 0.0, "d": None}
+         for i in range(5)]
+    s += [{"t": 0.5 + i * 0.1, "x": 0.1, "y": 0.0, "r": 0.0, "d": 1.5}
+          for i in range(10)]
+    clipped = clip_to_window(s)
+    assert len(clipped) == 10
+    assert all(x["d"] is not None for x in clipped)

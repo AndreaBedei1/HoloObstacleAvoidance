@@ -176,6 +176,34 @@ but the approach is shorter in reality than in the predictions. This is
 a property of the comparison, not a free parameter, and it must be
 stated wherever the sim-real numbers are reported.
 
+Two ANALYSIS-ONLY consequences, handled offline from the recorded
+traces. Neither changes the protocol, the planners, the calibrations or
+the frozen predictions, whose hash is unchanged.
+
+**Left censoring.** If the vehicle is already commanding laterally at
+the first recorded sample, the manoeuvre began at or before the window
+opened: its commitment distance is a LOWER BOUND, reported as `>=`, and
+the manoeuvre duration inherits the same bound. Without this, DWA's
+simulated 3.50 m and a real 1.86 m would both be "the start" while
+looking like a 1.6 m sim-to-real error. The censoring threshold is
+0.02 m/s, deliberately lower than the 0.05 m/s commitment threshold: a
+lower bar for "already moving" flags more runs as censored, which is the
+conservative direction. Cells report the count when only some
+repetitions are censored, because averaging bounds together with
+measurements is how an artefact becomes a finding.
+
+**Common observable window.** The same simulated traces are also
+reported with everything beyond 1.86 m discarded, so both domains cover
+the same stretch. The frozen predictions are unchanged and reported
+alongside.
+
+That view produces a result of its own, visible before any real run: at
+S1 no condition enters the window at all. The simulated vehicle keeps
+2.2-2.5 m of clearance and never comes as close as the real run STARTS,
+and the same is true of DWA at S0. Those cells are reported as "never in
+window" rather than as missing data — the two domains cannot be compared
+there, and saying so is the result.
+
 ## 8. Excluded, explicitly
 
 The imaging/side-scan sonar is physically connected to the vehicle and
