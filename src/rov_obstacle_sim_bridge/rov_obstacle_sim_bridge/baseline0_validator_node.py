@@ -135,6 +135,12 @@ class Baseline0ValidatorNode(Node):
         self._planner_valid_first_t = None
         self._dist_first_planner_valid = None
         self._dist_at_commit = None
+        # Output-derived manoeuvre metrics, identical for both planners
+        # and reproducible on the real vehicle from the same topic.
+        self._lat_commit_t = None
+        self._lat_commit_dist = None
+        self._lat_last_active_t = None
+        self._lat_peak = 0.0
 
         # Obstacles (world geometry)
         self._obstacles = []
@@ -242,8 +248,25 @@ class Baseline0ValidatorNode(Node):
                 f"nominal line captured at ({x:.2f},{y:.2f}) "
                 f"yaw {math.degrees(yaw):.1f} deg")
 
+    # Lateral speed above which the vehicle is considered to be
+    # MANOEUVRING. Defined on the planner OUTPUT so it means the same
+    # thing for Planner C, for DWA and for the real vehicle: the DWA
+    # node publishes no internal state, so metrics derived from planner
+    # states existed for one planner only and could not be compared
+    # either between planners or between simulation and reality.
+    LATERAL_COMMIT_M_S = 0.02
+
     def _on_safe(self, msg: Twist) -> None:
         self._safe_count += 1
+        lat = abs(msg.linear.y)
+        t_now = self._now()
+        if lat > self.LATERAL_COMMIT_M_S:
+            if self._lat_commit_t is None:
+                self._lat_commit_t = t_now
+                self._lat_commit_dist = self._gt_obstacle_distance()
+            self._lat_last_active_t = t_now
+        if self._lat_commit_t is not None:
+            self._lat_peak = max(self._lat_peak, lat)
         cur = (msg.linear.x, msg.linear.y, msg.angular.z)
         self._safe_last_mag = abs(cur[0]) + abs(cur[1])
         self._safe_last_t = self._now()
@@ -520,6 +543,20 @@ class Baseline0ValidatorNode(Node):
             "distance_at_commitment_m": (
                 round(self._dist_at_commit, 3)
                 if self._dist_at_commit is not None else None),
+            # Manoeuvre metrics defined on the planner OUTPUT, so they
+            # exist for both planners and can be recomputed identically
+            # from the real runs' /planner/cmd_vel_safe recording.
+            "lateral_commit_dist_m": (
+                round(self._lat_commit_dist, 3)
+                if self._lat_commit_dist is not None else None),
+            "lateral_commit_t_s": (
+                round(self._lat_commit_t - self._t0, 3)
+                if self._lat_commit_t is not None else None),
+            "lateral_maneuver_s": (
+                round(self._lat_last_active_t - self._lat_commit_t, 3)
+                if self._lat_commit_t is not None
+                and self._lat_last_active_t is not None else None),
+            "lateral_peak_m_s": round(self._lat_peak, 4),
             "qualification": self._qual_last,
             "infra_freeze_detected": self._infra_freeze,
             "cmd_path_dead_detected": self._cmd_path_dead,

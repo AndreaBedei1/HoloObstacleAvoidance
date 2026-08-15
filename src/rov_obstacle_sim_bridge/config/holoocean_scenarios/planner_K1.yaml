@@ -42,7 +42,15 @@ obstacles:
   - name: f_obstacle
     class_name: anchor
     prop_type: sphere
-    relative_position: [3.5, 0.75, 0.0]
+    # 0.35 m, not 0.75 m. At 0.75 m and 3.5 m range the bearing is 12
+    # degrees, which lands EXACTLY on the committed planner's central
+    # zone boundary: it judged the obstacle non-blocking and drove
+    # straight past at every calibration level, with zero lateral
+    # excursion, while DWA manoeuvred. The two planners were therefore
+    # solving different problems in this geometry and the C-vs-D
+    # comparison was degenerate. At 0.35 m the obstacle is blocking for
+    # both, and K1 remains a distinct off-centre approach.
+    relative_position: [3.5, 0.35, 0.0]
     radius_m: 0.25
     scale: 0.5
     material: gold

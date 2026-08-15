@@ -297,6 +297,11 @@ def assess(m: dict) -> dict:
         "odo_err_max_m": m.get("odo_err_max_m"),
         "infra_freeze": m.get("infra_freeze_detected"),
         "dist_at_commit_m": m.get("distance_at_commitment_m"),
+        # Output-derived, so they exist for BOTH planners and can be
+        # recomputed identically from the real runs.
+        "lateral_commit_dist_m": m.get("lateral_commit_dist_m"),
+        "lateral_maneuver_s": m.get("lateral_maneuver_s"),
+        "lateral_peak_m_s": m.get("lateral_peak_m_s"),
     }
 
 
