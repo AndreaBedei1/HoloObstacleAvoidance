@@ -1,0 +1,83 @@
+{
+  "shared_estimator_vs_truth": {
+    "n": 24,
+    "ratio_median": 0.4686,
+    "ratio_robust_sd": 0.0132,
+    "abs_error_median_m": 1.007,
+    "gt_range_m": [
+      0.344,
+      2.179
+    ],
+    "note": "bias of the FIXED-constant monocular model as run by the shared planner code; S1 injects this ratio and its scatter, it does not re-fit the estimator's constants"
+  },
+  "source": "experiments/real/paired_dataset/*/position_*.json",
+  "domain": "bounding box at /perception/obstacles_raw",
+  "n_records": 63,
+  "n_with_ground_truth": 44,
+  "n_paired": 24,
+  "detection_probability_vs_range": [
+    {
+      "range_lo_m": 0.0,
+      "range_hi_m": 0.8,
+      "n": 6,
+      "detections": 4,
+      "p_detect": 0.667
+    },
+    {
+      "range_lo_m": 1.6,
+      "range_hi_m": 2.0,
+      "n": 18,
+      "detections": 17,
+      "p_detect": 0.944
+    },
+    {
+      "range_lo_m": 2.0,
+      "range_hi_m": 10.0,
+      "n": 20,
+      "detections": 3,
+      "p_detect": 0.15
+    }
+  ],
+  "marginal_p_detect": 0.545,
+  "bearing_error_deg": {
+    "median": 0.0,
+    "robust_sd": 0.3209,
+    "n": 24,
+    "outliers": 8,
+    "outlier_rate": 0.333,
+    "min": -0.6753,
+    "max": 49.8039,
+    "frame_offset_deg": -35.417,
+    "caveat": "the vehicle was held pointing at the anchor throughout, so this scatter spans a narrow range of headings and understates the variability across a real run"
+  },
+  "bbox_height_px": {
+    "median": 0.7644,
+    "robust_sd": 0.0192,
+    "n": 24,
+    "outliers": 8,
+    "outlier_rate": 0.333,
+    "min": 0.3639,
+    "max": 0.8806
+  },
+  "bbox_width_px": {
+    "median": 0.1101,
+    "robust_sd": 0.022,
+    "n": 24,
+    "outliers": 2,
+    "outlier_rate": 0.083,
+    "min": 0.0292,
+    "max": 0.1391
+  },
+  "bbox_aspect": {
+    "median": 0.148,
+    "robust_sd": 0.0199,
+    "n": 24,
+    "outliers": 5,
+    "outlier_rate": 0.208,
+    "min": 0.0332,
+    "max": 0.1801
+  },
+  "height_scale_bias": 2.0019,
+  "note": "MARGINAL detection probability only. The burst structure of the misses is S2's and is deliberately not fitted here; fitting both would thin the observation stream twice.",
+  "identifiability": "vfov and target_height are FIXED inputs; this file measures the bias and scatter of that fixed model."
+}
