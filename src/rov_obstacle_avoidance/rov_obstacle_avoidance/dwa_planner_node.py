@@ -69,6 +69,11 @@ class DWAPlannerNode(Node):
         self.declare_parameter("horizon_s", 6.0)
         self.declare_parameter("clearance_saturation_m", 2.0)
         self.declare_parameter("max_surge", 0.5)
+        # Exposed so the S3 vehicle profile can bound BOTH planners with
+        # the same measured limits. Bounding only the committed planner
+        # would confound the C-vs-D comparison with a constraint applied
+        # to one side.
+        self.declare_parameter("max_sway", 0.3)
         # Scenario class constants (pool-scale profile): shared monocular
         # assumptions, kept IDENTICAL to the committed planner per scenario.
         self.declare_parameter("target_obstacle_height_m", 3.5)
@@ -93,6 +98,7 @@ class DWAPlannerNode(Node):
             clearance_saturation_m=float(
                 self.get_parameter("clearance_saturation_m").value),
             max_surge=float(self.get_parameter("max_surge").value),
+            max_sway=float(self.get_parameter("max_sway").value),
             target_obstacle_height_m=float(
                 self.get_parameter("target_obstacle_height_m").value),
             obstacle_radius_m=float(

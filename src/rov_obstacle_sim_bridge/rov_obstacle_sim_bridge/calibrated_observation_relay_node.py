@@ -95,6 +95,13 @@ class CalibratedObservationRelay(Node):
         self.declare_parameter("s1_fit_path", "")
         self.declare_parameter("s2_fit_path", "")
         self.declare_parameter("seed", 0)
+        # Sentinel file. The campaign must be able to prove the relay ran
+        # at the requested level; parsing the launch log for the startup
+        # line was unreliable because the line is not always flushed
+        # before the process is killed at teardown, which made runs look
+        # uncalibrated when they were fine. A file written at
+        # construction is deterministic.
+        self.declare_parameter("status_path", "")
         # Fixed monocular constants, shared with the planner. They are
         # INPUTS, never fitted here: the fit measured the bias of this
         # exact pair, so changing them would invalidate the bias.
@@ -126,6 +133,15 @@ class CalibratedObservationRelay(Node):
         self.get_logger().info(
             "calibrated observation relay: level=%s s1=%s s2=%s"
             % (self.level, bool(self.s1), bool(self.s2)))
+        status = str(self.get_parameter("status_path").value or "")
+        if status:
+            try:
+                with open(status, "w") as f:
+                    json.dump({"level": self.level,
+                               "s1_loaded": bool(self.s1),
+                               "s2_loaded": bool(self.s2)}, f)
+            except OSError as exc:
+                self.get_logger().error("cannot write status: %s" % exc)
 
     # -- calibration files -------------------------------------------
     def _load(self, param: str, required: bool):

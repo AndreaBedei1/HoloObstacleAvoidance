@@ -49,6 +49,30 @@ S2_FIT = os.path.join(REPO, "config", "calibration",
                       "s2_timing_fit.json").replace("\\", "/")
 
 
+S3_FIT = os.path.join(REPO, "config", "calibration",
+                      "s3_vehicle.json").replace("\\", "/")
+
+
+def s3_vehicle_limits() -> list:
+    """Velocity bounds from the MEASURED actuator calibration.
+
+    The planners command up to 0.30 m/s of sway; the real vehicle tops
+    out around 0.12. Simulating a strafe the hardware cannot perform is
+    the dynamics half of the sim-to-real gap, and it is the part S3
+    exists to close. The numbers are read from the fit, never typed in,
+    so the profile and the simulation cannot drift apart.
+    """
+    with open(S3_FIT) as f:
+        prof = json.load(f)["profile"]
+    full = 1000.0                     # MANUAL_CONTROL full-scale counts
+    surge = prof.get("surge_symmetric", {}).get("m_s_per_count")
+    sway = prof.get("sway_symmetric", {}).get("m_s_per_count")
+    if not surge or not sway:
+        raise SystemExit("s3_vehicle.json has no symmetric translation fit")
+    return [f"veh_max_surge:={surge * full:.4f}",
+            f"veh_max_sway:={sway * full:.4f}"]
+
+
 def calibration_args(level: str) -> list:
     level = level.upper().strip()
     if level == "S0":
@@ -57,6 +81,8 @@ def calibration_args(level: str) -> list:
         out = [f"calibration_level:={level}", f"s1_fit_path:={S1_FIT}"]
         if level in ("S2", "S3"):
             out.append(f"s2_fit_path:={S2_FIT}")
+        if level == "S3":
+            out += s3_vehicle_limits()
         return out
     raise SystemExit("unknown calibration level: %s" % level)
 
@@ -128,6 +154,8 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             f"planner:={planner}",
             "estimator_method:=t2",
             f"validator_output:={validator_out}",
+            "relay_status_path:=" + os.path.join(
+                run_dir, "relay_status.json").replace("\\", "/"),
             f"label:=planner_{scenario}_{planner}_{run_idx}",
         ] + fs["args"] + list(dwa_args) + list(CALIB_ARGS)
         launched = False
@@ -230,24 +258,21 @@ def is_technical_invalid(r: dict) -> str | None:
     return None
 
 
-RELAY_MARK = "calibrated observation relay: level="
-
-
 def relay_level_from_logs(run_dir: str):
-    """The level the relay actually announced, or None if it never did."""
-    best = None
-    for name in sorted(os.listdir(run_dir)):
-        if not name.startswith("ros2_launch"):
-            continue
-        try:
-            with open(os.path.join(run_dir, name), errors="ignore") as f:
-                for line in f:
-                    i = line.find(RELAY_MARK)
-                    if i >= 0:
-                        best = line[i + len(RELAY_MARK):].split()[0].strip()
-        except OSError:
-            pass
-    return best
+    """The level the relay actually ran at, from its sentinel file.
+
+    Read from a file the node writes at construction, not from the
+    launch log: the startup line is not reliably flushed before the
+    process is killed at teardown, so log parsing failed runs that were
+    perfectly calibrated and doubled the campaign's cost by re-running
+    them.
+    """
+    path = os.path.join(run_dir, "relay_status.json")
+    try:
+        with open(path) as f:
+            return json.load(f).get("level")
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def assess(m: dict) -> dict:
