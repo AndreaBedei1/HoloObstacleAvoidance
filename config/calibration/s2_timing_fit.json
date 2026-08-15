@@ -1,0 +1,58 @@
+{
+  "source": "experiments/real/missions/*/log.json",
+  "n_runs": 8,
+  "n_cycles": 532,
+  "cycle_period_s": 0.285,
+  "cycle_rate_hz": 3.51,
+  "cycle_jitter_s": 0.0222,
+  "cycle_period_p95_s": 0.34,
+  "marginal_p_accept": 0.2594,
+  "mean_visible_run_cycles": 3.286,
+  "mean_blind_run_cycles": 9.163,
+  "longest_blind_run_cycles": 57,
+  "bursty": true,
+  "constraint": "mean_visible/(mean_visible+mean_blind) reproduces the marginal; the burst process is fitted SUBJECT TO it, never in addition, or the stream would be thinned twice",
+  "per_run": [
+    {
+      "run": "20260814_185123",
+      "n": 61,
+      "p": 0.18
+    },
+    {
+      "run": "20260814_185340",
+      "n": 86,
+      "p": 0.209
+    },
+    {
+      "run": "20260814_185622",
+      "n": 75,
+      "p": 0.253
+    },
+    {
+      "run": "20260814_190516",
+      "n": 62,
+      "p": 0.081
+    },
+    {
+      "run": "20260814_191040",
+      "n": 54,
+      "p": 0.463
+    },
+    {
+      "run": "20260814_193827",
+      "n": 85,
+      "p": 0.435
+    },
+    {
+      "run": "20260814_194145",
+      "n": 57,
+      "p": 0.368
+    },
+    {
+      "run": "20260814_195048",
+      "n": 52,
+      "p": 0.038
+    }
+  ],
+  "caveat": "the marginal here is the QUALIFIER acceptance rate at the planner's input, which is the stream S2 models. It is not the raw detection rate fitted in S1: the qualifier rejects observations that the detector did produce."
+}
