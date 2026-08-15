@@ -62,6 +62,33 @@ import numpy as np  # noqa: E402
 from anchor_detect import detect_anchor  # noqa: E402
 from overhead_track import OverheadTracker  # noqa: E402
 
+import urllib.request  # noqa: E402
+
+
+def vehicle_state(host="192.168.2.2", timeout=1.0):
+    """Attitude and depth over the BlueOS REST API.
+
+    Deliberately NOT pymavlink: the operator holds the vehicle with
+    Cockpit, which owns the GCS UDP port, and a second binding would
+    either fail or fight it. HTTP is read-only and conflict-free.
+    """
+    base = f"http://{host}:6040/v1/mavlink/vehicles/1/components/1/messages"
+    out = {}
+    for name, keys in (("ATTITUDE", ("roll", "pitch", "yaw", "yawspeed")),
+                       ("VFR_HUD", ("alt", "heading")),
+                       ("SCALED_PRESSURE2", ("press_abs",))):
+        try:
+            with urllib.request.urlopen(f"{base}/{name}",
+                                        timeout=timeout) as r:
+                m = json.loads(r.read().decode())["message"]
+            for k in keys:
+                out[k if name != "VFR_HUD" or k != "alt" else "alt_m"] =                     m.get(k)
+        except Exception:
+            pass
+    if "alt_m" in out and out["alt_m"] is not None:
+        out["depth_m"] = -float(out["alt_m"])
+    return out
+
 # The SHARED range estimator: the same function the simulated planner
 # calls. Imported, never reimplemented.
 from rov_obstacle_avoidance.planner import (  # noqa: E402
@@ -81,17 +108,15 @@ def load_pool_frame(path):
 
 
 def to_pool(p_cam, frame):
-    """Camera-frame XYZ -> pool-frame XYZ using the remap transform."""
-    if frame is None or "pool_frame" not in frame:
+    """Camera-frame XYZ -> pool-frame XYZ (p_pool = R @ (p_cam - t))."""
+    if frame is None or "R_rows_pool_axes_in_camera" not in frame:
         return None
-    pf = frame["pool_frame"]
-    o = np.array(pf["origin_camera_xyz_m"], dtype=float)
-    ax = np.array(pf["x_axis_camera"], dtype=float)
-    ay = np.array(pf["y_axis_camera"], dtype=float)
-    az = np.array(pf["z_axis_camera"], dtype=float)
-    r = np.array(p_cam, dtype=float) - o
-    return [float(np.dot(r, ax)), float(np.dot(r, ay)),
-            float(np.dot(r, az))]
+    rr = frame["R_rows_pool_axes_in_camera"]
+    R = np.array([rr["x_approach"], rr["y_along_rod"], rr["z_up"]],
+                 dtype=float)
+    t = np.array(frame["t_pool_origin_in_camera"], dtype=float)
+    return [round(float(v), 4)
+            for v in (R @ (np.array(p_cam, dtype=float) - t))]
 
 
 def main() -> int:
@@ -99,12 +124,16 @@ def main() -> int:
     ap.add_argument("--positions", type=int, default=4)
     ap.add_argument("--seconds-per-position", type=float, default=8.0)
     ap.add_argument("--rate-hz", type=float, default=4.0)
-    ap.add_argument("--pool-frame", default="",
+    ap.add_argument("--pool-frame",
+                    default="config/real_pool/pool_frame_FROZEN.json",
                     help="config/real_pool/pool_frame_<date>.json "
                          "from the remap; without it, ranges are "
                          "reported in the camera frame and flagged")
+    # Anchor pixel measured with the operator's cross-tube marker on
+    # 2026-08-15 and snapped to the rod centreline; the earlier value was
+    # biased by the anchor's shadow.
     ap.add_argument("--anchor-px", nargs=2, type=float,
-                    default=[1069.0, 635.0])
+                    default=[1044.0, 626.0])
     # Fixed model constants; see the module docstring on identifiability.
     ap.add_argument("--vfov-deg", type=float, required=True,
                     help="camera VERTICAL FOV from calibration/spec")
@@ -161,8 +190,10 @@ def main() -> int:
                 det = detect_anchor(frame) if frame is not None else \
                     {"found": False}
                 ov = tracker.detect(near=None)
+                vs = vehicle_state()
                 rec = {
                     "t": time.time(), "position_index": pos,
+                    "vehicle": vs,
                     "frame_age_s": (None if t_frame == 0
                                     else round(time.time() - t_frame, 3)),
                 }
@@ -181,7 +212,8 @@ def main() -> int:
                     rec["gt_dist_px"] = round(d_px, 1)
                     scale = None
                     if frame_cfg:
-                        scale = frame_cfg.get("px_per_m_along_rod")
+                        scale = (frame_cfg.get("scale") or {}).get(
+                            "px_per_m_rod")
                     rec["gt_range_m"] = (round(d_px / scale, 3)
                                          if scale else None)
                     rec["gt_frame"] = ("pool" if frame_cfg else "camera")

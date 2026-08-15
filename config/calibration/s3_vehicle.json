@@ -1,0 +1,523 @@
+{
+  "source": "experiments/real/actuator_id/*",
+  "estimator": "least squares on the powered segment of the overhead track, local drift removed",
+  "command_authority": 0.2,
+  "authority_warning": "ArduSub scales MANUAL_CONTROL by a runtime joystick gain, measured at 0.20. A reboot resets it to JS_GAIN_DEFAULT (0.5) and silently invalidates every number here. Re-measure before any run.",
+  "px_per_m": 452.8,
+  "profile": {
+    "surge+": {
+      "identified": true,
+      "m_s_per_count": 0.000149,
+      "deadband_counts": 0,
+      "deadband_resolved": false,
+      "n_trials": 5,
+      "points": [
+        [
+          1000,
+          0.1161
+        ],
+        [
+          600,
+          0.0871
+        ],
+        [
+          1000,
+          0.1477
+        ],
+        [
+          600,
+          0.1079
+        ],
+        [
+          1000,
+          0.172
+        ]
+      ],
+      "note": "deadband not separable from these levels (free fit gave a non-physical -216 counts); refitted through the origin with deadband 0"
+    },
+    "surge-": {
+      "identified": true,
+      "m_s_per_count": 0.000465,
+      "deadband_counts": 463,
+      "deadband_resolved": true,
+      "n_trials": 2,
+      "points": [
+        [
+          600,
+          0.0636
+        ],
+        [
+          1000,
+          0.2496
+        ]
+      ]
+    },
+    "sway+": {
+      "identified": true,
+      "m_s_per_count": 8.8e-05,
+      "deadband_counts": 0,
+      "deadband_resolved": false,
+      "note": "single command level: slope fitted through the origin, deadband ASSUMED zero and not measured",
+      "n_trials": 1,
+      "points": [
+        [
+          1000,
+          0.0881
+        ]
+      ]
+    },
+    "sway-": {
+      "identified": true,
+      "m_s_per_count": 0.000144,
+      "deadband_counts": 0,
+      "deadband_resolved": false,
+      "n_trials": 3,
+      "points": [
+        [
+          600,
+          0.0733
+        ],
+        [
+          600,
+          0.1152
+        ],
+        [
+          1000,
+          0.1344
+        ]
+      ],
+      "note": "deadband not separable from these levels (free fit gave a non-physical -339 counts); refitted through the origin with deadband 0"
+    },
+    "yaw+": {
+      "identified": true,
+      "deg_s_per_count": 0.0654,
+      "deadband_counts": 383,
+      "points": [
+        [
+          600,
+          14.19
+        ],
+        [
+          1000,
+          40.35
+        ]
+      ]
+    },
+    "yaw-": {
+      "identified": true,
+      "deg_s_per_count": 0.05373,
+      "deadband_counts": 220,
+      "points": [
+        [
+          600,
+          -20.43
+        ],
+        [
+          1000,
+          -41.92
+        ]
+      ]
+    }
+  },
+  "trials": [
+    {
+      "session": "20260815_104355",
+      "axis": "surge",
+      "level": 1000,
+      "end_reason": "frame_edge",
+      "wall_contact": false,
+      "dyaw_deg": -19.0,
+      "yaw_rate_deg_s": -6.7,
+      "speed_m_s": 0.1161,
+      "drift_m_s": 0.0374,
+      "drift_ratio": 0.32,
+      "resid_px": 2.0,
+      "n": 24,
+      "held_s": 2.83
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "surge",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 9.6,
+      "yaw_rate_deg_s": 3.79,
+      "speed_m_s": 0.0871,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.42,
+      "resid_px": 0.9,
+      "n": 21,
+      "held_s": 2.49
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "surge",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 3.5,
+      "yaw_rate_deg_s": 1.38,
+      "speed_m_s": 0.0495,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.74,
+      "resid_px": 0.9,
+      "n": 21,
+      "held_s": 2.49,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "surge",
+      "level": 1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -8.5,
+      "yaw_rate_deg_s": -3.34,
+      "speed_m_s": 0.1477,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.25,
+      "resid_px": 0.8,
+      "n": 21,
+      "held_s": 2.5
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "surge",
+      "level": -1000,
+      "end_reason": "frame_edge",
+      "wall_contact": false,
+      "dyaw_deg": -18.5,
+      "yaw_rate_deg_s": -167.14,
+      "excluded": "too few samples"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "sway",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -6.6,
+      "yaw_rate_deg_s": -2.6,
+      "speed_m_s": 0.0387,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.95,
+      "resid_px": 0.5,
+      "n": 21,
+      "held_s": 2.49,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "sway",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -15.2,
+      "yaw_rate_deg_s": -6.02,
+      "speed_m_s": 0.0733,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.5,
+      "resid_px": 0.5,
+      "n": 21,
+      "held_s": 2.48
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "sway",
+      "level": 1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 74.5,
+      "yaw_rate_deg_s": 29.23,
+      "speed_m_s": 0.0366,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 1.0,
+      "resid_px": 1.0,
+      "n": 21,
+      "held_s": 2.5,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "sway",
+      "level": -1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 2.1,
+      "yaw_rate_deg_s": 0.82,
+      "speed_m_s": 0.0466,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.78,
+      "resid_px": 0.9,
+      "n": 21,
+      "held_s": 2.51,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "yaw",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 36.1,
+      "yaw_rate_deg_s": 14.19,
+      "speed_m_s": 0.0413,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.88,
+      "resid_px": 0.7,
+      "n": 21,
+      "held_s": 2.5,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "yaw",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -51.2,
+      "yaw_rate_deg_s": -20.43,
+      "speed_m_s": 0.0381,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.96,
+      "resid_px": 0.6,
+      "n": 21,
+      "held_s": 2.46,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "yaw",
+      "level": 1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 100.9,
+      "yaw_rate_deg_s": 40.35,
+      "speed_m_s": 0.0409,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.89,
+      "resid_px": 0.8,
+      "n": 20,
+      "held_s": 2.45,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_104631",
+      "axis": "yaw",
+      "level": -1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -106.0,
+      "yaw_rate_deg_s": -41.92,
+      "speed_m_s": 0.038,
+      "drift_m_s": 0.0365,
+      "drift_ratio": 0.96,
+      "resid_px": 0.7,
+      "n": 21,
+      "held_s": 2.48,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_105604",
+      "axis": "surge",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 54.1,
+      "yaw_rate_deg_s": 17.93,
+      "speed_m_s": 0.0367,
+      "drift_m_s": 0.0391,
+      "drift_ratio": 1.06,
+      "resid_px": 0.9,
+      "n": 25,
+      "held_s": 2.98,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_105604",
+      "axis": "surge",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -8.5,
+      "yaw_rate_deg_s": -2.82,
+      "speed_m_s": 0.0636,
+      "drift_m_s": 0.0201,
+      "drift_ratio": 0.32,
+      "resid_px": 0.5,
+      "n": 25,
+      "held_s": 2.97
+    },
+    {
+      "session": "20260815_105604",
+      "axis": "surge",
+      "level": 1000,
+      "end_reason": "duration",
+      "wall_contact": true,
+      "dyaw_deg": -0.2,
+      "yaw_rate_deg_s": -0.07,
+      "speed_m_s": 0.1142,
+      "drift_m_s": 0.0511,
+      "drift_ratio": 0.45,
+      "resid_px": 0.9,
+      "n": 25,
+      "held_s": 2.99,
+      "excluded": "wall contact (operator observed)"
+    },
+    {
+      "session": "20260815_105900",
+      "axis": "sway",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 19.0,
+      "yaw_rate_deg_s": 6.29,
+      "speed_m_s": 0.0484,
+      "drift_m_s": 0.0656,
+      "drift_ratio": 1.36,
+      "resid_px": 0.3,
+      "n": 25,
+      "held_s": 2.98,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_110251",
+      "axis": "sway",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 19.4,
+      "yaw_rate_deg_s": 4.83,
+      "speed_m_s": 0.0239,
+      "drift_m_s": 0.0184,
+      "drift_ratio": 0.77,
+      "resid_px": 0.9,
+      "n": 33,
+      "held_s": 3.97,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "sway",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 28.1,
+      "yaw_rate_deg_s": 6.98,
+      "speed_m_s": 0.0358,
+      "drift_m_s": 0.0296,
+      "drift_ratio": 0.83,
+      "resid_px": 0.8,
+      "n": 32,
+      "held_s": 3.87,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "sway",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -12.6,
+      "yaw_rate_deg_s": -3.13,
+      "speed_m_s": 0.1152,
+      "drift_m_s": 0.0081,
+      "drift_ratio": 0.07,
+      "resid_px": 31.0,
+      "n": 31,
+      "held_s": 3.98
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "sway",
+      "level": 1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 31.4,
+      "yaw_rate_deg_s": 7.83,
+      "speed_m_s": 0.0881,
+      "drift_m_s": 0.0109,
+      "drift_ratio": 0.12,
+      "resid_px": 1.4,
+      "n": 33,
+      "held_s": 3.96
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "sway",
+      "level": -1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": -80.8,
+      "yaw_rate_deg_s": -20.13,
+      "speed_m_s": 0.1344,
+      "drift_m_s": 0.0452,
+      "drift_ratio": 0.34,
+      "resid_px": 1.1,
+      "n": 33,
+      "held_s": 3.97
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "surge",
+      "level": 600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 1.0,
+      "yaw_rate_deg_s": 0.25,
+      "speed_m_s": 0.1079,
+      "drift_m_s": 0.0515,
+      "drift_ratio": 0.48,
+      "resid_px": 1.7,
+      "n": 33,
+      "held_s": 3.95
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "surge",
+      "level": -600,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 23.2,
+      "yaw_rate_deg_s": 5.77,
+      "speed_m_s": 0.0298,
+      "drift_m_s": 0.0376,
+      "drift_ratio": 1.26,
+      "resid_px": 0.7,
+      "n": 33,
+      "held_s": 3.97,
+      "excluded": "drift comparable to signal"
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "surge",
+      "level": 1000,
+      "end_reason": "frame_edge",
+      "wall_contact": false,
+      "dyaw_deg": 6.4,
+      "yaw_rate_deg_s": 1.61,
+      "speed_m_s": 0.172,
+      "drift_m_s": 0.0242,
+      "drift_ratio": 0.14,
+      "resid_px": 2.9,
+      "n": 33,
+      "held_s": 3.97
+    },
+    {
+      "session": "20260815_111104",
+      "axis": "surge",
+      "level": -1000,
+      "end_reason": "duration",
+      "wall_contact": false,
+      "dyaw_deg": 6.5,
+      "yaw_rate_deg_s": 1.62,
+      "speed_m_s": 0.2496,
+      "drift_m_s": 0.0703,
+      "drift_ratio": 0.28,
+      "resid_px": 1.0,
+      "n": 33,
+      "held_s": 3.96
+    }
+  ]
+}

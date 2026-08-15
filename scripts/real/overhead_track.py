@@ -67,22 +67,57 @@ class OverheadTracker:
         self.pipe.stop()
 
     @staticmethod
-    def _pick(cnts, img, near, gate_px):
+    def _pick(cnts, img, near, gate_px, allow_partial=True,
+              full_size_px=(235.0, 215.0)):
         best = None
         for c in cnts:
             a = cv2.contourArea(c)
-            if a < MIN_AREA or a > MAX_AREA:
+            if a > MAX_AREA:
+                continue
+            x0, y0, w0, h0 = cv2.boundingRect(c)
+            edge = (x0 <= 2 or y0 <= 2
+                    or x0 + w0 >= img.shape[1] - 2
+                    or y0 + h0 >= img.shape[0] - 2)
+            # a truncated vehicle shows less area than a
+            # whole one, so the floor halves at the border
+            if a < (MIN_AREA * 0.4 if edge else MIN_AREA):
                 continue
             x, y, w, h = cv2.boundingRect(c)
-            if x <= 2 or y <= 2 or x + w >= img.shape[1] - 2                     or y + h >= img.shape[0] - 2:
+            # A blob touching a border is the VEHICLE PARTIALLY OUT OF
+            # VIEW, not a spurious rim shadow: the start position of the
+            # campaign is at the edge of the camera's coverage, so
+            # discarding it would lose exactly the pose we need. Keep it,
+            # but flag it and reconstruct the centre from the visible
+            # edge and the vehicle's known full extent - the raw centroid
+            # of a truncated blob is biased toward the image interior.
+            touches = (x <= 2, y <= 2, x + w >= img.shape[1] - 2,
+                       y + h >= img.shape[0] - 2)
+            partial = any(touches)
+            if partial and not allow_partial:
+                continue
+            # A partially visible VEHICLE still spans most of its extent
+            # in the direction it is not truncated along. A 50x49 scrap
+            # of the dark rim at the top border does not, and one was
+            # accepted as the ROV on 2026-08-15 while the vehicle sat
+            # fully visible elsewhere in the frame -- a false ground
+            # truth, which is worse than no ground truth.
+            if partial and max(w, h) < 0.5 * max(full_size_px):
                 continue
             if not (0.5 < w / float(h) < 2.0):
                 continue
-            # COMPACTNESS: the ROV is a solid rectangular body (fill
-            # ~0.6-0.8 of its bounding box); the shaded band along the
-            # pool edge has a similar area but is diffuse and was being
-            # picked as the vehicle (2026-08-14).
-            if a / float(w * h) < 0.45:
+            # COMPACTNESS: the ROV is a solid body; the diffuse shaded
+            # band along the pool edge is not, and was once picked as the
+            # vehicle (2026-08-14).
+            #
+            # The 0.45 floor that fixed that was measured in calm evening
+            # water. Under morning ripple the same vehicle fills only
+            # 0.37-0.45 of its box and was rejected outright (2026-08-15),
+            # so the floor is relaxed. The rim bands stay excluded by the
+            # ASPECT test above -- they measure 2.2 to 4.9 against a limit
+            # of 2.0 -- which is a shape property of the pool edge rather
+            # than a brightness threshold, and so transfers across
+            # lighting conditions where an absolute cut does not.
+            if a / float(w * h) < 0.32:
                 continue
             M = cv2.moments(c)
             if M["m00"] <= 0:
@@ -92,7 +127,7 @@ class OverheadTracker:
                     ccx - near[0], ccy - near[1]) > gate_px:
                 continue
             if best is None or a > best[0]:
-                best = (a, c, (x, y, w, h), (ccx, ccy))
+                best = (a, c, (x, y, w, h), (ccx, ccy), partial, touches)
         return best
 
     # -- detection ------------------------------------------------------
@@ -119,8 +154,16 @@ class OverheadTracker:
         # merges with the shaded band along the pool edge (verified
         # 2026-08-14: 2% merged to the top border, 1% isolated the ROV
         # cleanly), so tighten until a NON-border blob appears.
-        best = None
-        for pct in (1.0, 0.6, 1.5, 2.0):
+        # Every threshold is evaluated and the best candidate over all of
+        # them is kept, preferring a WHOLLY VISIBLE blob. Returning the
+        # first threshold that yields anything at all was wrong: at a
+        # loose threshold the vehicle merges with the dark band along the
+        # pool rim, the merged blob is rejected for exceeding MAX_AREA,
+        # and a border fragment survives instead -- so the search stopped
+        # on the fragment and never tried the tighter percentile that
+        # separates the vehicle cleanly (2026-08-15).
+        best, best_key, thr = None, None, None
+        for pct in (1.0, 0.6, 1.5, 2.0, 0.35):
             thr = float(np.percentile(blur, pct))
             mask = (blur < thr).astype(np.uint8) * 255
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
@@ -129,21 +172,41 @@ class OverheadTracker:
                                     np.ones((21, 21), np.uint8))
             cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
-            best = self._pick(cnts, img, near, gate_px)
-            if best is None and near is not None:
+            cand = self._pick(cnts, img, near, gate_px)
+            if cand is None and near is not None:
                 # Fast motion can exceed the gate: retry ungated rather
                 # than losing the vehicle (observed 2026-08-14: the
                 # trajectory stopped while the ROV kept going).
-                best = self._pick(cnts, img, None, gate_px)
-            if best is not None:
+                cand = self._pick(cnts, img, None, gate_px)
+            if cand is None:
+                continue
+            key = (0 if cand[4] else 1, cand[0])   # whole first, then area
+            if best_key is None or key > best_key:
+                best, best_key = cand, key
+            if not cand[4]:                        # whole blob: good enough
                 break
         if best is None:
             if save_path is not None and cv2 is not None:
                 cv2.imwrite(save_path, img)
             return {"found": False, "t": time.time(), "threshold": thr}
-        area, cnt, (x, y, w, h), (cx, cy) = best
+        area, cnt, (x, y, w, h), (cx, cy), partial, touches = best
+        if partial:
+            fw, fh = 235.0, 215.0        # ROV full extent, measured
+            if touches[0]:               # cut on the LEFT
+                cx = (x + w) - 0.5 * fw
+            elif touches[2]:             # cut on the RIGHT
+                cx = x + 0.5 * fw
+            if touches[1]:               # cut at the TOP
+                cy = (y + h) - 0.5 * fh
+            elif touches[3]:             # cut at the BOTTOM
+                cy = y + 0.5 * fh
         (_, _), (_, _), angle = cv2.minAreaRect(cnt)
         out = {"found": True, "t": time.time(), "pixel": [cx, cy],
+               "partial": bool(partial),
+               "partial_edges": {"left": bool(touches[0]),
+                                 "top": bool(touches[1]),
+                                 "right": bool(touches[2]),
+                                 "bottom": bool(touches[3])},
                "bbox": [x, y, w, h], "area_px": area,
                "blob_angle_deg": angle,
                "frac_x": cx / img.shape[1], "frac_y": cy / img.shape[0]}

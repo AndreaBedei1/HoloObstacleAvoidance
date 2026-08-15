@@ -121,10 +121,21 @@ def detect_anchor(img: np.ndarray, debug: bool = False) -> dict:
             continue
         cm = float(core.mean())
         lm, rm = float(band_l.mean()), float(band_r.mean())
-        if not (lm > cm + 4 and rm > cm + 4):
+        # The isolation margin must scale WITH THE FRAME'S CONTRAST.
+        # An absolute 4 grey levels worked on the evening frames (dark
+        # contrast p99.9 ~30) and rejected every true detection on the
+        # morning ones (p99.9 ~9, hazy sunlit water): the anchor was
+        # plainly visible and scored zero candidates. Absolute grey-level
+        # thresholds do not transfer across lighting conditions.
+        iso_margin = max(1.5, 0.30 * dmax)
+        if not (lm > cm + iso_margin and rm > cm + iso_margin):
             continue
         straight = 1.0 / (1.0 + wander / 6.0)
-        score = (mean_dark / 12.0) * min(vertical, 8.0) / 4.0 * straight
+        # Contrast-relative darkness for the same reason: `mean_dark/12`
+        # is a fixed grey-level scale, so the identical structure scored
+        # ~1.5 in the evening and ~0.1 in the morning haze.
+        dark_ref = max(3.0, 0.5 * dmax)
+        score = (mean_dark / dark_ref) * min(vertical, 8.0) / 4.0 * straight
         cand.append({"bbox": [int(x), int(y), int(bw), int(bh)],
                      "area": int(area), "mean_dark": round(mean_dark, 2),
                      "vertical": round(vertical, 2),

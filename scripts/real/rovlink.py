@@ -77,6 +77,27 @@ class RovLink:
         return self.master.recv_match(type=mtype, blocking=blocking,
                                       timeout=timeout)
 
+    def newest(self, mtype, timeout=1.0):
+        """The MOST RECENT message of `mtype`, not the oldest queued one.
+
+        `recv_match` pops the head of the receive queue. When a message
+        is streamed faster than the loop consumes it the queue grows and
+        every read returns progressively staler state: a 2026-08-15
+        thruster diagnostic reported the mixer response of two seconds
+        earlier and looked like a hardware fault (reverse surge dead,
+        sway producing a surge pattern) when the vehicle was healthy.
+
+        Any measurement used to identify the vehicle MUST use this, not
+        `recv_match`: an actuator step fitted against lagged telemetry
+        yields a wrong time constant with no outward sign of error.
+        """
+        last = self.recv_match(mtype, timeout=timeout, blocking=timeout > 0)
+        while True:
+            m = self.master.recv_match(type=mtype, blocking=False)
+            if m is None:
+                return last
+            last = m
+
     def heartbeat(self, timeout=3.0):
         m = self.recv_match("HEARTBEAT", timeout)
         if m is None:
@@ -196,7 +217,7 @@ class RovLink:
 
         Returns the final yaw (rad), or None if no attitude was received.
         """
-        att = self.recv_match("ATTITUDE", timeout=2.0)
+        att = self.newest("ATTITUDE", timeout=2.0)
         if att is None:
             # No feedback: fall back to open-loop neutral.
             t0 = time.time()
@@ -209,7 +230,9 @@ class RovLink:
         t0 = time.time()
         yaw = att.yaw
         while time.time() - t0 < seconds:
-            att = self.recv_match("ATTITUDE", timeout=0.3)
+            # newest(): a PD loop fed lagged attitude differentiates old
+            # error and oscillates (see RovLink.newest).
+            att = self.newest("ATTITUDE", timeout=0.3)
             if att is not None:
                 yaw = att.yaw
                 rate = getattr(att, "yawspeed", 0.0)
