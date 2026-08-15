@@ -53,6 +53,14 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 
+# Called ONCE, here, before any check runs. ensure_env re-executes the
+# interpreter with the RealSense environment set, so calling it from
+# inside a check restarts the whole rehearsal halfway through and every
+# result is printed twice.
+from camera_stream import ensure_env  # noqa: E402
+
+ensure_env()
+
 CAL = os.path.join(_ROOT, "config", "calibration")
 REQUIRED_FITS = ["s1_observation_fit.json", "s2_timing_fit.json",
                  "s3_vehicle.json"]
@@ -152,6 +160,111 @@ def check_authority(c, do_pulse):
         c.add("autorita di comando", False, str(exc))
 
 
+def check_next_run(c):
+    """Which run the frozen order says comes next, and its start pose.
+
+    The rehearsal must exercise the SAME condition the next real run
+    will use: a gate that passes on a different planner or a different
+    geometry has not tested the thing that is about to happen.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import final_campaign as fc
+        seq, cfg = fc.frozen_order()
+        done = fc.completed_runs()
+        nxt = fc.next_pending(seq, done)
+        if nxt is None:
+            c.add("prossima prova", True, "le 20 sono complete")
+            return None, None
+        c.add("prossima prova", True,
+              "%d/20 -> %s %s replica %d (%d gia fatte)"
+              % (nxt["index"], nxt["geometry"], nxt["planner"],
+                 nxt["run"], len(done)))
+        return nxt, cfg
+    except Exception as exc:
+        c.add("prossima prova", False, str(exc))
+        return None, None
+
+
+def check_start_pose(c, nxt, cfg):
+    """The vehicle must be inside the start region BEFORE the run, and
+    the pose must be measurable: a start outside the overhead frame
+    cannot be recorded, which is the requirement that makes the
+    pre-registered start regions mean anything."""
+    if nxt is None or cfg is None:
+        c.add("posa di partenza", False, "prossima prova sconosciuta")
+        return
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import final_campaign as fc
+        gt = fc.GroundTruth()
+        gt.start()
+        time.sleep(1.5)
+        sp = cfg["start_poses"][nxt["geometry"]]
+        pose, why = fc.check_start_pose(gt, sp["nominal_px"])
+        gt.stop()
+        if pose is None:
+            c.add("posa di partenza", False, why or "non misurabile")
+            return
+        c.add("posa di partenza", pose["within_tolerance"],
+              "lungo %+.2f m, laterale %+.2f m%s"
+              % (pose["offset_along_m"], pose["offset_lateral_m"],
+                 "" if pose["within_tolerance"] else "  -> " + (why or "")))
+    except Exception as exc:
+        c.add("posa di partenza", False, str(exc))
+
+
+def check_timestamps(c):
+    """Both video indices must be monotonic and on the same clock.
+
+    The indices are the timing authority for every join in the dataset:
+    container frame rates are nominal and encoder timestamps are
+    rewritten, so if the indices are not trustworthy nothing in a run
+    can be aligned with anything else.
+    """
+    try:
+        import json as _json
+        import tempfile
+        import numpy as _np
+        from dual_recorder import DualRecorder
+        d = tempfile.mkdtemp(prefix="ts_")
+        seq = {"i": 0}
+
+        def onb():
+            seq["i"] += 1
+            return (_np.full((120, 160, 3), seq["i"] % 255, dtype=_np.uint8),
+                    time.time())
+
+        def ovr():
+            return _np.full((120, 160, 3), 128, dtype=_np.uint8)
+
+        rec = DualRecorder(d, onb, ovr, onboard_fps=10, overhead_fps=5,
+                           downscale=1.0)
+        rec.start()
+        time.sleep(2.0)
+        stats = rec.stop()
+        ok, detail = True, []
+        spans = {}
+        for st in stats["streams"]:
+            ts = [_json.loads(l)["t"] for l in
+                  open(os.path.join(d, st["index"]))]
+            mono = all(b >= a for a, b in zip(ts, ts[1:]))
+            ok &= mono and len(ts) == st["frames"]
+            spans[st["stream"]] = (ts[0], ts[-1]) if ts else (0, 0)
+            detail.append("%s %d campioni%s"
+                          % (st["stream"], len(ts),
+                             "" if mono else " NON monotoni"))
+        if len(spans) == 2:
+            a, b = spans.values()
+            shared = abs(a[0] - b[0]) < 1.0
+            ok &= shared
+            detail.append("avvio condiviso entro %.2f s"
+                          % abs(a[0] - b[0]))
+        c.add("timestamp e sincronizzazione", ok, ", ".join(detail))
+    except Exception as exc:
+        c.add("timestamp e sincronizzazione", False, str(exc))
+
+
 def check_overhead(c):
     try:
         from camera_stream import ensure_env
@@ -229,8 +342,11 @@ def main() -> int:
     check_benchmark(c)
     check_interlock(c)
     check_recorder(c)
+    check_timestamps(c)
+    nxt, cfg = check_next_run(c)
     check_overhead(c)
     check_onboard(c)
+    check_start_pose(c, nxt, cfg)
     check_authority(c, args.authority)
 
     out = os.path.join(_ROOT, "experiments", "real", "rehearsal")

@@ -1,0 +1,76 @@
+# FROZEN EXECUTION ORDER for the 20 real validation runs.
+#
+# WHY AN ORDER AT ALL. The 20 runs take a session. Battery charge, water
+# temperature, tether arrangement and pool recirculation all drift over
+# that time, and the pool disturbance was measured GROWING during the
+# actuator session as the water was stirred. If the runs were executed
+# planner by planner -- ten committed then ten DWA -- every one of those
+# drifts would be perfectly confounded with the planner, and no analysis
+# could separate "DWA behaved differently" from "the second half of the
+# afternoon behaved differently".
+#
+# THE DESIGN. Five blocks of four. Every block contains all four
+# conditions exactly once, so any drift slower than one block is shared
+# equally by all of them. The order WITHIN blocks rotates, so no
+# condition sits in the same position every time and a within-block
+# effect (a fresh battery at the start of each block, say) cannot
+# accumulate on one condition. Planners alternate inside every block,
+# which is the comparison the paper rests on.
+#
+# Each condition takes each of the four positions at least once across
+# the five blocks.
+#
+# THIS ORDER IS FROZEN. `scripts/real/final_campaign.py` reads it and
+# selects the next pending run itself, so the operator never has to
+# remember what comes next and the order cannot drift by accident.
+
+conditions:
+  A: {geometry: K0, planner: committed}
+  B: {geometry: K0, planner: dwa}
+  C: {geometry: K1, planner: committed}
+  D: {geometry: K1, planner: dwa}
+
+# Position of each condition, per block. Repetition number = block index.
+blocks:
+  1: [A, B, C, D]
+  2: [B, C, D, A]
+  3: [C, D, A, B]
+  4: [D, A, B, C]
+  5: [D, C, B, A]
+
+# Nominal start poses, in overhead pixels, with the pre-registered
+# tolerance from the protocol.
+#
+# CONSTRAINT THE POOL IMPOSES, recorded here rather than worked around:
+# the simulated geometry starts the vehicle 3.5 m from the anchor, but
+# the overhead camera covers 4.24 x 2.38 m and the anchor sits at
+# x = 1044 px, so the furthest the vehicle can start and still be WHOLLY
+# visible is about 1.86 m. A start outside the frame cannot have its
+# pose measured before release, which is exactly the requirement that
+# makes the start regions meaningful.
+#
+# The nominal start is therefore the furthest measurable distance, not
+# the simulated 3.5 m. The engagement distance is 1.5 m, so the vehicle
+# still has run-up before it engages, but the approach is SHORTER in
+# reality than in the predictions and that difference is a property of
+# the comparison, not a free parameter. It must be stated wherever the
+# sim-real numbers are reported.
+start_poses:
+  anchor_px: [1044.0, 626.0]
+  px_per_m: 452.8
+  K0:
+    nominal_px: [200.0, 626.0]
+    approach_distance_m: 1.864
+    note: "K-CENTRE: anchor straight ahead on the approach line"
+  K1:
+    nominal_px: [200.0, 468.0]
+    approach_distance_m: 1.864
+    lateral_offset_m: 0.349
+    note: >
+      K-OFFSET: the anchor lies 0.35 m to one side of the approach line,
+      the same offset as the simulated K1 geometry.
+
+tolerance:
+  lateral_m: 0.30
+  along_m: 0.40
+  heading_deg: 12.0

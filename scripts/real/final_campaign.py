@@ -64,6 +64,57 @@ TOL_ALONG_M = 0.40
 TOL_HEADING_DEG = 12.0
 
 
+def frozen_order():
+    """The frozen execution order, expanded to 20 numbered runs.
+
+    Read rather than remembered: executing the conditions in blocks --
+    ten of one planner then ten of the other -- would confound the
+    planner with battery charge, water temperature and the pool
+    recirculation that was measured GROWING across the actuator session.
+    """
+    import yaml
+    with open(os.path.join(_ROOT, "config",
+                           "run_order_FROZEN.yaml")) as f:
+        d = yaml.safe_load(f)
+    seq = []
+    for block in sorted(d["blocks"]):
+        for key in d["blocks"][block]:
+            c = d["conditions"][key]
+            seq.append({"index": len(seq) + 1,
+                        "geometry": c["geometry"],
+                        "planner": c["planner"],
+                        "run": block})
+    return seq, d
+
+
+def completed_runs():
+    path = os.path.join(OUT, "manifest.json")
+    if not os.path.isfile(path):
+        return set()
+    with open(path) as f:
+        results = json.load(f).get("results", [])
+    return {(r["scenario"], r["planner"], r["run"]) for r in results
+            if not r.get("technical_invalid")}
+
+
+def next_pending(seq, done):
+    for item in seq:
+        if (item["geometry"], item["planner"], item["run"]) not in done:
+            return item
+    return None
+
+
+def print_order(seq, done):
+    print("ordine congelato delle 20 prove:")
+    for it in seq:
+        key = (it["geometry"], it["planner"], it["run"])
+        mark = "fatta " if key in done else "      "
+        print("  %s%2d. %-3s %-9s replica %d"
+              % (mark, it["index"], it["geometry"], it["planner"],
+                 it["run"]))
+    print("  %d/20 completate" % len(done))
+
+
 def frozen_predictions_hash():
     p = os.path.join(_ROOT, "experiments", "simulation",
                      "phase10_predictions", "PREDICTIONS.sha256")
@@ -180,10 +231,17 @@ def record_cmd_trace(run_dir, gt, stop_event):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--geometry", required=True, choices=["K0", "K1"])
-    ap.add_argument("--planner", required=True,
-                    choices=["committed", "dwa"])
-    ap.add_argument("--run", required=True, type=int)
+    # Optional: without them the next pending run of the frozen order is
+    # selected automatically, so the order cannot drift by accident and
+    # the operator never has to remember what comes next.
+    ap.add_argument("--geometry", choices=["K0", "K1"])
+    ap.add_argument("--planner", choices=["committed", "dwa"])
+    ap.add_argument("--run", type=int)
+    ap.add_argument("--list", action="store_true",
+                    help="mostra l'ordine congelato e cosa manca")
+    ap.add_argument("--force-out-of-order", action="store_true",
+                    help="esegui una prova fuori ordine (solo per "
+                         "ripetere una prova tecnicamente invalida)")
     ap.add_argument("--duration-s", type=float, default=90.0)
     ap.add_argument("--nominal-px", nargs=2, type=float,
                     default=[300.0, 540.0],
@@ -192,6 +250,45 @@ def main() -> int:
                     help="check the gates and the start pose, actuate "
                          "nothing")
     args = ap.parse_args()
+
+    seq, order_cfg = frozen_order()
+    done = completed_runs()
+    if args.list:
+        print_order(seq, done)
+        return 0
+    nxt = next_pending(seq, done)
+    if args.geometry is None or args.planner is None or args.run is None:
+        if nxt is None:
+            print_order(seq, done)
+            print("\nle 20 prove sono complete")
+            return 0
+        args.geometry, args.planner, args.run = (
+            nxt["geometry"], nxt["planner"], nxt["run"])
+        print("prossima prova dell'ordine congelato: %d/20 -> %s %s "
+              "replica %d" % (nxt["index"], args.geometry, args.planner,
+                              args.run))
+    elif nxt is not None and (args.geometry, args.planner, args.run) != (
+            nxt["geometry"], nxt["planner"], nxt["run"]):
+        msg = ("richiesta %s %s replica %d, ma l'ordine congelato "
+               "prevede %s %s replica %d (%d/20)"
+               % (args.geometry, args.planner, args.run,
+                  nxt["geometry"], nxt["planner"], nxt["run"],
+                  nxt["index"]))
+        if not args.force_out_of_order:
+            print("ABORT: " + msg)
+            print("l'ordine bilanciato esiste per non confondere il "
+                  "planner con la deriva della sessione; usa "
+                  "--force-out-of-order solo per ripetere una prova "
+                  "tecnicamente invalida")
+            return 4
+        print("FUORI ORDINE (forzato): " + msg)
+
+    # Nominal start pose for THIS geometry, from the same frozen file.
+    sp = order_cfg["start_poses"][args.geometry]
+    if args.nominal_px == [300.0, 540.0]:
+        args.nominal_px = list(sp["nominal_px"])
+    print("posa nominale %s: pixel %s, avvicinamento %.2f m"
+          % (args.geometry, args.nominal_px, sp["approach_distance_m"]))
 
     digest = frozen_predictions_hash()
     if digest is None:

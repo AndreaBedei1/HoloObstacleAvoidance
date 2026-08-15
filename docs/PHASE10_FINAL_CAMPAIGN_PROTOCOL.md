@@ -32,6 +32,14 @@ real calibration dataset. Only the layers outside that span differ.
 **20 real runs total.** These 20 are the FINAL VALIDATION DATASET: no
 parameter is tuned from them, at any point, for any reason.
 
+EXECUTION ORDER: frozen in `config/run_order_FROZEN.yaml`, five blocks
+of four with all conditions in every block, rotating positions and
+planners alternating inside each block. Running planner by planner would
+confound the planner with battery charge, water temperature and the pool
+recirculation that grew measurably across the actuator session.
+`scripts/real/final_campaign.py` selects the next pending run itself and
+refuses one out of order, so the order cannot drift by accident.
+
 The same 2 x 2 x 5 design is instantiated in simulation under S0, S1, S2
 and S3, giving 80 simulated runs, executed and stored BEFORE the real
 campaign.
@@ -45,8 +53,15 @@ pre-registered TOLERANCE:
 
 | Configuration | Nominal start (pool frame) | Tolerance |
 |---|---|---|
-| K-CENTRE: anchor ahead | TBD after remap | +/- 0.30 m lateral, +/- 0.40 m along, +/- 12 deg heading |
-| K-OFFSET: anchor offset to one side | TBD after remap | same |
+| K-CENTRE (K0): anchor ahead | pixel (200, 626), 1.86 m from the anchor | +/- 0.30 m lateral, +/- 0.40 m along, +/- 12 deg heading |
+| K-OFFSET (K1): anchor 0.35 m to one side | pixel (200, 468), 1.86 m | same |
+
+The nominal approach is 1.86 m, not the 3.5 m of the simulated
+geometries: the overhead camera covers 4.24 x 2.38 m with the anchor at
+x = 1044 px, so a vehicle 3.5 m away is outside the frame and its start
+pose cannot be measured before release. Engagement is at 1.5 m, so there
+is still run-up. The shorter approach is a property of the comparison
+and is stated wherever the sim-real numbers are reported.
 
 Procedure per run:
 1. the operator places the vehicle roughly in the start region;

@@ -129,7 +129,52 @@ the set and it does not depend on absolute agreement.
 | start pose | MEASURED before release and recorded; never corrected post hoc |
 | recording | both raw streams continuously, timestamps in sidecar indices |
 | technical invalid | arming failure, camera loss, ground-truth loss > 5 s, start pose outside tolerance, abort in the first 2 s; re-run once |
-| rehearsal | one shadow end-to-end pass on the day, NOT counted, to check camera, ground truth, synchronisation, interlock and logging. If it passes, no tuning: the 20 runs start |
+| rehearsal | one pass on the day, NOT counted, checking frozen predictions and calibration hashes, pool benchmark, adapter interlock, dual recording, timestamp indices and their shared clock, the next run the frozen order selects, overhead ground truth, onboard camera, the start pose, and the command authority. If it passes, no tuning: the 20 runs start |
+| execution order | FROZEN in `config/run_order_FROZEN.yaml` and selected automatically by the runner |
+
+### Execution order — frozen
+
+Five blocks of four. Every block contains all four conditions exactly
+once, so any drift slower than one block is shared equally; the order
+within blocks rotates, so each condition takes each of the four
+positions at least once; and planners alternate inside every block,
+which is the comparison the paper rests on.
+
+Running planner by planner instead would confound the planner with
+battery charge, water temperature and the pool recirculation that was
+measured GROWING across the actuator session.
+
+| # | geometry | planner | rep | | # | geometry | planner | rep |
+|---|---|---|---|---|---|---|---|---|
+| 1 | K0 | committed | 1 | | 11 | K0 | committed | 3 |
+| 2 | K0 | dwa | 1 | | 12 | K0 | dwa | 3 |
+| 3 | K1 | committed | 1 | | 13 | K1 | dwa | 4 |
+| 4 | K1 | dwa | 1 | | 14 | K0 | committed | 4 |
+| 5 | K0 | dwa | 2 | | 15 | K0 | dwa | 4 |
+| 6 | K1 | committed | 2 | | 16 | K1 | committed | 4 |
+| 7 | K1 | dwa | 2 | | 17 | K1 | dwa | 5 |
+| 8 | K0 | committed | 2 | | 18 | K1 | committed | 5 |
+| 9 | K1 | committed | 3 | | 19 | K0 | dwa | 5 |
+| 10 | K1 | dwa | 3 | | 20 | K0 | committed | 5 |
+
+`final_campaign.py` with no arguments runs the next pending entry and
+refuses one out of order unless `--force-out-of-order` is given, which
+exists only for repeating a technically invalid run.
+
+### Approach distance: shorter in reality than in the predictions
+
+The simulated geometries start the vehicle 3.5 m from the anchor. The
+overhead camera covers 4.24 x 2.38 m with the anchor at x = 1044 px, so
+the furthest the vehicle can start and still be WHOLLY visible is about
+1.86 m, and a start outside the frame cannot have its pose measured
+before release — which is the requirement that makes the pre-registered
+start regions mean anything.
+
+The nominal real start is therefore 1.86 m, not 3.5 m. The engagement
+distance is 1.5 m, so the vehicle still has run-up before it engages,
+but the approach is shorter in reality than in the predictions. This is
+a property of the comparison, not a free parameter, and it must be
+stated wherever the sim-real numbers are reported.
 
 ## 8. Excluded, explicitly
 
