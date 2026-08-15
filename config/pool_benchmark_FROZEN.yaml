@@ -1,0 +1,74 @@
+# THE POOL BENCHMARK — one frozen configuration, both domains.
+#
+# These are the high-level planner and scenario constants of the matched
+# sim-to-real experiment. They are IDENTICAL in simulation at S0, S1, S2
+# and S3 and in the 20 real runs, and they are read from THIS file by
+# both the simulated campaign and the real pipeline so the two cannot
+# drift apart.
+#
+# WHY A SHARED FILE AND NOT TWO MATCHING LISTS. On 2026-08-15 the real
+# pipeline launched the planner nodes with no parameters at all, so they
+# fell back to the defaults tuned for the 11 m simulated scenarios: an
+# engagement distance of 9 m in a 6 m pool, an assumed obstacle height
+# of 3.5 m for an anchor of 0.5 m, and a DWA obstacle radius seven times
+# too large. The simulation meanwhile used the pool values. Nothing in
+# either domain's output would have revealed that the comparison was
+# between two differently configured planners.
+#
+# THE POOL BENCHMARK IS NOT A CALIBRATION RUNG. It defines the matched
+# experiment. It must never differ between S0 and S3: if it does, a
+# level-to-level difference stops being attributable to the calibration
+# and the ladder means nothing. `scripts/analysis/audit_rung_ownership.py`
+# checks this from the stored launch invocations.
+#
+# CHANGING ANY VALUE HERE INVALIDATES THE FROZEN PREDICTIONS and
+# requires re-running all 80 simulated runs before any real run.
+
+pool_benchmark:
+  # Approach speed. The pilots ran at this; the measured vehicle reaches
+  # 0.145 m/s at full command, so this is close to its authority and the
+  # plant model at S3 saturates around it.
+  nominal_surge: 0.15
+
+  # Engagement range. The real pilots triggered at 1.5 m. The library
+  # default is 9 m, which in a pool with the obstacle at 3.5 m means the
+  # planner engages on its first qualified observation and every
+  # calibration level behaves identically.
+  engage_distance_m: 1.5
+
+  # Shared monocular assumption: the physical extent the bbox height is
+  # taken to span. Identical for BOTH planners, by construction, because
+  # the range estimator is shared code.
+  target_obstacle_height_m: 0.5
+
+  # DWA geometry, scaled to the pool obstacle. The default 1.75 m radius
+  # is a 3.5 m obstacle's; the anchor is 0.5 m.
+  dwa_obstacle_radius_m: 0.25
+  dwa_goal_lookahead_m: 4.0
+
+  # Camera. The real onboard camera's horizontal field of view; the
+  # vertical FOV used by the shared range estimator is derived from it
+  # and is the value the S1 fit was measured against.
+  camera_hfov_deg: 74.0
+  camera_vfov_deg: 60.0
+
+geometries:
+  K0:
+    description: "K-CENTRE: anchor ahead on the approach line"
+    obstacle_relative_position_m: [3.5, 0.0, 0.0]
+  K1:
+    description: "K-OFFSET: anchor offset to one side, still blocking"
+    obstacle_relative_position_m: [3.5, 0.35, 0.0]
+    note: >
+      0.35 m, not 0.75 m. At 0.75 m and 3.5 m range the bearing is 12
+      degrees, exactly on the committed planner's central-zone boundary:
+      it judged the obstacle non-blocking and drove straight past in all
+      20 runs while DWA manoeuvred, so the two planners were solving
+      different problems and the comparison was degenerate.
+
+design:
+  planners: [committed, dwa]
+  repetitions: 5
+  simulated_levels: [S0, S1, S2, S3]
+  simulated_runs: 80
+  real_runs: 20

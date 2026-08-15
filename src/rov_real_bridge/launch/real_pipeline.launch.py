@@ -25,7 +25,52 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
+def _pool_benchmark():
+    """The frozen pool benchmark, the SAME file the simulated campaign
+    reads.
+
+    Until 2026-08-15 this launch started the planner nodes with no
+    parameters, so they used the defaults tuned for the 11 m simulated
+    scenarios: a 9 m engagement distance in a 6 m pool, an assumed
+    obstacle height of 3.5 m for an anchor of 0.5 m, and a DWA obstacle
+    radius seven times too large. The simulation used the pool values.
+    The sim-to-real comparison would have been between two differently
+    configured planners, and nothing in either domain's output would
+    have shown it.
+    """
+    import os
+    import yaml
+    rel = os.path.join("config", "pool_benchmark_FROZEN.yaml")
+    # Search upward: this launch file runs from the source tree during
+    # development and from install/share once built, so a fixed relative
+    # path is right in one place and wrong in the other. An explicit
+    # environment override comes first for out-of-tree installs.
+    roots = []
+    env = os.environ.get("HOLO_REPO_ROOT")
+    if env:
+        roots.append(env)
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(8):
+        roots.append(here)
+        here = os.path.dirname(here)
+    for root in roots:
+        path = os.path.join(root, rel)
+        if os.path.isfile(path):
+            with open(path) as f:
+                return yaml.safe_load(f)["pool_benchmark"]
+    # Never fall back to the library defaults: they are the 11 m
+    # scenario values, and a real run started with them would look
+    # normal while being a different experiment from the simulation.
+    raise RuntimeError(
+        "pool_benchmark_FROZEN.yaml not found; refusing to launch the "
+        "real pipeline with the default planner configuration, which is "
+        "tuned for the 11 m simulated scenarios and would silently make "
+        "the real campaign incomparable to the predictions. Set "
+        "HOLO_REPO_ROOT to the repository root.")
+
+
 def generate_launch_description():
+    pool = _pool_benchmark()
     planner = LaunchConfiguration("planner")
     return LaunchDescription([
         # OpenCV's FFMPEG backend reads this at DLL load time; setting it
@@ -42,8 +87,12 @@ def generate_launch_description():
                               default_value="false"),
         DeclareLaunchArgument("calibration_id",
                               default_value="uncalibrated"),
-        DeclareLaunchArgument("nominal_surge", default_value="0.0"),
-        DeclareLaunchArgument("camera_hfov_deg", default_value="74.0"),
+        # Defaults come from the frozen pool benchmark, never from this
+        # file: one source, both domains.
+        DeclareLaunchArgument("nominal_surge",
+                              default_value=str(pool["nominal_surge"])),
+        DeclareLaunchArgument("camera_hfov_deg",
+                              default_value=str(pool["camera_hfov_deg"])),
 
         Node(package="rov_real_bridge", executable="real_detector_node",
              name="real_detector", output="screen",
@@ -64,11 +113,24 @@ def generate_launch_description():
         Node(package="rov_obstacle_avoidance",
              executable="local_avoidance_planner_node",
              name="local_avoidance_planner", output="screen",
+             parameters=[{
+                 "engage_distance_m": float(pool["engage_distance_m"]),
+                 "target_obstacle_height_m":
+                     float(pool["target_obstacle_height_m"]),
+             }],
              condition=IfCondition(PythonExpression(
                  ["'", planner, "' == 'committed'"]))),
         Node(package="rov_obstacle_avoidance",
              executable="dwa_planner_node",
              name="dwa_planner", output="screen",
+             parameters=[{
+                 "target_obstacle_height_m":
+                     float(pool["target_obstacle_height_m"]),
+                 "obstacle_radius_m":
+                     float(pool["dwa_obstacle_radius_m"]),
+                 "goal_lookahead_m":
+                     float(pool["dwa_goal_lookahead_m"]),
+             }],
              condition=IfCondition(PythonExpression(
                  ["'", planner, "' == 'dwa'"]))),
         Node(package="rov_real_bridge",

@@ -74,6 +74,28 @@ def calibration_args(level: str) -> list:
     raise SystemExit("unknown calibration level: %s" % level)
 
 
+def pool_benchmark() -> dict:
+    """The frozen pool configuration, read from the single shared file.
+
+    The simulated campaign and the real pipeline both read this, so the
+    matched experiment cannot drift apart between the two domains. The
+    values are not restated here.
+    """
+    import yaml
+    with open(os.path.join(REPO, "config",
+                           "pool_benchmark_FROZEN.yaml")) as f:
+        return yaml.safe_load(f)["pool_benchmark"]
+
+
+def pool_args() -> list:
+    b = pool_benchmark()
+    return [f"nominal_surge:={b['nominal_surge']}",
+            f"target_obstacle_height_m:={b['target_obstacle_height_m']}",
+            f"dwa_obstacle_radius_m:={b['dwa_obstacle_radius_m']}",
+            f"dwa_goal_lookahead_m:={b['dwa_goal_lookahead_m']}",
+            f"engage_distance_m:={b['engage_distance_m']}"]
+
+
 F_SCENARIOS = {
     "F0": {"yaml": "planner_F0.yaml", "args": [], "desc": "central obstacle"},
     "F1": {"yaml": "planner_F1.yaml", "args": [], "desc": "obstacle 1.5 m left"},
@@ -103,16 +125,10 @@ F_SCENARIOS = {
     # obstacle class, shared monocular constants scaled for BOTH planners;
     # planner-specific tuned parameters stay frozen (as-is transfer test).
     "K0": {"duration_s": 90.0, "yaml": "planner_K0.yaml",
-           "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
-                    "dwa_obstacle_radius_m:=0.25",
-                    "dwa_goal_lookahead_m:=4.0",
-                    "engage_distance_m:=1.5"],
+           "args": None,          # filled from the frozen pool benchmark
            "desc": "POOL: central 0.5 m obstacle at 3.5 m, 0.15 m/s"},
     "K1": {"duration_s": 90.0, "yaml": "planner_K1.yaml",
-           "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
-                    "dwa_obstacle_radius_m:=0.25",
-                    "dwa_goal_lookahead_m:=4.0",
-                    "engage_distance_m:=1.5"],
+           "args": None,          # filled from the frozen pool benchmark
            "desc": "POOL: 0.5 m obstacle 0.75 m left at 3.5 m, 0.15 m/s"},
 }
 DURATION_S = 120.0
@@ -146,7 +162,7 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             "plant_status_path:=" + os.path.join(
                 run_dir, "plant_status.json").replace("\\", "/"),
             f"label:=planner_{scenario}_{planner}_{run_idx}",
-        ] + fs["args"] + list(dwa_args) + list(CALIB_ARGS)
+        ] + (fs["args"] if fs["args"] is not None else pool_args())             + list(dwa_args) + list(CALIB_ARGS)
         launched = False
         for attempt in (1, 2):
             # FULL environment start per attempt, sim server included: a
