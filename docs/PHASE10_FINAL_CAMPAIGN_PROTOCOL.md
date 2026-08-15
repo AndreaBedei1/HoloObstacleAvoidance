@@ -75,6 +75,43 @@ of pretending it is zero.
 8. The 20 real runs.
 9. Analysis.
 
+## 5b. Raw video is part of the dataset (mandatory)
+
+Every final validation run records BOTH raw streams CONTINUOUSLY:
+
+| Stream | What it proves |
+|---|---|
+| BlueROV2 onboard RGB | what the detector actually saw, frame by frame |
+| Overhead RealSense RGB | what the vehicle actually did, independently |
+
+Derived trajectories and tables are NOT sufficient: they cannot be
+re-analysed with a different detector, cannot show why a detection
+failed, and cannot be independently checked against the claimed
+geometry. Both videos are part of the RELEASED dataset.
+
+Synchronization (`scripts/real/dual_recorder.py`): every frame of both
+streams is stamped with the SAME system clock in a sidecar index
+(`onboard_index.jsonl`, `overhead_index.jsonl`), which is the timing
+authority — container frame rates are nominal and encoder timestamps are
+rewritten. That clock is the one every other log in the run uses, so
+ground truth, detections, T2 state, planner state,
+`/planner/cmd_vel_safe`, adapter output and vehicle telemetry all join
+to a video frame by timestamp. Dropped frames appear as gaps in the
+index rather than being silently interpolated.
+
+An optional light flash at the start of each run is logged to
+`sync_markers.jsonl` and is visible in BOTH videos, giving an
+INDEPENDENT check that the two indices really share a clock rather than
+merely claiming to.
+
+Release: the videos are too large for the git repository (about 60 MB
+per run, ~1.2 GB for the campaign). They live under
+`experiments/real/final_campaign/<run>/` with their sha256 recorded in
+the campaign manifest, and the manifest is what the repository carries.
+The release location of the video archive is named in the manifest so
+the dataset is complete and verifiable even though git does not hold the
+bytes.
+
 ## 6. Outcome definitions (identical in sim and real)
 
 * SUCCESS: the vehicle passes the anchor plane without collision and
@@ -111,7 +148,8 @@ direction of effect, and absolute prediction error.
 
 ## 9. Freeze record — TO BE COMPLETED BEFORE ANY FINAL RUN
 
-git SHA; detector source hash and all detector parameters; Phase-7B
+git SHA; the recording configuration (both streams, their frame rates
+and the index format); detector source hash and all detector parameters; Phase-7B
 parameters; T2 parameters; Planner C pool configuration; Planner D pool
 configuration; adapter configuration and calibration id; S0/S1/S2/S3
 definitions and parameter values; RealSense calibration version and pool
