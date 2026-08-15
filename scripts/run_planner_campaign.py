@@ -29,6 +29,38 @@ spec = importlib.util.spec_from_file_location(
 b0 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(b0)
 
+# Phase 10 calibration ladder, appended to every launch. Set by --calib
+# in main(); empty means S0, the historical simulator untouched.
+CALIB_ARGS: list = []
+CALIB_LEVEL = "S0"
+
+# The fit files are REQUIRED at S1 and above: the relay refuses to run
+# without them rather than silently falling back to an uncalibrated
+# stand-in, which would produce results labelled "calibrated" that are
+# nothing of the kind.
+# Forward slashes: these paths travel as `key:=value` launch arguments,
+# where a Windows backslash is an escape character and the path arrives
+# mangled. The node then cannot find the file, raises in its constructor
+# and dies silently -- the run still completes, because the rest of the
+# graph is alive, and it looks like a calibrated result that is not one.
+S1_FIT = os.path.join(REPO, "config", "calibration",
+                      "s1_observation_fit.json").replace("\\", "/")
+S2_FIT = os.path.join(REPO, "config", "calibration",
+                      "s2_timing_fit.json").replace("\\", "/")
+
+
+def calibration_args(level: str) -> list:
+    level = level.upper().strip()
+    if level == "S0":
+        return ["calibration_level:=S0"]
+    if level in ("S1", "S2", "S3"):
+        out = [f"calibration_level:={level}", f"s1_fit_path:={S1_FIT}"]
+        if level in ("S2", "S3"):
+            out.append(f"s2_fit_path:={S2_FIT}")
+        return out
+    raise SystemExit("unknown calibration level: %s" % level)
+
+
 F_SCENARIOS = {
     "F0": {"yaml": "planner_F0.yaml", "args": [], "desc": "central obstacle"},
     "F1": {"yaml": "planner_F1.yaml", "args": [], "desc": "obstacle 1.5 m left"},
@@ -60,12 +92,14 @@ F_SCENARIOS = {
     "K0": {"duration_s": 90.0, "yaml": "planner_K0.yaml",
            "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
                     "dwa_obstacle_radius_m:=0.25",
-                    "dwa_goal_lookahead_m:=4.0"],
+                    "dwa_goal_lookahead_m:=4.0",
+                    "engage_distance_m:=1.5"],
            "desc": "POOL: central 0.5 m obstacle at 3.5 m, 0.15 m/s"},
     "K1": {"duration_s": 90.0, "yaml": "planner_K1.yaml",
            "args": ["nominal_surge:=0.15", "target_obstacle_height_m:=0.5",
                     "dwa_obstacle_radius_m:=0.25",
-                    "dwa_goal_lookahead_m:=4.0"],
+                    "dwa_goal_lookahead_m:=4.0",
+                    "engage_distance_m:=1.5"],
            "desc": "POOL: 0.5 m obstacle 0.75 m left at 3.5 m, 0.15 m/s"},
 }
 DURATION_S = 120.0
@@ -95,7 +129,7 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             "estimator_method:=t2",
             f"validator_output:={validator_out}",
             f"label:=planner_{scenario}_{planner}_{run_idx}",
-        ] + fs["args"] + list(dwa_args)
+        ] + fs["args"] + list(dwa_args) + list(CALIB_ARGS)
         launched = False
         for attempt in (1, 2):
             # FULL environment start per attempt, sim server included: a
@@ -141,6 +175,7 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
 
         time.sleep(duration)
         result["ok"] = True
+        result["calib_level"] = CALIB_LEVEL
     finally:
         for p in reversed(procs):
             b0.stop(p)
@@ -150,6 +185,14 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             except Exception:
                 pass
         time.sleep(2.0)
+
+    # Read AFTER the log files are closed: reading them while the launch
+    # was still running returned None for a relay that had in fact
+    # announced itself correctly, because the line had not been flushed
+    # to disk yet -- a false alarm from the very guard meant to catch
+    # false results. Recorded per run so the level is auditable from the
+    # manifest alone, not only from the logs.
+    result["relay_level"] = relay_level_from_logs(run_dir)
 
     if os.path.isfile(validator_out):
         try:
@@ -168,6 +211,15 @@ def is_technical_invalid(r: dict) -> str | None:
     """Objective technical-invalid signatures (protocol section 6)."""
     if r.get("technical_invalid"):
         return r.get("error", "launch")
+    # The calibrated relay must be ALIVE and at the requested level.
+    # It once died in its constructor on a mangled path and printed
+    # nothing: the rest of the graph stayed up, the run produced a
+    # complete set of metrics, and the result was indistinguishable from
+    # a calibrated one. A campaign of such runs would be labelled S1 and
+    # be pure S0. This check makes that failure loud.
+    if r.get("relay_level") != r.get("calib_level"):
+        return ("calibrated relay reported %r, expected %r"
+                % (r.get("relay_level"), r.get("calib_level")))
     m = r.get("metrics")
     if not m:
         return r.get("error", "no validator output")
@@ -176,6 +228,26 @@ def is_technical_invalid(r: dict) -> str | None:
     if m.get("cmd_path_dead_detected"):
         return "cmd_path_dead"
     return None
+
+
+RELAY_MARK = "calibrated observation relay: level="
+
+
+def relay_level_from_logs(run_dir: str):
+    """The level the relay actually announced, or None if it never did."""
+    best = None
+    for name in sorted(os.listdir(run_dir)):
+        if not name.startswith("ros2_launch"):
+            continue
+        try:
+            with open(os.path.join(run_dir, name), errors="ignore") as f:
+                for line in f:
+                    i = line.find(RELAY_MARK)
+                    if i >= 0:
+                        best = line[i + len(RELAY_MARK):].split()[0].strip()
+        except OSError:
+            pass
+    return best
 
 
 def assess(m: dict) -> dict:
@@ -318,13 +390,25 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--duration", type=float, default=None)
     parser.add_argument("--dwa-args", nargs="*", default=[])
+    parser.add_argument("--calib", default="S0",
+                        choices=["S0", "S1", "S2", "S3"],
+                        help="Phase 10 calibration level. S0 is the "
+                             "historical simulator; S1 adds the measured "
+                             "observation model, S2 its timing and burst "
+                             "structure, S3 the vehicle profile.")
     parser.add_argument(
         "--resume", action="store_true",
         help="continue an interrupted campaign: keep every completed run, "
              "execute only planned tuples without a valid outcome. Does not "
              "change any experimental parameter.")
     args = parser.parse_args()
-    global DURATION_S
+    global DURATION_S, CALIB_ARGS, CALIB_LEVEL
+    CALIB_ARGS = calibration_args(args.calib)
+    CALIB_LEVEL = args.calib.upper().strip()
+    for f in (S1_FIT if args.calib != "S0" else None,
+              S2_FIT if args.calib in ("S2", "S3") else None):
+        if f and not os.path.isfile(f):
+            raise SystemExit("missing calibration fit: %s" % f)
     if args.duration:
         DURATION_S = args.duration
 

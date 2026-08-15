@@ -33,6 +33,7 @@ from launch.substitutions import (
     PythonExpression,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -77,6 +78,21 @@ def generate_launch_description():
         DeclareLaunchArgument("validator_output",
                               default_value="logs/baseline0_validation.json"),
         DeclareLaunchArgument("label", default_value="baseline0"),
+        # Phase 10 calibration ladder. S0 keeps the historical simulator
+        # exactly as it was: the calibrated relay is an identity pass at
+        # that level, so the Phase-8 topology is unchanged apart from one
+        # extra hop.
+        # Pool-scale engagement. The default 9 m was tuned for the 11 m
+        # simulated scenarios; in a 6 m pool with the obstacle at 3.5 m
+        # it means the planner engages on its first qualified
+        # observation, which makes every calibration level behave
+        # identically and the whole ladder unable to measure anything.
+        # The real pilots used 1.5 m, and sim and real must share this.
+        DeclareLaunchArgument("engage_distance_m", default_value="9.0"),
+        DeclareLaunchArgument("calibration_level", default_value="S0"),
+        DeclareLaunchArgument("s1_fit_path", default_value=""),
+        DeclareLaunchArgument("s2_fit_path", default_value=""),
+        DeclareLaunchArgument("calibration_seed", default_value="0"),
 
         Node(
             package="rov_obstacle_sim_bridge",
@@ -105,8 +121,27 @@ def generate_launch_description():
                 "dropout_duration_s": LaunchConfiguration("dropout_duration_s"),
                 "dropout_mode": LaunchConfiguration("dropout_mode"),
                 "outlier_at_s": LaunchConfiguration("outlier_at_s"),
-                # Relay feeds the temporal estimator, not the planner.
+                # Feeds the calibrated relay, which then feeds the
+                # temporal estimator. Chaining rather than replacing
+                # keeps the Phase-8 scripted dropout available at every
+                # calibration level.
+                "output_topic": "/perception/obstacles_dropout",
+            }],
+        ),
+        Node(
+            package="rov_obstacle_sim_bridge",
+            executable="calibrated_observation_relay_node",
+            name="calibrated_observation_relay",
+            output="screen",
+            parameters=[{
+                "input_topic": "/perception/obstacles_dropout",
                 "output_topic": "/perception/obstacles_raw",
+                "calibration_level": LaunchConfiguration("calibration_level"),
+                "s1_fit_path": LaunchConfiguration("s1_fit_path"),
+                "s2_fit_path": LaunchConfiguration("s2_fit_path"),
+                "seed": LaunchConfiguration("calibration_seed"),
+                "target_height_m": LaunchConfiguration(
+                    "target_obstacle_height_m"),
             }],
         ),
         Node(
@@ -139,6 +174,14 @@ def generate_launch_description():
             name="local_avoidance_planner",
             output="screen",
             parameters=[planner_config, {
+                # Typed explicitly: a LaunchConfiguration arrives as a
+                # STRING, and the node declares this as a double, so the
+                # assignment is rejected and the default 9 m silently
+                # stays in force -- which is why the pool scenarios kept
+                # engaging on their first observation.
+                "engage_distance_m": ParameterValue(
+                    LaunchConfiguration("engage_distance_m"),
+                    value_type=float),
                 "target_obstacle_height_m":
                     LaunchConfiguration("target_obstacle_height_m"),
             }],

@@ -66,6 +66,7 @@ setup(
             "commanded_odometry_node=rov_obstacle_sim_bridge.commanded_odometry_node:main",
             "oracle_dropout_relay_node=rov_obstacle_sim_bridge.oracle_dropout_relay_node:main",
             "baseline0_validator_node=rov_obstacle_sim_bridge.baseline0_validator_node:main",
+            "calibrated_observation_relay_node=rov_obstacle_sim_bridge.calibrated_observation_relay_node:main",
         ],
     },
 )
