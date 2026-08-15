@@ -141,6 +141,7 @@ class Baseline0ValidatorNode(Node):
         self._lat_commit_dist = None
         self._lat_last_active_t = None
         self._lat_peak = 0.0
+        self._cmd_trace = []
 
         # Obstacles (world geometry)
         self._obstacles = []
@@ -267,6 +268,21 @@ class Baseline0ValidatorNode(Node):
             self._lat_last_active_t = t_now
         if self._lat_commit_t is not None:
             self._lat_peak = max(self._lat_peak, lat)
+        # FULL command trace with the ground-truth distance at the same
+        # instant. Any manoeuvre metric can then be recomputed offline at
+        # any threshold, and recomputed IDENTICALLY from the real runs,
+        # which record the same topic. Without it the commitment
+        # threshold would be frozen inside this node, and a threshold
+        # that suits one planner can be degenerate for the other: at
+        # 0.02 m/s DWA commits on its first cycle, at the start
+        # distance, in every single run.
+        d_gt = self._gt_obstacle_distance()
+        self._cmd_trace.append({
+            "t": round(t_now - self._t0, 3),
+            "x": round(msg.linear.x, 4),
+            "y": round(msg.linear.y, 4),
+            "r": round(msg.angular.z, 4),
+            "d": (None if d_gt is None else round(d_gt, 3))})
         cur = (msg.linear.x, msg.linear.y, msg.angular.z)
         self._safe_last_mag = abs(cur[0]) + abs(cur[1])
         self._safe_last_t = self._now()
@@ -557,6 +573,7 @@ class Baseline0ValidatorNode(Node):
                 if self._lat_commit_t is not None
                 and self._lat_last_active_t is not None else None),
             "lateral_peak_m_s": round(self._lat_peak, 4),
+            "cmd_trace": self._cmd_trace,
             "qualification": self._qual_last,
             "infra_freeze_detected": self._infra_freeze,
             "cmd_path_dead_detected": self._cmd_path_dead,
