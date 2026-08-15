@@ -87,6 +87,70 @@ def fit_speed(trial):
             "n": int(keep.sum()), "held_s": round(held, 2)}, None
 
 
+def fit_time_constants(trial):
+    """Rise and decay constants from the same pulse, in seconds.
+
+    The plant model needs WHEN the vehicle reaches its steady speed and
+    how it coasts, not only the steady value. Both come from the track
+    already recorded in every trial: the powered segment is fitted to a
+    first-order rise
+
+        x(t) = v_ss * (t - tau * (1 - exp(-t/tau)))
+
+    projected onto the direction the vehicle actually moved, and the
+    coast after the thrusters return to neutral is fitted to an
+    exponential decay of the same form. No dedicated experiments.
+    """
+    tr = trial.get("track") or []
+    pw = [p for p in tr if p.get("powered")]
+    co = [p for p in tr if not p.get("powered")]
+    if len(pw) < 8:
+        return None
+    dx = np.array([p["x"] for p in pw], float)
+    dy = np.array([p["y"] for p in pw], float)
+    t = np.array([p["t"] for p in pw], float)
+    d = trial.get("drift_px_s") or [0.0, 0.0]
+    dx = dx - dx[0] - d[0] * t
+    dy = dy - dy[0] - d[1] * t
+    disp = np.array([dx[-1], dy[-1]])
+    n = float(np.linalg.norm(disp))
+    if n < 30:
+        return None
+    u = disp / n
+    s = dx * u[0] + dy * u[1]          # signed distance along the motion
+
+    best = None
+    for tau in np.arange(0.15, 3.01, 0.05):
+        model = t - tau * (1.0 - np.exp(-t / tau))
+        denom = float(np.sum(model * model))
+        if denom <= 0:
+            continue
+        v = float(np.sum(model * s) / denom)
+        resid = float(np.sum((s - v * model) ** 2))
+        if best is None or resid < best[0]:
+            best = (resid, float(tau), v / PX_PER_M)
+    if best is None:
+        return None
+
+    tau_decay = None
+    if len(co) >= 6:
+        tc = np.array([p["t"] for p in co], float)
+        cx = np.array([p["x"] for p in co], float)
+        cy = np.array([p["y"] for p in co], float)
+        tc = tc - tc[0]
+        cs = ((cx - cx[0]) * u[0] + (cy - cy[0]) * u[1]) - (
+            d[0] * u[0] + d[1] * u[1]) * tc
+        total = float(cs[-1])
+        v0 = best[2] * PX_PER_M
+        if v0 > 1e-6 and total > 0:
+            # coasting distance of a first-order decay is v0 * tau
+            tau_decay = float(min(5.0, max(0.05, total / v0)))
+    return {"tau_rise_s": round(best[1], 3),
+            "v_ss_m_s": round(best[2], 4),
+            "tau_decay_s": (None if tau_decay is None
+                            else round(tau_decay, 3))}
+
+
 def main() -> int:
     rows = []
     for path in sorted(glob.glob(os.path.join(SESSIONS, "*", "trials.json"))):
@@ -99,11 +163,13 @@ def main() -> int:
             axis, level = tr["axis"], tr["level"]
             hit = CONTACT.get((sess, axis, level))
             fit, why = fit_speed(tr)
+            tc = fit_time_constants(tr)
             row = {"session": sess, "axis": axis, "level": level,
                    "end_reason": tr.get("end_reason"),
                    "contact": hit,
                    "dyaw_deg": tr.get("dyaw_deg"),
-                   "yaw_rate_deg_s": tr.get("yaw_rate_deg_s")}
+                   "yaw_rate_deg_s": tr.get("yaw_rate_deg_s"),
+                   "dynamics": tc}
             if fit is None:
                 row["excluded"] = why
             else:
@@ -253,6 +319,30 @@ def main() -> int:
         }
         print("  %-6s SIMMETRICO: %.5f m/s per conteggio su %d prove "
               "(= %.3f m/s a comando pieno)" % (axis, k, len(use), k * 1000))
+
+    # ---- first-order dynamics, pooled over valid trials --------------
+    print("\n--- dinamica di salita e decadimento ---")
+    for axis in ("surge", "sway"):
+        d = [r["dynamics"] for r in rows
+             if r["axis"] == axis and "excluded" not in r and r.get("dynamics")]
+        if not d:
+            print("  %-6s nessuna traccia utilizzabile" % axis)
+            continue
+        rise = [x["tau_rise_s"] for x in d]
+        dec = [x["tau_decay_s"] for x in d if x.get("tau_decay_s")]
+        profile["%s_dynamics" % axis] = {
+            "tau_rise_s": round(float(np.median(rise)), 3),
+            "tau_rise_spread_s": round(float(np.std(rise)), 3),
+            "tau_decay_s": (round(float(np.median(dec)), 3) if dec else None),
+            "n": len(d),
+            "note": "first-order fit on the powered segment and the coast "
+                    "of the same pulses; no dedicated experiments",
+        }
+        print("  %-6s salita tau %.2f s (dispersione %.2f), "
+              "decadimento tau %s, su %d prove"
+              % (axis, float(np.median(rise)), float(np.std(rise)),
+                 ("%.2f s" % float(np.median(dec))) if dec else "n/d",
+                 len(d)))
 
     # ---- yaw, from the IMU -------------------------------------------
     print("\n--- imbardata (IMU, immune alla deriva) ---")

@@ -89,11 +89,13 @@ def generate_launch_description():
         # identically and the whole ladder unable to measure anything.
         # The real pilots used 1.5 m, and sim and real must share this.
         DeclareLaunchArgument("engage_distance_m", default_value="9.0"),
-        # S3 vehicle limits, measured on the real BlueROV2. The defaults
-        # keep the historical behaviour; the campaign supplies the
-        # measured values at S3 and the SAME values go to both planners.
-        DeclareLaunchArgument("veh_max_surge", default_value="0.5"),
-        DeclareLaunchArgument("veh_max_sway", default_value="0.3"),
+        # S3 is a PLANT model downstream of /planner/cmd_vel_safe, never
+        # a change to the planners: altering the controller and the
+        # simulator at the same rung would destroy the causal reading of
+        # the S0 -> S3 ladder. The planner configuration is frozen and
+        # identical at every level and in the real campaign.
+        DeclareLaunchArgument("s3_fit_path", default_value=""),
+        DeclareLaunchArgument("plant_status_path", default_value=""),
         DeclareLaunchArgument("calibration_level", default_value="S0"),
         DeclareLaunchArgument("s1_fit_path", default_value=""),
         DeclareLaunchArgument("s2_fit_path", default_value=""),
@@ -154,6 +156,19 @@ def generate_launch_description():
             }],
         ),
         Node(
+            package="rov_obstacle_sim_bridge",
+            executable="actuation_model_node",
+            name="actuation_model",
+            output="screen",
+            parameters=[{
+                "input_topic": "/planner/cmd_vel_safe",
+                "output_topic": "/rov/cmd_vel_plant",
+                "calibration_level": LaunchConfiguration("calibration_level"),
+                "s3_fit_path": LaunchConfiguration("s3_fit_path"),
+                "status_path": LaunchConfiguration("plant_status_path"),
+            }],
+        ),
+        Node(
             package="rov_obstacle_tracking",
             executable="temporal_estimator_node",
             name="temporal_estimator",
@@ -191,16 +206,6 @@ def generate_launch_description():
                 "engage_distance_m": ParameterValue(
                     LaunchConfiguration("engage_distance_m"),
                     value_type=float),
-                "max_surge": ParameterValue(
-                    LaunchConfiguration("veh_max_surge"), value_type=float),
-                "avoidance_sway": ParameterValue(
-                    LaunchConfiguration("veh_max_sway"), value_type=float),
-                "go_around_surge": ParameterValue(
-                    LaunchConfiguration("veh_max_surge"), value_type=float),
-                "go_around_max_sway": ParameterValue(
-                    LaunchConfiguration("veh_max_sway"), value_type=float),
-                "recovery_max_sway": ParameterValue(
-                    LaunchConfiguration("veh_max_sway"), value_type=float),
                 "target_obstacle_height_m":
                     LaunchConfiguration("target_obstacle_height_m"),
             }],
@@ -226,13 +231,6 @@ def generate_launch_description():
                     LaunchConfiguration("dwa_obstacle_radius_m"),
                 "goal_lookahead_m":
                     LaunchConfiguration("dwa_goal_lookahead_m"),
-                # Same measured vehicle limits as the committed planner:
-                # a bound applied to one side only would confound the
-                # planner comparison with a handicap.
-                "max_surge": ParameterValue(
-                    LaunchConfiguration("veh_max_surge"), value_type=float),
-                "max_sway": ParameterValue(
-                    LaunchConfiguration("veh_max_sway"), value_type=float),
             }],
             condition=IfCondition(PythonExpression(
                 ["'", LaunchConfiguration("planner"), "' == 'dwa'"])),

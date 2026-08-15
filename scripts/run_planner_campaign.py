@@ -53,24 +53,11 @@ S3_FIT = os.path.join(REPO, "config", "calibration",
                       "s3_vehicle.json").replace("\\", "/")
 
 
-def s3_vehicle_limits() -> list:
-    """Velocity bounds from the MEASURED actuator calibration.
-
-    The planners command up to 0.30 m/s of sway; the real vehicle tops
-    out around 0.12. Simulating a strafe the hardware cannot perform is
-    the dynamics half of the sim-to-real gap, and it is the part S3
-    exists to close. The numbers are read from the fit, never typed in,
-    so the profile and the simulation cannot drift apart.
-    """
-    with open(S3_FIT) as f:
-        prof = json.load(f)["profile"]
-    full = 1000.0                     # MANUAL_CONTROL full-scale counts
-    surge = prof.get("surge_symmetric", {}).get("m_s_per_count")
-    sway = prof.get("sway_symmetric", {}).get("m_s_per_count")
-    if not surge or not sway:
-        raise SystemExit("s3_vehicle.json has no symmetric translation fit")
-    return [f"veh_max_surge:={surge * full:.4f}",
-            f"veh_max_sway:={sway * full:.4f}"]
+# S3 is a PLANT model applied downstream of /planner/cmd_vel_safe. It
+# passes the fit FILE to the actuation model rather than deriving
+# planner limits from it: changing the planner at a calibration rung
+# would change the controller and the simulator together and destroy the
+# causal reading of S0 -> S3.
 
 
 def calibration_args(level: str) -> list:
@@ -82,7 +69,7 @@ def calibration_args(level: str) -> list:
         if level in ("S2", "S3"):
             out.append(f"s2_fit_path:={S2_FIT}")
         if level == "S3":
-            out += s3_vehicle_limits()
+            out.append(f"s3_fit_path:={S3_FIT}")
         return out
     raise SystemExit("unknown calibration level: %s" % level)
 
@@ -156,6 +143,8 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
             f"validator_output:={validator_out}",
             "relay_status_path:=" + os.path.join(
                 run_dir, "relay_status.json").replace("\\", "/"),
+            "plant_status_path:=" + os.path.join(
+                run_dir, "plant_status.json").replace("\\", "/"),
             f"label:=planner_{scenario}_{planner}_{run_idx}",
         ] + fs["args"] + list(dwa_args) + list(CALIB_ARGS)
         launched = False
@@ -204,6 +193,14 @@ def run_once(planner: str, scenario: str, run_idx: int, out_root: str,
         time.sleep(duration)
         result["ok"] = True
         result["calib_level"] = CALIB_LEVEL
+        # The full launch invocation is recorded so rung ownership can be
+        # AUDITED from the stored data rather than trusted: per-run paths
+        # are dropped because they legitimately differ run to run.
+        result["launch_args"] = sorted(
+            a for a in launch_cmd[4:]
+            if not a.startswith(("validator_output:=", "label:=",
+                                 "relay_status_path:=",
+                                 "plant_status_path:="))) 
     finally:
         for p in reversed(procs):
             b0.stop(p)

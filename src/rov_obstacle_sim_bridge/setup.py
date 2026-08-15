@@ -67,6 +67,7 @@ setup(
             "oracle_dropout_relay_node=rov_obstacle_sim_bridge.oracle_dropout_relay_node:main",
             "baseline0_validator_node=rov_obstacle_sim_bridge.baseline0_validator_node:main",
             "calibrated_observation_relay_node=rov_obstacle_sim_bridge.calibrated_observation_relay_node:main",
+            "actuation_model_node=rov_obstacle_sim_bridge.actuation_model_node:main",
         ],
     },
 )

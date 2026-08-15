@@ -21,7 +21,13 @@ holoocean_bridge:
     depth_topic: "/rov/depth"
     # SIMULATION-ONLY ground-truth obstacle projection (debug / labels / eval).
     oracle_topic: "/perception/obstacles_oracle"
-    cmd_vel_topic: "/planner/cmd_vel_safe"
+    # The bridge consumes the PLANT output, not the planner output. The
+    # actuation model sits between them and is an identity pass-through
+    # at S0/S1/S2, so this is unchanged behaviour there; at S3 it is what
+    # applies the measured saturation, deadband and lag. The validator
+    # still observes /planner/cmd_vel_safe, which is the frozen boundary
+    # and must stay the planner's own output.
+    cmd_vel_topic: "/rov/cmd_vel_plant"
 
     publish_image: true
 
