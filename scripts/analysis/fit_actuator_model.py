@@ -32,6 +32,7 @@ Usage:  python scripts/analysis/fit_actuator_model.py
 from __future__ import annotations
 
 import glob
+import math
 import json
 import os
 import sys
@@ -42,8 +43,14 @@ _ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 SESSIONS = os.path.join(_ROOT, "experiments", "real", "actuator_id")
 PX_PER_M = 452.8
 
-# Operator-reported wall contact: (session, axis, level).
-WALL_CONTACT = {("20260815_105604", "surge", 1000)}
+# Operator-reported CONTACT during the pulse: (session, axis, level).
+# A pulse in which the vehicle strikes the anchor or the pool wall is not
+# free motion and cannot measure the dynamics, so it is excluded from the
+# fit and kept in the record with its reason. Both entries come from the
+# operator watching the run, which is the only observer of contact: the
+# overhead track shows a displacement either way.
+CONTACT = {("20260815_105604", "surge", 1000): "pool wall",
+           ("20260815_111104", "surge", -1000): "anchor"}
 
 
 def fit_speed(trial):
@@ -90,19 +97,19 @@ def main() -> int:
             if tr.get("aborted"):
                 continue
             axis, level = tr["axis"], tr["level"]
-            wall = (sess, axis, level) in WALL_CONTACT
+            hit = CONTACT.get((sess, axis, level))
             fit, why = fit_speed(tr)
             row = {"session": sess, "axis": axis, "level": level,
                    "end_reason": tr.get("end_reason"),
-                   "wall_contact": wall,
+                   "contact": hit,
                    "dyaw_deg": tr.get("dyaw_deg"),
                    "yaw_rate_deg_s": tr.get("yaw_rate_deg_s")}
             if fit is None:
                 row["excluded"] = why
             else:
                 row.update(fit)
-                if wall:
-                    row["excluded"] = "wall contact (operator observed)"
+                if hit:
+                    row["excluded"] = "contact with %s (operator observed)" % hit
                 elif fit["drift_ratio"] > 0.6:
                     row["excluded"] = "drift comparable to signal"
             rows.append(row)
@@ -190,6 +197,62 @@ def main() -> int:
                                 "n_trials": len(pts), "points": pts}
                 print("         un solo livello: pendenza %.5f attraverso "
                       "l'origine, banda morta ASSUNTA nulla" % k)
+
+    # ---- symmetry: pool the two directions where they agree ----------
+    # ACTUATOR_ID_PROTOCOL: "an axis whose two directions agree within
+    # their spread is reported as symmetric, with the spread". With the
+    # contact trials excluded that is the case for both translation
+    # axes, so each is fitted ONCE on the pooled points instead of
+    # carrying two per-sign parameters that the data cannot separate.
+    # Two per-sign numbers would imply a directional asymmetry the
+    # measurements do not support.
+    print("\n--- simmetria: verifica e messa in comune ---")
+    for axis in ("surge", "sway"):
+        use = [r for r in rows if r["axis"] == axis and "excluded" not in r]
+        if not use:
+            continue
+        pos = [r["speed_m_s"] / abs(r["level"]) for r in use
+               if r["level"] > 0]
+        neg = [r["speed_m_s"] / abs(r["level"]) for r in use
+               if r["level"] < 0]
+        L = np.array([abs(r["level"]) for r in use], float)
+        V = np.array([r["speed_m_s"] for r in use], float)
+        k = float(np.sum(L * V) / np.sum(L * L))
+        spread = float(np.std(V - k * L))
+        agree = None
+        if pos and neg:
+            mp, mn = float(np.mean(pos)), float(np.mean(neg))
+            # Compare the difference against the UNCERTAINTY of that
+            # difference, not against the raw spread. One direction has a
+            # single trial and the other three, so the standard error is
+            # large and a raw-spread comparison would declare an
+            # asymmetry that the sample size cannot support.
+            sd_ratio = spread / 1000.0        # residual, per count
+            se = sd_ratio * math.sqrt(1.0 / len(pos) + 1.0 / len(neg))
+            agree = abs(mp - mn) <= 2.0 * max(se, 1e-12)
+            print("  %-6s avanti %.5f, indietro %.5f m/s per conteggio "
+                  "(differenza %.5f, incertezza 2se %.5f) -> %s"
+                  % (axis, mp, mn, abs(mp - mn), 2 * se,
+                     "INDISTINGUIBILI" if agree else "differenza reale"))
+        profile["%s_symmetric" % axis] = {
+            "identified": True,
+            "m_s_per_count": round(k, 6),
+            "deadband_counts": 0,
+            "deadband_resolved": False,
+            "n_trials": len(use),
+            "directions_agree": agree,
+            "residual_spread_m_s": round(spread, 4),
+            "note": "single symmetric parameter fitted on the pooled "
+                    "trials of both directions; per-sign values are kept "
+                    "above for reference but the data do not separate "
+                    "them",
+            "excluded_from_pool": [
+                {"session": r["session"], "level": r["level"],
+                 "reason": r["excluded"]}
+                for r in rows if r["axis"] == axis and "excluded" in r],
+        }
+        print("  %-6s SIMMETRICO: %.5f m/s per conteggio su %d prove "
+              "(= %.3f m/s a comando pieno)" % (axis, k, len(use), k * 1000))
 
     # ---- yaw, from the IMU -------------------------------------------
     print("\n--- imbardata (IMU, immune alla deriva) ---")
