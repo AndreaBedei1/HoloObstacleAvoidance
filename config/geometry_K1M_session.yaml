@@ -1,0 +1,44 @@
+# K1M -- mirrored offset geometry, added DURING the real session.
+#
+# This file is deliberately SEPARATE from config/run_order_FROZEN.yaml.
+# The freeze is what makes the campaign a test rather than an
+# illustration, so it is not edited after the fact; a geometry decided
+# on the day lives here, with the reason, and is reported as an
+# addition.
+#
+# WHY IT EXISTS. Through the first seven runs the vehicle chose the
+# same side six times (right; run 4 went left, and only weakly). Two
+# very different explanations fit that equally well:
+#
+#   1. the planner picks its side from where it sees the obstacle, or
+#   2. the vehicle simply always goes right -- a thruster asymmetry, a
+#      detector bias, or a fixed tie-break in the planner.
+#
+# K0 and K1 cannot separate them: in K0 the anchor is dead ahead, and
+# K1's offset happens to lie on the side that also pushes the vehicle
+# right. Mirroring the offset separates them in a single run. If the
+# vehicle goes left, side choice follows the obstacle. If it still goes
+# right, there is a bias -- which is a finding, not a failure, and is
+# reported as one either way.
+#
+# COST, stated plainly: runs 8 and 9 come out of K1, which therefore
+# ends with 3 repetitions instead of 5, and K1M has 2. Repetitions 4
+# and 5 of K1 would only have tightened a cell already measured; K1M
+# answers a question that is otherwise unanswerable with this dataset.
+#
+# GEOMETRY. Exactly the mirror of K1 about the K0 approach line:
+# K0 sits on the anchor row (626 px), K1 is 158 px off it, K1M is 158 px
+# off on the other side. Same approach distance, same tolerance, same
+# planner configuration, same everything else. Only the sign of the
+# lateral offset changes.
+start_poses:
+  K1M:
+    nominal_px: [200.0, 784.0]
+    approach_distance_m: 1.864
+    lateral_offset_m: -0.349
+    mirrors: K1
+    note: >
+      K-OFFSET MIRRORED: the anchor lies 0.35 m to the OPPOSITE side of
+      the approach line from K1. Added during the session of
+      2026-08-16 to test whether side choice follows the obstacle or is
+      a fixed bias.

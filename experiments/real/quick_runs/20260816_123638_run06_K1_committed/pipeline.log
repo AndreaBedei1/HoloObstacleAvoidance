@@ -1,0 +1,25 @@
+C:\dev\ros2_lyrical\Lib\site-packages\launch\logging\__init__.py:172: UserWarning: Cannot create a symlink to latest log directory: [WinError 1314] Il privilegio richiesto non appartiene al client: 'C:\\Users\\Andrea\\.ros\\log\\2026-08-16-12-36-52-490028-DESKTOP-CNGN003-13836' -> 'C:\\Users\\Andrea\\.ros\\log\\latest'
+
+  warnings.warn(
+[INFO] [launch]: All log files can be found below C:\Users\Andrea\.ros\log\2026-08-16-12-36-52-490028-DESKTOP-CNGN003-13836
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [real_detector_node.EXE-1]: process started with pid [6808]
+[INFO] [temporal_estimator_node.EXE-2]: process started with pid [9252]
+[INFO] [nominal_cmd_publisher_node.EXE-3]: process started with pid [23852]
+[INFO] [local_avoidance_planner_node.EXE-4]: process started with pid [21772]
+[INFO] [real_control_live_node.EXE-5]: process started with pid [556]
+[real_detector_node.EXE-1] Traceback (most recent call last):
+[real_detector_node.EXE-1]   File "\\?\C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_detector_node-script.py", line 33, in <module>
+[real_detector_node.EXE-1]     sys.exit(load_entry_point('rov-real-bridge==0.1.0', 'console_scripts', 'real_detector_node')())
+[real_detector_node.EXE-1]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\Lib\site-packages\rov_real_bridge\real_detector_node.py", line 214, in main
+[real_detector_node.EXE-1]     node = RealDetectorNode()
+[real_detector_node.EXE-1]            ^^^^^^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\Lib\site-packages\rov_real_bridge\real_detector_node.py", line 93, in __init__
+[real_detector_node.EXE-1]     self._cam = CameraStream(
+[real_detector_node.EXE-1]                 ^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\scripts\real\camera_stream.py", line 46, in __init__
+[real_detector_node.EXE-1]     raise RuntimeError("cannot open UDP 5600 stream")
+[real_detector_node.EXE-1] RuntimeError: cannot open UDP 5600 stream
+[real_detector_node.EXE-1] [udp @ 000001c6562be5c0] bind failed: Error number -10048 occurred
+[ERROR] [real_detector_node.EXE-1]: process has died [pid 6808, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_detector_node.EXE --ros-args -r __node:=real_detector --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_41s9setz'].

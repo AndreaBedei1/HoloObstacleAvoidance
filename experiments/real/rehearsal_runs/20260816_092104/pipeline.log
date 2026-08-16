@@ -1,0 +1,33 @@
+C:\dev\ros2_lyrical\Lib\site-packages\launch\logging\__init__.py:172: UserWarning: Cannot create a symlink to latest log directory: [WinError 1314] Il privilegio richiesto non appartiene al client: 'C:\\Users\\Andrea\\.ros\\log\\2026-08-16-09-21-14-826584-DESKTOP-CNGN003-9896' -> 'C:\\Users\\Andrea\\.ros\\log\\latest'
+
+  warnings.warn(
+[INFO] [launch]: All log files can be found below C:\Users\Andrea\.ros\log\2026-08-16-09-21-14-826584-DESKTOP-CNGN003-9896
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [real_detector_node.EXE-1]: process started with pid [12280]
+[INFO] [temporal_estimator_node.EXE-2]: process started with pid [18804]
+[INFO] [nominal_cmd_publisher_node.EXE-3]: process started with pid [19600]
+[INFO] [local_avoidance_planner_node.EXE-4]: process started with pid [5376]
+[INFO] [real_control_live_node.EXE-5]: process started with pid [8940]
+[ERROR] [real_detector_node.EXE-1]: process has died [pid 12280, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_detector_node.EXE --ros-args -r __node:=real_detector --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_n495th_u'].
+[real_detector_node.EXE-1] [2m2026-08-16T07:21:15.974044Z[0m [33m WARN[0m ThreadId(18) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[real_detector_node.EXE-1] [INFO] [1786864878.205110200] [real_detector]: real detector up: camera stream open, publishing /perception/obstacles_raw
+
+[ERROR] [temporal_estimator_node.EXE-2]: process has died [pid 18804, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_tracking\temporal_estimator_node.EXE --ros-args -r __node:=temporal_estimator --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_1wo5gje2'].
+[temporal_estimator_node.EXE-2] [2m2026-08-16T07:21:16.007796Z[0m [33m WARN[0m ThreadId(16) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[temporal_estimator_node.EXE-2] [INFO] [1786864876.648956800] [temporal_estimator]: temporal estimator method=t2_fixed_kf /perception/obstacles_raw -> /perception/obstacles
+
+[ERROR] [nominal_cmd_publisher_node.EXE-3]: process has died [pid 19600, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_bringup\nominal_cmd_publisher_node.EXE --ros-args -r __node:=nominal_cmd_publisher --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_69tbci3a'].
+[nominal_cmd_publisher_node.EXE-3] [INFO] [1786864876.037621800] [nominal_cmd_publisher]: Nominal command publisher sending /cmd_vel_nominal.
+
+[ERROR] [local_avoidance_planner_node.EXE-4]: process has died [pid 5376, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_avoidance\local_avoidance_planner_node.EXE --ros-args -r __node:=local_avoidance_planner'].
+[local_avoidance_planner_node.EXE-4] [2m2026-08-16T07:21:16.045675Z[0m [33m WARN[0m ThreadId(13) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[local_avoidance_planner_node.EXE-4] [INFO] [1786864876.819202900] [local_avoidance_planner]: Local avoidance planner publishing /planner/cmd_vel_safe.
+
+[ERROR] [real_control_live_node.EXE-5]: process has died [pid 8940, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_control_live_node.EXE --ros-args -r __node:=real_control_live --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_t53hynk0'].
+[real_control_live_node.EXE-5] [2m2026-08-16T07:21:16.032055Z[0m [33m WARN[0m ThreadId(13) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[real_control_live_node.EXE-5] [ERROR] [1786864876.977390700] [real_control_live]: LIVE refused: uncalibrated axes ['surge', 'sway', 'yaw'] — a commanded m/s has no measured meaning on this vehicle. Staying in shadow.
+

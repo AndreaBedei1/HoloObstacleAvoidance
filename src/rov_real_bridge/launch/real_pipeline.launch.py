@@ -23,6 +23,7 @@ from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _pool_benchmark():
@@ -69,8 +70,62 @@ def _pool_benchmark():
         "HOLO_REPO_ROOT to the repository root.")
 
 
+def _s3_calibration():
+    """The MEASURED command mapping, as adapter parameters.
+
+    The adapter refuses live actuation while any axis is uncalibrated --
+    "a commanded m/s has no measured meaning on this vehicle" -- and it
+    was right to: the profile was measured on 2026-08-15 and then never
+    handed to it, so every real run so far executed in shadow with the
+    thrusters idle while the rest of the pipeline looked healthy.
+
+    The numbers are read from config/calibration/s3_vehicle.json, the
+    same file the simulated plant model uses, so the two domains cannot
+    describe different vehicles.
+    """
+    import json
+    import math
+    import os
+    rel = os.path.join("config", "calibration", "s3_vehicle.json")
+    here = os.path.dirname(os.path.abspath(__file__))
+    roots = [os.environ["HOLO_REPO_ROOT"]] if os.environ.get(
+        "HOLO_REPO_ROOT") else []
+    for _ in range(8):
+        roots.append(here)
+        here = os.path.dirname(here)
+    path = next((os.path.join(r, rel) for r in roots
+                 if os.path.isfile(os.path.join(r, rel))), None)
+    if path is None:
+        raise RuntimeError("s3_vehicle.json not found; the adapter would "
+                           "stay in shadow and the run would look healthy "
+                           "with the thrusters idle")
+    with open(path) as f:
+        prof = json.load(f)["profile"]
+    out = {"calibration_id": "s3_vehicle_20260815"}
+    for axis, key in (("surge", "surge_symmetric"),
+                      ("sway", "sway_symmetric")):
+        e = prof.get(key) or {}
+        k = float(e.get("m_s_per_count") or 0.0)
+        db = float(e.get("deadband_counts") or 0.0)
+        out.update({f"{axis}_k_pos": k, f"{axis}_k_neg": k,
+                    f"{axis}_db_pos": db, f"{axis}_db_neg": db,
+                    f"{axis}_min_command": 0.0,
+                    f"{axis}_calibrated": k > 0.0})
+    # Yaw keeps its measured per-sign asymmetry, converted to rad/s.
+    yp, yn = prof.get("yaw+") or {}, prof.get("yaw-") or {}
+    kp = float(yp.get("deg_s_per_count") or 0.0) * math.pi / 180.0
+    kn = float(yn.get("deg_s_per_count") or 0.0) * math.pi / 180.0
+    out.update({"yaw_k_pos": kp, "yaw_k_neg": kn,
+                "yaw_db_pos": float(yp.get("deadband_counts") or 0.0),
+                "yaw_db_neg": float(yn.get("deadband_counts") or 0.0),
+                "yaw_min_command": 0.0,
+                "yaw_calibrated": kp > 0.0 and kn > 0.0})
+    return out
+
+
 def generate_launch_description():
     pool = _pool_benchmark()
+    calib = _s3_calibration()
     planner = LaunchConfiguration("planner")
     return LaunchDescription([
         # OpenCV's FFMPEG backend reads this at DLL load time; setting it
@@ -81,6 +136,16 @@ def generate_launch_description():
             "flags;low_delay"),
         DeclareLaunchArgument("planner", default_value="committed"),
         DeclareLaunchArgument("estimator_method", default_value="t2"),
+        DeclareLaunchArgument("annotated_video_path", default_value=""),
+        DeclareLaunchArgument("min_avoidance_hold_s", default_value="4.0"),
+        DeclareLaunchArgument("min_surge_during_avoidance",
+                              default_value="0.08"),
+        DeclareLaunchArgument("risk_enter_threshold", default_value="0.30"),
+        DeclareLaunchArgument("risk_exit_threshold", default_value="0.15"),
+        DeclareLaunchArgument("engage_distance_m",
+                              default_value=str(pool["engage_distance_m"])),
+        DeclareLaunchArgument("warmup_min_updates", default_value="2"),
+        DeclareLaunchArgument("confirm_min_updates", default_value="1"),
         DeclareLaunchArgument("real_control_mode", default_value="shadow"),
         DeclareLaunchArgument("vehicle_in_water", default_value="false"),
         DeclareLaunchArgument("allow_real_actuation",
@@ -99,12 +164,30 @@ def generate_launch_description():
              parameters=[{
                  "camera_horizontal_fov_deg":
                      LaunchConfiguration("camera_hfov_deg"),
+                 "annotated_video_path":
+                     LaunchConfiguration("annotated_video_path"),
              }]),
         Node(package="rov_obstacle_tracking",
              executable="temporal_estimator_node",
              name="temporal_estimator", output="screen",
              parameters=[{
                  "method": LaunchConfiguration("estimator_method"),
+                 # The Phase-7B warm-up was tuned on simulated
+                 # perception, which delivers a coherent detection every
+                 # tick. The real detector in this water produces 81 %
+                 # of frames with an obstacle but with a bbox that moves
+                 # between frames, so twenty coherent updates never
+                 # accumulate and the qualifier discarded ALL 1152
+                 # messages while the vehicle drove past the anchor.
+                 # Relaxed for the real runs and recorded as such: the
+                 # qualifier still filters, it just confirms on the
+                 # evidence reality actually provides.
+                 "warmup_min_updates": ParameterValue(
+                     LaunchConfiguration("warmup_min_updates"),
+                     value_type=int),
+                 "confirm_min_updates": ParameterValue(
+                     LaunchConfiguration("confirm_min_updates"),
+                     value_type=int),
              }]),
         Node(package="rov_obstacle_bringup",
              executable="nominal_cmd_publisher_node",
@@ -114,7 +197,46 @@ def generate_launch_description():
              executable="local_avoidance_planner_node",
              name="local_avoidance_planner", output="screen",
              parameters=[{
-                 "engage_distance_m": float(pool["engage_distance_m"]),
+                 # The manoeuvre must last long enough to MOVE the
+                 # vehicle. The default 1 s hold was tuned where the
+                 # simulated vehicle strafes at 0.20-0.30 m/s; the real
+                 # one reaches 0.123 m/s, so one second buys 12 cm and
+                 # the anchor is still there. Four seconds buys about
+                 # half a metre. This is the same shortfall the S3 plant
+                 # model injects in simulation, showing up in the pool.
+                 # RISK THRESHOLD, dropped for the real vehicle. The
+                 # 0.55 default was set where the simulated detector
+                 # returns a full-confidence box covering a broad
+                 # obstacle. The real anchor is a thin shank: its
+                 # apparent area is small, so the risk score stays far
+                 # below 0.55 and the planner never commits, even with
+                 # 79 % of frames detecting it and 75 % qualified. In a
+                 # pool with a single obstacle, seeing it at all is
+                 # reason enough to act.
+                 "risk_enter_threshold": ParameterValue(
+                     LaunchConfiguration("risk_enter_threshold"),
+                     value_type=float),
+                 "risk_exit_threshold": ParameterValue(
+                     LaunchConfiguration("risk_exit_threshold"),
+                     value_type=float),
+                 # Keep moving WHILE avoiding. With engagement on sight
+                 # the planner is in avoidance for most of the run, and
+                 # it throttles surge back to this value while there.
+                 # At 0.08 the real vehicle averaged 0.036 m/s with the
+                 # command at zero 55 % of the time: the thrusters spun
+                 # and the vehicle stayed put. It only appeared to work
+                 # earlier because orphaned planners were pushing it.
+                 "min_surge_during_avoidance": ParameterValue(
+                     LaunchConfiguration("min_surge_during_avoidance"),
+                     value_type=float),
+                 "min_avoidance_hold_s": ParameterValue(
+                     LaunchConfiguration("min_avoidance_hold_s"),
+                     value_type=float),
+                 # Overridable for the pool session; defaults to the
+                 # frozen benchmark value.
+                 "engage_distance_m": ParameterValue(
+                     LaunchConfiguration("engage_distance_m"),
+                     value_type=float),
                  "target_obstacle_height_m":
                      float(pool["target_obstacle_height_m"]),
              }],
@@ -136,13 +258,23 @@ def generate_launch_description():
         Node(package="rov_real_bridge",
              executable="real_control_live_node",
              name="real_control_live", output="screen",
-             parameters=[{
+             parameters=[calib, {
                  "real_control_mode":
                      LaunchConfiguration("real_control_mode"),
-                 "vehicle_in_water":
+                 # TYPED. These are declared as BOOLEAN parameters on
+                 # the node, and a LaunchConfiguration arrives as a
+                 # STRING: the assignment is rejected, both stay False,
+                 # the interlock blocks and the adapter runs in shadow --
+                 # publishing a complete command stream with
+                 # "sent": false while the thrusters never turn. Every
+                 # real run so far did exactly that, and nothing in the
+                 # launch output said so.
+                 "vehicle_in_water": ParameterValue(
                      LaunchConfiguration("vehicle_in_water"),
-                 "allow_real_actuation":
+                     value_type=bool),
+                 "allow_real_actuation": ParameterValue(
                      LaunchConfiguration("allow_real_actuation"),
+                     value_type=bool),
                  "calibration_id":
                      LaunchConfiguration("calibration_id"),
              }]),

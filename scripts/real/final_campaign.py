@@ -221,11 +221,25 @@ def record_cmd_trace(run_dir, gt, stop_event):
         while not stop_event.is_set():
             rclpy.spin_once(node, timeout_sec=0.1)
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-    with open(os.path.join(run_dir, "cmd_trace.json"), "w") as f:
-        json.dump(trace, f)
+        # WRITE FIRST, then tear ROS down. rclpy's shutdown raises
+        # "Failed to close the session" on this zenoh build, and with the
+        # write after it a completed run lost its command trace, its
+        # ground truth and its result -- the data existed and was thrown
+        # away in cleanup.
+        try:
+            with open(os.path.join(run_dir, "cmd_trace.json"), "w") as f:
+                json.dump(trace, f)
+        except OSError:
+            pass
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
     return trace
 
 
@@ -294,6 +308,43 @@ def main() -> int:
     print("posa nominale %s: pixel %s, avvicinamento %.2f m"
           % (args.geometry, args.nominal_px, sp["approach_distance_m"]))
 
+    # The onboard video port must be FREE. If anything still holds it --
+    # a diagnostic script, a previous run's leftovers -- the detector
+    # node dies in its constructor while every other node starts
+    # cleanly, and the run completes with a full ground-truth track, a
+    # published command stream of zeros and no perception at all. That
+    # looks like a planner that never saw the anchor, which is exactly
+    # the result the campaign is trying to measure.
+    import socket
+    # The MAVLink port too. A second process still streaming
+    # MANUAL_CONTROL fights this one at 20 Hz and the vehicle obeys
+    # whichever message arrived last: the thrusters twitch and the
+    # vehicle barely moves, with nothing anywhere saying why. Sixty-six
+    # orphaned diagnostic processes were doing exactly that.
+    mav = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        mav.bind(("0.0.0.0", 14550))
+    except OSError:
+        print("ABORT: la porta MAVLink 14550 e occupata. Un altro "
+              "processo sta comandando il veicolo e i due comandi si "
+              "sovrappongono.")
+        return 6
+    finally:
+        mav.close()
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.bind(("0.0.0.0", 5600))
+    except OSError:
+        print("ABORT: la porta video UDP 5600 e occupata da un altro "
+              "processo. Il rilevatore non partirebbe e la prova "
+              "sembrerebbe riuscita senza percezione.")
+        print("chiudi gli script diagnostici o termina i nodi rimasti, "
+              "poi rilancia")
+        return 5
+    finally:
+        probe.close()
+
     digest = frozen_predictions_hash()
     if digest is None:
         print("ABORT: le previsioni simulate non sono congelate. I run "
@@ -323,7 +374,14 @@ def main() -> int:
     time.sleep(1.5)
 
     pose, why = check_start_pose(gt, args.nominal_px)
-    if pose is None or not pose["within_tolerance"]:
+    # A REHEARSAL proceeds from wherever the vehicle is: it is not
+    # scored, and refusing it on a pose that only matters for the scored
+    # runs costs a repositioning for nothing. The measured pose is still
+    # recorded.
+    if pose is not None and not pose["within_tolerance"] and args.rehearsal:
+        print("posa fuori tolleranza (%s) - prova NON conteggiata, "
+              "procedo comunque" % (why or ""))
+    elif pose is None or not pose["within_tolerance"]:
         print("posa di partenza NON valida: %s" % (why or "sconosciuto"))
         print("sposta il rover e rilancia; nessun run viene valutato da "
               "una posa fuori tolleranza")
@@ -342,6 +400,23 @@ def main() -> int:
     rec.mark("run_start", geometry=args.geometry, planner=args.planner,
              run=args.run)
 
+    # ROUTER FIRST, then the recorder, then the pipeline. The recorder
+    # calls rclpy.init() IN THIS PROCESS, so it needs the router already
+    # reachable and it reads os.environ, not the subprocess env: started
+    # before the router it joined the graph isolated and recorded zero
+    # commands while every other part of the run looked healthy.
+    os.environ.setdefault("RMW_IMPLEMENTATION", "rmw_zenoh_cpp")
+    os.environ["ZENOH_ROUTER_CHECK_ATTEMPTS"] = "20"
+    env = dict(os.environ)
+    env["HOLO_REPO_ROOT"] = os.path.abspath(_ROOT)
+    zlog = open(os.path.join(run_dir, "zenoh.log"), "w")
+    zenoh = subprocess.Popen(["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"],
+                             env=env, stdout=zlog,
+                             stderr=subprocess.STDOUT)
+    print("router zenoh avviato, attendo che sia raggiungibile...",
+          flush=True)
+    time.sleep(6.0)
+
     stop_event = threading.Event()
     trace_holder = {}
     th = threading.Thread(
@@ -349,20 +424,35 @@ def main() -> int:
             trace=record_cmd_trace(run_dir, gt, stop_event)),
         daemon=True)
     th.start()
+    time.sleep(2.0)
 
-    env = dict(os.environ)
-    env.setdefault("RMW_IMPLEMENTATION", "rmw_zenoh_cpp")
-    env["HOLO_REPO_ROOT"] = os.path.abspath(_ROOT)
     cmd = ["ros2", "launch", "rov_real_bridge", "real_pipeline.launch.py",
            "planner:=%s" % args.planner,
            "estimator_method:=t2",
-           "real_control_mode:=live",
+           # SHADOW: the packaged adapter would not take the measured
+           # calibration in this build environment and stayed inert
+           # anyway. Actuation is done by scripts/real/cmd_bridge.py,
+           # which uses the same frozen boundary topic, the same tested
+           # conversion and the same calibration file.
+           "real_control_mode:=shadow",
            "vehicle_in_water:=true",
-           "allow_real_actuation:=true"]
+           "allow_real_actuation:=false"]
     print("avvio pipeline reale:", " ".join(cmd), flush=True)
     log = open(os.path.join(run_dir, "pipeline.log"), "w")
     proc = subprocess.Popen(cmd, env=env, stdout=log,
                             stderr=subprocess.STDOUT)
+    # Interlock passed deliberately, not defaulted on.
+    env["ROV_IN_WATER"] = "1"
+    env["ROV_ALLOW_ACTUATION"] = "1"
+    env["ROV_CONTROL_MODE"] = "live"
+    bridge_log = open(os.path.join(run_dir, "cmd_bridge.log"), "w")
+    bridge = subprocess.Popen(
+        [sys.executable, os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "cmd_bridge.py"),
+         str(args.duration_s + 5)],
+        env=env, stdout=bridge_log, stderr=subprocess.STDOUT)
+    print("ponte di comando avviato (attuazione viva)", flush=True)
+
     t0 = time.time()
     end_reason = "duration"
     try:
@@ -380,6 +470,18 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             proc.kill()
         log.close()
+        bridge.terminate()
+        try:
+            bridge.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            bridge.kill()
+        bridge_log.close()
+        zenoh.terminate()
+        try:
+            zenoh.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            zenoh.kill()
+        zlog.close()
         stop_event.set()
         th.join(timeout=5)
         rec.mark("run_stop", reason=end_reason)

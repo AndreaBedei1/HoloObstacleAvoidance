@@ -67,6 +67,13 @@ class RealDetectorNode(Node):
         # Acceptance gate of the RAW detector (shape/quality only). The
         # temporal/coherence gate is the Phase-7B qualifier downstream.
         self.declare_parameter("min_score", 0.55)
+        # Annotated recording of WHAT THE DETECTOR SAW. The operator
+        # watches the vehicle, not the camera, so a run that fails to
+        # avoid leaves no way to tell whether the anchor was out of
+        # frame, seen and rejected, or seen too late. This node is the
+        # only process that can write it: it owns the video port, and a
+        # second reader cannot bind it.
+        self.declare_parameter("annotated_video_path", "")
         self.declare_parameter("min_height_frac", 0.12)
         self.declare_parameter("min_width_frac", 0.02)
         self.declare_parameter("score_scale", 3.0)
@@ -105,6 +112,47 @@ class RealDetectorNode(Node):
             and det.get("width", 0.0)
             >= float(self.get_parameter("min_width_frac").value))
 
+    def _write_annotated(self, frame, det) -> None:
+        """Draw the detection on the frame and append it to the video."""
+        path = str(self.get_parameter("annotated_video_path").value or "")
+        if not path:
+            return
+        try:
+            import cv2
+            if getattr(self, "_vw", None) is None:
+                h, w = frame.shape[:2]
+                # MJPG in AVI, not H.264 in MP4. An MP4 needs its index
+                # written at close, and these runs are routinely killed
+                # mid-flight: the first recorded video was unopenable
+                # ("moov atom not found", zero readable frames). MJPG
+                # stores each frame independently, so a truncated file
+                # still plays up to where it stopped.
+                if path.lower().endswith(".mp4"):
+                    path = path[:-4] + ".avi"
+                self._vw = cv2.VideoWriter(
+                    path, cv2.VideoWriter_fourcc(*"MJPG"), 4.0, (w, h))
+                self.get_logger().info("video rilevamenti -> %s" % path)
+            vis = frame.copy()
+            ok = bool(det and det.get("found"))
+            acc = bool(det and self._accept(det))
+            if ok:
+                b = det.get("bbox_px")
+                col = (0, 255, 0) if acc else (0, 165, 255)
+                if b:
+                    cv2.rectangle(vis, (b[0], b[1]),
+                                  (b[0] + b[2], b[1] + b[3]), col, 4)
+                cv2.putText(vis, "score %.2f  %s%s"
+                            % (det.get("score") or 0.0,
+                               "ACCETTATA" if acc else "scartata",
+                               "  (ripiego)" if det.get("fallback") else ""),
+                            (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, col, 3)
+            else:
+                cv2.putText(vis, "nessun rilevamento", (30, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+            self._vw.write(vis)
+        except Exception:
+            pass
+
     def _on_timer(self) -> None:
         frame, t_frame = self._cam.latest()
         msg = Obstacle2DArray()
@@ -113,6 +161,7 @@ class RealDetectorNode(Node):
         det = None
         if frame is not None:
             det = self._detect(frame)
+            self._write_annotated(frame, det)
             self._last_ms = float(det.get("ms", 0.0))
             if self._accept(det):
                 o = Obstacle2D()

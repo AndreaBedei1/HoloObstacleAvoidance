@@ -117,7 +117,7 @@ class OverheadTracker:
             # of 2.0 -- which is a shape property of the pool edge rather
             # than a brightness threshold, and so transfers across
             # lighting conditions where an absolute cut does not.
-            if a / float(w * h) < 0.32:
+            if a / float(w * h) < 0.30:
                 continue
             M = cv2.moments(c)
             if M["m00"] <= 0:
@@ -162,8 +162,24 @@ class OverheadTracker:
         # and a border fragment survives instead -- so the search stopped
         # on the fragment and never tried the tighter percentile that
         # separates the vehicle cleanly (2026-08-15).
+        # The ladder reaches well past 2 %: the vehicle is only among
+        # the darkest few per cent of the image while the pool edge is
+        # brighter than it. When the ambient light drops -- and the
+        # RealSense runs at a FIXED manual exposure -- the shaded band
+        # along the top of the frame becomes darker than the vehicle,
+        # and a ladder stopping at 2 % returns a fragment of that band
+        # with a reconstructed centre ABOVE the image (y = -34 was
+        # observed). A false ground truth is worse than none, so the
+        # search continues until a WHOLE blob of vehicle shape appears;
+        # the loose thresholds are only reached when nothing cleaner
+        # exists, and the aspect, area and compactness tests still have
+        # to pass there.
+        #
+        # This is the OVERHEAD camera: evaluation and safety only. It
+        # never reaches the planner, so changing it cannot affect the
+        # S1 observation model or the frozen predictions.
         best, best_key, thr = None, None, None
-        for pct in (1.0, 0.6, 1.5, 2.0, 0.35):
+        for pct in (1.0, 0.6, 1.5, 2.0, 3.0, 5.0, 7.0, 0.35):
             thr = float(np.percentile(blur, pct))
             mask = (blur < thr).astype(np.uint8) * 255
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,

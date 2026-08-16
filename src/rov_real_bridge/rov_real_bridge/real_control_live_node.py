@@ -138,7 +138,26 @@ class RealControlLiveNode(Node):
 
     # -- setup ---------------------------------------------------------
     def _build_mapping(self) -> CommandMapping:
+        # The calibration comes from the FROZEN FILE when the parameters
+        # do not carry one. Eighteen numbers passed through launch
+        # arguments is a long chain, and when one link of it failed the
+        # adapter ran uncalibrated through six real attempts while every
+        # topic looked healthy. Reading the same file the simulated plant
+        # reads also makes it impossible for the two domains to describe
+        # different vehicles.
+        file_cal = self._calibration_from_file()
+
         def axis(name, max_cmd):
+            # The FILE WINS. Passing eighteen calibration numbers through
+            # launch arguments failed silently through six real attempts:
+            # the adapter ran uncalibrated, refused live, and published a
+            # complete command stream with "sent": false while the
+            # thrusters never turned. The file is the same one the
+            # simulated plant model reads, so this also makes it
+            # impossible for the two domains to describe different
+            # vehicles.
+            if file_cal:
+                return file_cal[name](max_cmd)
             return AxisCalibration(
                 k_pos=float(self.get_parameter(f"{name}_k_pos").value)
                 or 1.0,
@@ -152,6 +171,7 @@ class RealControlLiveNode(Node):
                 calibrated=bool(
                     self.get_parameter(f"{name}_calibrated").value),
                 source=str(self.get_parameter("calibration_id").value),
+                # (parameter path, used only when the file is absent)
             )
         return CommandMapping(
             surge=axis("surge",
@@ -162,6 +182,60 @@ class RealControlLiveNode(Node):
                      float(self.get_parameter("max_yaw_rate_rads").value)),
             calibration_id=str(self.get_parameter("calibration_id").value),
         )
+
+    def _calibration_from_file(self):
+        """AxisCalibration factories from config/calibration/s3_vehicle.json,
+        or None if the file is absent."""
+        import json
+        import math
+        import os
+        rel = os.path.join("config", "calibration", "s3_vehicle.json")
+        here = os.path.dirname(os.path.abspath(__file__))
+        roots = ([os.environ["HOLO_REPO_ROOT"]]
+                 if os.environ.get("HOLO_REPO_ROOT") else [])
+        for _ in range(10):
+            roots.append(here)
+            here = os.path.dirname(here)
+        path = next((os.path.join(r, rel) for r in roots
+                     if os.path.isfile(os.path.join(r, rel))), None)
+        if path is None:
+            return None
+        try:
+            with open(path) as f:
+                prof = json.load(f)["profile"]
+        except Exception:
+            return None
+        src = "s3_vehicle_file"
+
+        def mk(k, db):
+            def factory(max_cmd):
+                return AxisCalibration(
+                    k_pos=k, k_neg=k, db_pos=db, db_neg=db,
+                    min_command=0.0, max_command=max_cmd,
+                    calibrated=k > 0.0, source=src)
+            return factory
+
+        def mk2(kp, kn, dbp, dbn):
+            def factory(max_cmd):
+                return AxisCalibration(
+                    k_pos=kp, k_neg=kn, db_pos=dbp, db_neg=dbn,
+                    min_command=0.0, max_command=max_cmd,
+                    calibrated=kp > 0.0 and kn > 0.0, source=src)
+            return factory
+
+        su = (prof.get("surge_symmetric") or {}).get("m_s_per_count") or 0.0
+        sw = (prof.get("sway_symmetric") or {}).get("m_s_per_count") or 0.0
+        yp = prof.get("yaw+") or {}
+        yn = prof.get("yaw-") or {}
+        r = math.pi / 180.0
+        return {
+            "surge": mk(float(su), 0.0),
+            "sway": mk(float(sw), 0.0),
+            "yaw": mk2(float(yp.get("deg_s_per_count") or 0.0) * r,
+                       float(yn.get("deg_s_per_count") or 0.0) * r,
+                       float(yp.get("deadband_counts") or 0.0),
+                       float(yn.get("deadband_counts") or 0.0)),
+        }
 
     def _open_link(self) -> None:
         try:
@@ -238,6 +312,15 @@ class RealControlLiveNode(Node):
 
         payload = {
             "t": now, "mode": "live" if self._live else "shadow",
+            # WHY it is in that mode, on the topic rather than only in a
+            # log line. Node logs are buffered and were lost every time
+            # the launch was terminated, so the adapter sat in shadow
+            # through five real runs while the only explanation existed
+            # in a file that never got flushed.
+            "interlock": self._interlock.evaluate().reason,
+            "calibrated": self._mapping.fully_calibrated,
+            "uncalibrated_axes": self._mapping.uncalibrated_axes(),
+            "fault": self._fault,
             "sent": sent, "mc": {k: mc[k] for k in ("x", "y", "z", "r")},
             "accepted": mc["accepted"], "reason": mc["reason"],
             "deadband": mc.get("deadband", []),

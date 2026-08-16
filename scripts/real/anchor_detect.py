@@ -70,6 +70,22 @@ def detect_anchor(img: np.ndarray, debug: bool = False) -> dict:
                              cv2.MORPH_OPEN, vert_k)
     # 85th pct (not 92nd): in backlit/turbid frames the shank contrast
     # collapses and a tighter threshold drops it entirely.
+    # RELATIVE floor, not an absolute one. `max(12.0, ...)` was a fixed
+    # grey-level floor: on 2026-08-16 the whole frame's dark contrast
+    # peaked at 6.5, so a floor of 12 sat above every pixel in the image
+    # and the detector returned nothing while the anchor was plainly
+    # visible to the eye. The vehicle drove straight into it because
+    # nothing ever told the planner an obstacle was there.
+    #
+    # The floor now scales with the contrast the frame actually has, so
+    # it means the same thing in clear evening water and in turbid
+    # morning water -- the same reasoning that already replaced the
+    # absolute isolation margin and the absolute compactness cut.
+    # NOTE: `shank` is already normalised to 0-255 by the frame's own
+    # dark contrast, so this floor is a FRACTION of that contrast, not an
+    # absolute grey level -- 12/255 is about 5 %. An attempt to make it
+    # "relative" by scaling with dn.max() pushed it to 89 and killed
+    # every candidate: it was already relative.
     thr = max(12.0, float(np.percentile(shank[shank > 0], 85))
               if np.any(shank > 0) else 255.0)
     smask = (shank > thr).astype(np.uint8) * 255
@@ -147,8 +163,82 @@ def detect_anchor(img: np.ndarray, debug: bool = False) -> dict:
         if best is None or score > best["score"]:
             best = cand[-1]
 
+    # FALLBACK: the darkest compact blob near the centre.
+    #
+    # The shank pipeline above is built to tell a thin vertical shank
+    # from bubble clouds and rim structures, and it earns that
+    # complexity when the dome is dirty. In this pool, with a clean
+    # dome, the anchor is the ONLY dark object in the water, and on
+    # 2026-08-16 every one of those shape tests fired in turn on a frame
+    # where the anchor was plainly visible: the shank fragmented below
+    # the 25 %-of-frame-height floor and the detector reported nothing
+    # while the vehicle drove into the anchor.
+    #
+    # So when the specific method finds nothing, fall back to the
+    # generic one. The specific method stays FIRST, so frames it already
+    # handled are unchanged.
+    if best is None:
+        # A LADDER of thresholds, not one. Frame-to-frame the usable
+        # percentile moves: on live water 99.0 isolated the shank in one
+        # frame and nothing in the next. Trying several and keeping the
+        # first plausible obstacle is what made the overhead tracker
+        # survive changing light, and it applies here for the same
+        # reason.
+        pick = None
+        for pct in (99.0, 98.0, 97.0, 95.0, 99.5):
+            blob_thr = float(np.percentile(dark, pct))
+            bm = (dark > max(blob_thr, 0.5)).astype(np.uint8) * 255
+            bm[:int(SURFACE_BAND * h), :] = 0
+            bm = cv2.morphologyEx(
+                bm, cv2.MORPH_CLOSE,
+                cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25)))
+            bn, blabels, bstats, _ = cv2.connectedComponentsWithStats(bm, 8)
+            for i in range(1, bn):
+                x, y, bw, bh, area = bstats[i]
+                # Seeing PART of the obstacle is enough to know it is
+                # there; what matters is that something substantial is
+                # ahead, not that its full extent was resolved.
+                if area < 0.002 * h * w:          # ~4100 px at 1080p
+                    continue
+                if bh < 0.15 * h:
+                    continue
+                if bw > 0.6 * w or bh > 0.9 * h:
+                    continue
+                cx = (x + bw / 2.0) / w
+                if not (0.12 < cx < 0.88):
+                    continue
+                md = float(dark[y:y + bh, x:x + bw][
+                    blabels[y:y + bh, x:x + bw] == i].mean())
+                if pick is None or area > pick[0]:
+                    pick = (area, (x, y, bw, bh), md)
+            if pick is not None:
+                break
+        if pick is not None:
+            area, (x, y, bw, bh), md = pick
+            best = {"bbox": (x, y, bw, bh), "mean_dark": md,
+                    "vertical": bh / float(bw + 1e-6), "row_w": float(bw),
+                    "wander": 0.0, "covered": 1.0, "iso_lr": [0.0, 0.0],
+                    # 0.70, not 0.30: the ROS detector node drops
+                    # anything below 0.55, so a fallback scored 0.30 was
+                    # found and then discarded -- 183 messages, zero
+                    # obstacles, while the standalone detector was
+                    # finding the anchor in 62 % of frames. A fallback
+                    # detection is less specific than a shank match, but
+                    # it is still a real obstacle ahead, and scoring it
+                    # below the gate meant it could never act.
+                    # 1.8, not 0.70. The detector node divides the score
+                    # by score_scale (3.0) to get the confidence the
+                    # planner uses, so 0.70 arrived as 0.23 -- above the
+                    # node's own 0.55 acceptance gate, but far below the
+                    # 0.55 RISK threshold the planner needs to commit to
+                    # a manoeuvre. The result was a run with 79 % of
+                    # frames detecting the anchor, 75 % qualified, and
+                    # not one lateral command. 1.8 maps to 0.6.
+                    "score": 1.8, "fallback": True}
+
     dt = (time.perf_counter() - t0) * 1000.0
     out = {"found": best is not None, "ms": round(dt, 1),
+           "fallback": bool(best and best.get("fallback")),
            "threshold": round(thr, 2), "n_candidates": len(cand)}
     if best:
         x, y, bw, bh = best["bbox"]

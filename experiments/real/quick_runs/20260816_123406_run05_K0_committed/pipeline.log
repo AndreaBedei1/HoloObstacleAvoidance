@@ -1,0 +1,41 @@
+C:\dev\ros2_lyrical\Lib\site-packages\launch\logging\__init__.py:172: UserWarning: Cannot create a symlink to latest log directory: [WinError 1314] Il privilegio richiesto non appartiene al client: 'C:\\Users\\Andrea\\.ros\\log\\2026-08-16-12-34-19-314006-DESKTOP-CNGN003-24292' -> 'C:\\Users\\Andrea\\.ros\\log\\latest'
+
+  warnings.warn(
+[INFO] [launch]: All log files can be found below C:\Users\Andrea\.ros\log\2026-08-16-12-34-19-314006-DESKTOP-CNGN003-24292
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [real_detector_node.EXE-1]: process started with pid [25552]
+[INFO] [temporal_estimator_node.EXE-2]: process started with pid [4056]
+[INFO] [nominal_cmd_publisher_node.EXE-3]: process started with pid [14052]
+[INFO] [local_avoidance_planner_node.EXE-4]: process started with pid [18188]
+[INFO] [real_control_live_node.EXE-5]: process started with pid [28880]
+[real_detector_node.EXE-1] Traceback (most recent call last):
+[real_detector_node.EXE-1]   File "\\?\C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_detector_node-script.py", line 33, in <module>
+[real_detector_node.EXE-1]     sys.exit(load_entry_point('rov-real-bridge==0.1.0', 'console_scripts', 'real_detector_node')())
+[real_detector_node.EXE-1]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\Lib\site-packages\rov_real_bridge\real_detector_node.py", line 214, in main
+[real_detector_node.EXE-1]     node = RealDetectorNode()
+[real_detector_node.EXE-1]            ^^^^^^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\Lib\site-packages\rov_real_bridge\real_detector_node.py", line 93, in __init__
+[real_detector_node.EXE-1]     self._cam = CameraStream(
+[real_detector_node.EXE-1]                 ^^^^^^^^^^^^^
+[real_detector_node.EXE-1]   File "C:\Users\Andrea\Desktop\HoloObstacleAvoidance\scripts\real\camera_stream.py", line 46, in __init__
+[real_detector_node.EXE-1]     raise RuntimeError("cannot open UDP 5600 stream")
+[real_detector_node.EXE-1] RuntimeError: cannot open UDP 5600 stream
+[real_detector_node.EXE-1] [udp @ 000002137fdfe5c0] bind failed: Error number -10048 occurred
+[ERROR] [real_detector_node.EXE-1]: process has died [pid 25552, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_detector_node.EXE --ros-args -r __node:=real_detector --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_we8eau1e'].
+[ERROR] [temporal_estimator_node.EXE-2]: process has died [pid 4056, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_tracking\temporal_estimator_node.EXE --ros-args -r __node:=temporal_estimator --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_07uddwvh'].
+[temporal_estimator_node.EXE-2] [2m2026-08-16T10:34:21.632936Z[0m [33m WARN[0m ThreadId(10) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[temporal_estimator_node.EXE-2] [INFO] [1786876463.603558000] [temporal_estimator]: temporal estimator method=t2_fixed_kf /perception/obstacles_raw -> /perception/obstacles
+
+[ERROR] [nominal_cmd_publisher_node.EXE-3]: process has died [pid 14052, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_bringup\nominal_cmd_publisher_node.EXE --ros-args -r __node:=nominal_cmd_publisher --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_p51enlmo'].
+[nominal_cmd_publisher_node.EXE-3] [2m2026-08-16T10:34:21.535568Z[0m [33m WARN[0m ThreadId(12) [2mzenoh::net::runtime::orchestrator[0m[2m:[0m Scouting delay elapsed before start conditions are met.
+
+[nominal_cmd_publisher_node.EXE-3] [INFO] [1786876462.731933600] [nominal_cmd_publisher]: Nominal command publisher sending /cmd_vel_nominal.
+
+[ERROR] [local_avoidance_planner_node.EXE-4]: process has died [pid 18188, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_obstacle_avoidance\local_avoidance_planner_node.EXE --ros-args -r __node:=local_avoidance_planner --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_3ydf54au'].
+[local_avoidance_planner_node.EXE-4] [INFO] [1786876463.547499300] [local_avoidance_planner]: Local avoidance planner publishing /planner/cmd_vel_safe.
+
+[ERROR] [real_control_live_node.EXE-5]: process has died [pid 28880, exit code 1, cmd 'C:\Users\Andrea\Desktop\HoloObstacleAvoidance\install\lib\rov_real_bridge\real_control_live_node.EXE --ros-args -r __node:=real_control_live --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_zvxy9u7r --params-file C:\Users\Andrea\AppData\Local\Temp\launch_params_njlhcd4w'].
+[real_control_live_node.EXE-5] [INFO] [1786876463.623929500] [real_control_live]: real adapter: SHADOW (mode=shadow (shadow: compute+log only)); calibration=uncalibrated
+

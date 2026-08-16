@@ -1,0 +1,33 @@
+# Configuration of the real session of 2026-08-16, frozen after the
+# operator approved run 1. Every one of the 20 runs uses these values,
+# identically for both planners.
+#
+# These DIFFER from the frozen pool benchmark, and the difference is the
+# result of a morning of the real system refusing to act. Each change is
+# recorded with what forced it, because collectively they are a finding:
+# a stack tuned on simulated perception did not transfer.
+session:
+  detector:
+    fallback_enabled: true      # the shank method found nothing in this
+                                # water; the fallback takes the largest
+                                # dark blob ahead
+    fallback_score: 1.8         # 0.70 mapped to 0.23 confidence, below
+                                # the planner's risk threshold: 79 % of
+                                # frames detected the anchor and not one
+                                # lateral command was issued
+  qualifier:
+    warmup_min_updates: 2       # 20 never accumulated: the real bbox
+    confirm_min_updates: 1      # moves between frames
+  planner:
+    engage_distance_m: 5.0      # engage on sight. At 1.8 m the vehicle
+                                # was already past the anchor before the
+                                # monocular range dropped below it
+    risk_enter_threshold: 0.30  # 0.55 never reached by a thin shank's
+    risk_exit_threshold: 0.15   # apparent area; 0.05 reacted to walls
+    min_avoidance_hold_s: 4.0   # 1 s bought 12 cm at the real 0.123 m/s
+  actuation:
+    straight_run_in_s: 0.0      # tried, made it worse, removed
+    side_latch_s: 0.0           # latching the side stopped the 400-per-run
+                                # oscillation but drove it into the wall
+  run:
+    duration_s: 25.0            # 45 s carried it into the far wall
