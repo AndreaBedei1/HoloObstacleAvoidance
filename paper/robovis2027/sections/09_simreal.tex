@@ -1,0 +1,119 @@
+\section{Simulation-to-Reality Analysis}
+\label{sec:simreal}
+
+\subsection{Where the two domains can be compared at all}
+
+The command stream is recorded on the same topic,
+\texttt{/planner/cmd\_vel\_safe}, at the same boundary, in both domains.
+It is therefore the one axis on which a simulated and a physical run
+measure the same signal with the same instrument, and it is the only
+axis this paper compares numerically. Everything spatial is excluded by
+construction, because the physical runs have no external reference
+(Section~\ref{sec:realresults}).
+
+We state plainly what this comparison is not. The frozen simulated stack
+and the flown stack differ in the eleven ways of
+Table~\ref{tab:gap}, so agreement here would not establish that the
+calibration worked and disagreement would not establish that it failed.
+The question is narrower: on the axis where both domains measure the same
+thing, how far apart are they, and does the distance move with the
+calibration level?
+
+\subsection{The calibration ladder does not move the command domain}
+
+Table~\ref{tab:cmd} answers the second half first. Median commanded surge
+in simulation is \SI{0.1428}{} to \SI{0.1438}{\metre\per\second} at every
+level and in both geometries -- a spread of one part in a hundred and
+forty across the entire ladder. The physical median is
+\SI{0.123}{\metre\per\second} in \textsf{K0}. The absolute difference is
+therefore \SIrange{0.0198}{0.0207}{\metre\per\second} at S0, S1, S2 and
+S3 alike, and it does not shrink as the simulator becomes more realistic.
+
+This is the expected result once stated, and it is worth stating because
+it bounds what a boundary-level comparison can ever show. S3 acts
+downstream of this signal by design -- that is what makes it a plant
+model and not a controller edit -- so it cannot move the commanded surge
+at all. S1 and S2 act upstream, but they change \emph{when} the planner
+acts rather than how hard it pushes, and the planner's surge setpoints
+are constants. A study that reported shrinking command-domain error
+across such a ladder would be reporting something other than what it
+claimed.
+
+\begin{table}[t]
+\centering
+\caption{Command-domain comparison, committed planner. Simulated values
+are medians over five frozen runs per cell \frozenmark; physical values
+are medians over the admissible runs of each geometry \realmark
+($n=4,2,2$). \emph{peak} is the largest lateral command: the planner
+strafes at \SI{0.20}{\metre\per\second} and reaches
+\SI{0.30}{\metre\per\second} only after entering its go-around phase.}
+\label{tab:cmd}
+\begin{tabular}{llrrrrr}
+\toprule
+domain & geo & $n$ & surge (\si{\metre\per\second}) & lateral frac.
+& peak (\si{\metre\per\second}) & reversals \\
+\midrule
+sim S0 & K0 & 5 & 0.143 & 0.34 & 0.300 & 2 \\
+sim S1 & K0 & 5 & 0.144 & 0.30 & 0.300 & 2 \\
+sim S2 & K0 & 5 & 0.143 & 0.34 & 0.300 & 2 \\
+sim S3 & K0 & 5 & 0.143 & 0.30 & 0.300 & 2 \\
+\midrule
+real & K0  & 4 & 0.123 & 0.42 & 0.200 & 1.5 \\
+real & K1  & 2 & 0.114 & 0.51 & 0.200 & 1 \\
+real & K1M & 2 & 0.115 & 0.50 & 0.200 & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The manoeuvre that never happened}
+
+The informative disagreement is not in a median but in a threshold. The
+committed planner strafes at \SI{0.20}{\metre\per\second} while it
+displaces to its clearing offset, and commands
+\SI{0.30}{\metre\per\second} of sway with \SI{0.40}{\metre\per\second} of
+surge only once it enters the go-around phase and begins running past
+the obstacle. The peak lateral command therefore says, unambiguously and
+without any spatial measurement, whether a run ever reached that phase.
+
+Every one of the twenty frozen simulated runs in \textsf{K0} reached it,
+at all four calibration levels. \emph{None of the eight physical runs
+did.} All eight peak at exactly \SI{0.200}{\metre\per\second} of lateral
+command and exactly \SI{0.150}{\metre\per\second} of surge -- the strafe
+setpoint and the nominal surge, never the go-around values.
+
+The physical vehicle, in other words, spent every run in the first phase
+of a manoeuvre it never completed. That is precisely what the geometry
+of Section~\ref{sec:deployment} predicts: the clearing offset is
+\SI{2.5}{\metre} in a basin \SIrange{2.7}{3.0}{\metre} wide, so the
+displacement condition that ends the strafe phase can never be satisfied,
+and the planner strafes until the run ends or the operator intervenes.
+The higher physical lateral fraction (\numrange{0.42}{0.51} against
+\numrange{0.30}{0.34} in simulation) is the same fact seen from another
+side: more of the run is spent strafing because the strafe never
+terminates.
+
+We regard this as the most useful sim-real finding in the study, and note
+what made it available. It required no ground truth, no tracking and no
+spatial reconstruction -- only the recognition that a controller's own
+setpoint constants make its internal phase observable in the command
+stream. Where external reference is unavailable, as it is on most small
+vehicles most of the time, instrumenting the controller's phase
+boundaries in this way recovers a genuine behavioural comparison from
+data that otherwise supports only summary statistics.
+
+\subsection{Commitment: measurable in one domain, predetermined in the
+other}
+
+Commitment distance is reported in the frozen study and is absent from
+the physical results, and the reason is not merely missing
+instrumentation. The physical vehicle started \SI{1.86}{\metre} from the
+anchor with an engagement range of \SI{1.80}{\metre}, so it was inside
+engagement range at release; three of the four \textsf{K0} runs are
+already commanding laterally at their first recorded sample. Even with
+perfect tracking, physical commitment distance would have been a
+property of where the vehicle was put, not of what the planner decided.
+Reporting a sim-real error on that quantity would compare a measurement
+against a geometric certainty, and we do not report one.
+
+Commitment \emph{time} remains meaningful and is given in
+Table~\ref{tab:real}, censored where the run began already committed.

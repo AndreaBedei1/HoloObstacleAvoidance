@@ -1,0 +1,89 @@
+\section{System and the Perception-to-Actuation Pipeline}
+\label{sec:system}
+
+\subsection{Vehicle and basin}
+
+The physical platform is a BlueROV2 Heavy in the eight-thruster
+configuration, running ArduSub over a tether, with a single forward
+\num{1080}\,px camera streamed to the topside computer. It carries no
+Doppler velocity log and no acoustic positioning, so it has no source of
+absolute or velocity-referenced pose; this fact recurs throughout the
+paper and eventually determines which of the two planners could be flown
+at all. The basin is a rectangular test pool of roughly
+\SI{6}{\metre}$\times$\SIrange{2.7}{3.0}{\metre}, with the obstacle -- a
+\SI{0.5}{\metre}-class anchor -- suspended from a transverse rod.
+
+\subsection{The pipeline and the boundary that both domains share}
+
+The stack is a chain of ROS\,2 nodes, and the same source code runs in
+both domains between two fixed points:
+\[
+\texttt{/perception/obstacles\_raw} \rightarrow \text{qualification}
+\rightarrow \text{estimator} \rightarrow \text{planner} \rightarrow
+\texttt{/planner/cmd\_vel\_safe}.
+\]
+Everything inside that boundary is identical, file for file, in
+simulation and in the water. What differs by construction is what
+produces the raw observations at one end and what consumes the safe
+command at the other. Fixing the boundary is what makes a simulated and a
+physical run comparable at all; Section~\ref{sec:deployment} reports the
+seven ways in which, in the event, the two sides ceased to match.
+
+\emph{Qualification} rejects observations that are not yet trustworthy.
+It requires a number of mutually coherent updates before declaring a
+track valid, which suppresses single-frame false positives at the cost of
+a delay before the planner may act.
+
+\emph{Estimation} is a fixed-gain Kalman filter on the obstacle's image
+position and extent, which also predicts through gaps in the observation
+stream. Earlier work in this project compared four estimator variants;
+the results are summarised in Section~\ref{sec:frozen} but are not the
+subject of this paper, and the estimator is held fixed at the same
+variant everywhere.
+
+\emph{Range} is monocular and deliberately simple. An object of assumed
+physical height $H$ whose bounding box fills a fraction $h$ of the image
+subtends $\theta = h \cdot \mathrm{vfov}$, giving
+\begin{equation}
+R = \frac{H/2}{\tan(\theta/2)} .
+\label{eq:range}
+\end{equation}
+Both planners call the same implementation of
+Equation~\ref{eq:range} with the same assumed height, so any range error
+is shared and cannot advantage either. We note here, and return to it in
+Section~\ref{sec:limitations}, that the vertical field of view used in
+Equation~\ref{eq:range} was \SI{90}{\degree} in both domains -- the node
+default -- and not the \SI{60}{\degree} recorded in our own frozen
+benchmark file, which no node reads.
+
+\subsection{The two planners}
+
+The \emph{committed} planner is a finite-state controller. Below an
+engagement range it commits to one side, holds that side for a minimum
+duration, strafes to a clearing offset, runs past the obstacle and
+returns to the original line. Its side choice depends only on where the
+obstacle appears in the image, which is the property
+Section~\ref{sec:realresults} tests. Its manoeuvre geometry -- the
+clearing offset and the run-past margin -- is the pair of parameters that
+turns out not to fit the basin.
+
+The \emph{holonomic dynamic-window} planner is the standard local
+baseline~\cite{fox1997thedynam}, adapted to a holonomic vehicle and
+given the obstacle radius and goal lookahead appropriate to the pool. It
+scores sampled velocity candidates for clearance, progress, speed, route
+adherence and smoothness. Crucially for what follows, it requires a pose
+estimate to evaluate route adherence and to project candidates forward.
+
+\subsection{Actuation}
+
+Simulated commands pass to a vehicle-dynamics model in HoloOcean.
+Physical commands are mapped to ArduSub joystick channels through an
+affine deadband model,
+\begin{equation}
+c = \operatorname{sign}(v)\left(d + \frac{|v|}{k}\right),
+\label{eq:deadband}
+\end{equation}
+with per-direction gain $k$ and deadband $d$ identified from open-water
+trials (Section~\ref{sec:calibration}). The same identified model is what
+the S3 calibration level injects into simulation, downstream of the
+planner, so that a calibration level never edits the controller.

@@ -1,0 +1,33 @@
+\begin{abstract}
+We report a camera-driven underwater obstacle-avoidance study in which a
+simulation calibrated against measurements of the target vehicle still
+failed to transfer to it, and we trace why. Three calibration levels were
+fitted to paired observations of a BlueROV2 and a test pool -- a static
+observation model, a timing and burst-dropout model, and a vehicle
+response model applied downstream of the planner -- and stacked on a
+HoloOcean baseline. Eighty closed-loop runs covering two planners, two
+obstacle geometries and five repetitions per cell were executed and
+hashed \emph{before} any physical run, so that the field campaign would
+test a prediction rather than illustrate one. The stack then did not
+work on the vehicle. Making it work required seven documented changes,
+after which nine runs were flown and eight are admissible, all with the
+committed planner; the dynamic-window baseline never issued a command
+because it needs a pose estimate the vehicle has no sensor for. Two
+findings dominate, and neither is a calibrated quantity. The detector's
+blob-size gates admit an obstacle only between \SI{0.29}{\metre} and
+\SI{2.11}{\metre}, while the vehicle started \SI{1.86}{\metre} from the
+anchor and engaged at \SI{1.80}{\metre}: the physical experiment had no
+approach phase at all, against two metres of run-up in simulation. And
+the planner's manoeuvre asks for a \SI{2.5}{\metre} lateral offset in a
+basin \SIrange{2.7}{3.0}{\metre} wide. Because no external tracking was
+recorded, the physical runs can validate the command domain and nothing
+spatial, which we state as a result about what camera-only field
+campaigns can prove rather than as a caveat. We recover the real
+perception stream offline from the detector's own annotated video, audit
+our own frozen campaign and report the defects we found in it, and use
+post-deployment simulations -- explicitly labelled as such throughout --
+to separate the effect of each deployment change, which the single
+available pool day could not.
+\keywords{Sim-to-real transfer \and Underwater robotics \and Obstacle
+avoidance \and Monocular perception \and Deployment gap \and HoloOcean.}
+\end{abstract}

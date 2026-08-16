@@ -1,0 +1,110 @@
+\section{Limitations}
+\label{sec:limitations}
+
+We separate limitations of the physical campaign, defects we found in our
+own frozen study, and limits of the calibration itself. The second group
+is unusual to publish; we publish it because a frozen result whose flaws
+are known privately is worth less than one whose flaws are stated.
+
+\subsection{The physical campaign}
+
+\emph{Eight runs, one planner, three geometries, one day.} The design
+called for twenty runs across two planners. The dynamic-window planner
+was never flown, for the structural reason given in
+Section~\ref{sec:deployment}, and the pool was drained after a single
+day. Two of the three geometries have two runs each. No claim in this
+paper rests on a physical difference between geometries beyond the
+side-choice observation, which is reported with its sample size attached
+every time it appears.
+
+\emph{No external ground truth.} Nothing spatial about the physical runs
+was measured. This is the limitation that most constrains the paper, and
+it also produces one of its results: a camera-only field campaign of this
+kind can validate the command domain and the perception domain of a
+stack, and cannot validate its trajectory. Investigators planning similar
+work should record external tracking during the runs, not only before
+them.
+
+\emph{Uncontrolled disturbance.} Pool recirculation was measured at
+\SIrange{0.037}{0.053}{\metre\per\second}, of the same order as a third
+of the vehicle's commanded surge, and was non-stationary. It is present
+in every physical run and absent from every simulated one.
+
+\emph{Orphaned processes contaminated part of the session.} Duplicate
+planner instances survived process cleanup and published to the command
+topic, which is why the admission criterion of
+Section~\ref{sec:realresults} exists. Three admissible runs were recorded
+at above-grid rates and are admitted on the measured-duplicate test; run
+5 is excluded. We regard the criterion as defensible but note that it was
+formulated after the data existed, which is exactly the circumstance in
+which a threshold can be tuned to a desired answer. Ours is derived from
+the recordings that had a single publisher by construction, and we state
+it so a reader can disagree.
+
+\subsection{Defects in the frozen study}
+
+\emph{The observation relay and the planner disagree about the camera.}
+The relay decides whether a detection survives by converting apparent
+height to range at a \SI{60}{\degree} vertical field of view, while the
+oracle projects and the planner inverts at \SI{90}{\degree}. The relay
+therefore believes the obstacle roughly \num{1.5} times further away
+than the planner does, and applies the measured detection-probability
+curve to the wrong range band, in the sixty runs at S1 and above. The
+frozen results are what they are and we do not restate them; the effect
+is quantified as one rung of the post-deployment ablation.
+
+\emph{The frozen runs are not reproducible.} The relay's random seed is
+discarded when it is zero, which is the value the campaign used, so the
+stochastic levels were seeded from system entropy. Separately, the
+frozen campaign's command loop ran at about half its intended rate --
+\SI{10}{\hertz} on the nominal topic against \SI{20}{\hertz} when the
+same configuration is run on an idle machine -- because that loop is
+wall-clock driven and the campaign ran twenty runs back to back on a
+loaded machine, while the perception gate is simulated-time driven and
+was unaffected. Re-running the frozen configuration today produces
+minimum clearances spanning \SIrange{0.29}{3.25}{\metre} where the
+frozen campaign spanned \SIrange{0.50}{0.65}{\metre}. Every
+post-deployment comparison in this paper is therefore made against a
+baseline rung run in the same session on the same machine, and never
+against the frozen numbers.
+
+\emph{A benchmark constant that nothing reads.} The frozen benchmark
+file records a \SI{60}{\degree} vertical field of view for the shared
+range estimator. No node in either domain reads it; both used the
+planner's \SI{90}{\degree} default. The two domains therefore agree, and
+no sim-real mismatch follows, but a file whose stated purpose is to keep
+the domains aligned did not enforce this constant.
+
+\emph{Individual run failures.} One frozen run of eighty ends in a
+collision; two S2 runs never produced a planner-valid observation; four
+dynamic-window runs have no commitment distance, making those cells
+medians of four.
+
+\subsection{The calibration}
+
+The paired-observation dataset has no coverage between \SI{0.8} and
+\SI{1.6}{\metre}, which is the band the physical runs spent most of their
+time in. Command latency was never measured and is left at zero rather
+than guessed. Rise-time constants have spreads as large as their values.
+The translation axes are reported as symmetric because the sample cannot
+distinguish their directions, not because symmetry was established, and
+\texttt{sway+} rests on a single valid trial. Two actuator trials ended
+in contact and are excluded from the fit with their reason recorded.
+
+Most fundamentally, the ladder models the \emph{statistics} of the real
+detector and not the detector. The frozen study never ran a visual
+detector at all, and the property of the real detector that most shaped
+the physical campaign -- the range window imposed by its acceptance
+gates -- is not a statistic that any of S1, S2 or S3 could have
+contained.
+
+\subsection{What we would do differently}
+
+Record external tracking during runs, not only before them. Derive the
+scenario geometry from the basin rather than adapting the basin to a
+scenario. Check that every parameter in a shared benchmark file is read
+by something. Seed every stochastic component explicitly and assert the
+seed at run time. And treat the acceptance gates of a perception module
+as a first-class part of its interface, because in this study they
+determined the shape of the experiment more than any quantity we
+calibrated.

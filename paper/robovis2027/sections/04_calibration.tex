@@ -1,0 +1,84 @@
+\section{Measurement-Grounded Calibration: the S0--S3 Ladder}
+\label{sec:calibration}
+
+\subsection{Design principle: one owner per phenomenon}
+
+The ladder adds one measured phenomenon at a time, and each level owns
+exactly one. The rule matters because the obvious alternative --
+injecting everything measured at every level -- double-counts: a
+detection-probability model and a dropout-burst model both reduce the
+number of observations that reach the planner, and applied together they
+reduce it twice. We therefore fix that S1 owns the \emph{marginal}
+probability of detection and S2 owns only the \emph{correlation
+structure} of the misses, parameterised so as to reproduce S1's marginal
+exactly. The safeguard is structural rather than a matter of care: the
+two-state visible/blind gate is constructed so that its stationary
+visible fraction equals the marginal by identity, so S2 changes when the
+misses fall and never how many there are.
+
+\subsection{S1: a static observation model}
+
+S1 was fitted to paired samples in which the real detector's output and
+an independently measured range to the anchor were recorded together
+($n=24$ usable pairs). Three quantities were extracted. The
+\emph{probability of detection} varies strongly with range and
+non-monotonically: \num{0.67} below \SI{0.8}{\metre}, \num{0.94} between
+\SI{1.6} and \SI{2.0}{\metre}, and \num{0.15} beyond \SI{2.0}{\metre}.
+The \emph{monocular range estimator} reads \num{0.469} of true range with
+a median absolute error of \SI{1.01}{\metre}; the bias is injected at its
+physical origin, the apparent height, rather than as an additive error on
+range. The \emph{bearing} error has a systematic component that is a
+frame convention rather than a sensor property, so only its scatter
+(\SI{0.32}{\degree}) is injected.
+
+The dataset has a gap between \SI{0.8} and \SI{1.6}{\metre} that no
+amount of care removes, and the detection-probability curve is therefore
+interpolated across the band in which, as it turned out, the physical
+runs spent most of their time.
+
+\subsection{S2: rate and the structure of the gaps}
+
+S2 was fitted to the timing of the same recorded stream. Observations
+arrive at \SI{3.5}{\hertz}; the marginal acceptance is \num{0.259} of
+cycles; and the misses are strongly clustered, with a mean blind run of
+\num{9.16} cycles against the \num{3.53} that independent dropout would
+give, and a longest blind run of \num{57} cycles, about \SI{16}{\second}.
+That clustering is the point of the level. A planner that loses sight of
+an obstacle for one cycle at a time behaves quite differently from one
+that loses it for sixteen seconds, at identical average detection rates.
+
+\subsection{S3: the vehicle, downstream of the planner}
+
+S3 is a plant model applied to \texttt{/planner/cmd\_vel\_safe}, never to
+the planner. It was identified from open-water trials of the physical
+vehicle: full-command speeds of \SI{0.145}{\metre\per\second} in surge
+and \SI{0.123}{\metre\per\second} in sway; yaw response of
+\SI{0.0654}{\degree\per\second} per count with a 383-count deadband in
+one direction and \num{0.0537} with 220 in the other; and first-order
+rise and decay constants of \SI{2.0}{\second}/\SI{1.0}{\second} in surge
+and \SI{0.30}{\second}/\SI{0.97}{\second} in sway.
+
+Three honesty notes belong with those numbers. The translation axes are
+reported as symmetric because the available trials cannot distinguish
+their directions at this sample size, not because symmetry was verified;
+\texttt{sway+} rests on a single valid trial. The rise constants have
+spreads as large as their values. Command latency was never measured, so
+the plant exposes a latency parameter and leaves it at zero rather than
+injecting a plausible-looking value.
+
+\subsection{What the ladder does not contain}
+
+Two things measured during the campaign are deliberately absent. Pool
+recirculation was measured at \SIrange{0.037}{0.053}{\metre\per\second}
+and was non-stationary enough that successive measurements pointed in
+opposite directions; fitting a disturbance model to four inconsistent
+measurements would be invention, so the disturbance is an uncontrolled
+input present in the physical runs and absent from every simulated one.
+And, most consequentially, \emph{the ladder contains no visual detector}.
+Simulated observations come from an oracle projection of the obstacle
+geometry, degraded by the S1 and S2 statistics; every frozen run records
+its perception source as an oracle relay and not a visual result. The
+statistics were fitted to the real detector, so the surrogate is a
+principled one, but it is a surrogate, and Section~\ref{sec:deployment}
+reports what the real detector did that no statistical summary of it
+predicted.

@@ -1,11 +1,19 @@
-# Configuration of the real session of 2026-08-16, frozen after the
-# operator approved run 1. Every one of the 20 runs uses these values,
-# identically for both planners.
+# Configuration of the real session of 2026-08-16.
 #
-# These DIFFER from the frozen pool benchmark, and the difference is the
-# result of a morning of the real system refusing to act. Each change is
-# recorded with what forced it, because collectively they are a finding:
-# a stack tuned on simulated perception did not transfer.
+# CORRECTED 2026-08-16 after the final audit. The original version of this
+# file recorded what was BELIEVED to be running. One entry was wrong, and
+# the correction is kept visible rather than silently applied, because a
+# session record that quietly rewrites itself is worth nothing.
+#
+# These values DIFFER from the frozen pool benchmark, and the difference
+# is the result of a morning of the real system refusing to act. Each
+# change is recorded with what forced it, because collectively they are
+# the finding: a stack tuned on simulated perception did not transfer.
+#
+# WHAT WAS ACTUALLY RUNNING. Only three of these are set on the command
+# line by scripts/real/quick_run.py; the rest are defaults declared in
+# src/rov_real_bridge/launch/real_pipeline.launch.py, which is where the
+# values below were verified. Nothing here is taken from memory.
 session:
   detector:
     fallback_enabled: true      # the shank method found nothing in this
@@ -15,19 +23,64 @@ session:
                                 # the planner's risk threshold: 79 % of
                                 # frames detected the anchor and not one
                                 # lateral command was issued
+    # CONSEQUENCE MEASURED AFTER THE FACT, not a setting. The fallback
+    # accepts a blob only if its height is between 0.15 and 0.90 of the
+    # frame (scripts/real/anchor_detect.py:203-205). Through the shared
+    # monocular estimator at the 90 deg vertical FOV the planner actually
+    # used, that is an observable range window of 0.29 m to 2.11 m. The
+    # vehicle started 1.86 m from the anchor, so the obstacle was inside
+    # the window from the first frame and the run had no approach phase
+    # at all -- see engage_distance_m below.
+    observable_range_window_m: [0.29, 2.11]
   qualifier:
     warmup_min_updates: 2       # 20 never accumulated: the real bbox
     confirm_min_updates: 1      # moves between frames
   planner:
-    engage_distance_m: 5.0      # engage on sight. At 1.8 m the vehicle
-                                # was already past the anchor before the
-                                # monocular range dropped below it
+    # CORRECTED. This file previously recorded 5.0 with a justification
+    # about engaging on sight. The vehicle never ran at 5.0. The wrapper
+    # that launched every run forwards only three arguments
+    # (scratchpad quick.bat: `python -u quick_run.py %1 %2 %3`), so the
+    # fourth -- the engagement distance -- never reached the runner and
+    # it fell back to its own default of 1.8 m
+    # (scripts/real/quick_run.py:29). Every run's result.json records
+    # engage_distance_m 1.8, all nine of them.
+    #
+    # This matters more than a corrected number. The start was 1.86 m and
+    # engagement was 1.8 m: six centimetres apart. The real planner was
+    # inside engagement range at the moment of release, so there was no
+    # approach in reality at all, while the frozen simulation approaches
+    # from 3.5 m and engages at 1.5 m -- two metres of run-up. Any
+    # sim-real statement about WHEN the planner commits is comparing a
+    # measurement against a geometric certainty.
+    engage_distance_m: 1.8
+    engage_distance_m_believed: 5.0
     risk_enter_threshold: 0.30  # 0.55 never reached by a thin shank's
     risk_exit_threshold: 0.15   # apparent area; 0.05 reacted to walls
     min_avoidance_hold_s: 4.0   # 1 s bought 12 cm at the real 0.123 m/s
+    min_surge_during_avoidance: 0.08
+    # UNCHANGED FROM THE FROZEN CONFIGURATION, and infeasible in this
+    # pool. The committed planner strafes to a 2.5 m lateral offset and
+    # runs 4 m past the obstacle before returning
+    # (src/rov_obstacle_avoidance/config/local_avoidance_planner.yaml).
+    # The pool is 2.7-3.0 m wide and the anchor sits 1.86 m from the
+    # start. The vehicle was asked for a manoeuvre the basin cannot
+    # contain; run 7 ended against the wall. Nobody changed these on the
+    # day because nobody had noticed them.
+    clearance_offset_m: 2.5
+    pass_margin_m: 4.0
   actuation:
     straight_run_in_s: 0.0      # tried, made it worse, removed
     side_latch_s: 0.0           # latching the side stopped the 400-per-run
                                 # oscillation but drove it into the wall
+    # The packaged adapter ran in SHADOW for every run
+    # (real_control_mode:=shadow, allow_real_actuation:=false in
+    # quick_run.py). Thruster commands were issued by
+    # scripts/real/cmd_bridge.py, which applies the S3 calibration
+    # directly. Confirmed in every run's pipeline.log:
+    # "real adapter: SHADOW ... calibration=uncalibrated".
+    commands_issued_by: scripts/real/cmd_bridge.py
   run:
     duration_s: 25.0            # 45 s carried it into the far wall
+    planner: committed          # DWA issued no commands in the real
+                                # pipeline: it needs a pose estimate the
+                                # vehicle has no sensor for

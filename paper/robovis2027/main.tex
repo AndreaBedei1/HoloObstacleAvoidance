@@ -1,0 +1,87 @@
+%==============================================================================
+% ROBOVIS 2027 -- Regular Paper.
+%
+% VENUE FACTS, checked at https://robovis.scitevents.org on 2026-08-16:
+%   conference 27-28 February 2027; regular-paper deadline 15 September 2026;
+%   25-page limit, 10,000-50,000 characters; DOUBLE BLIND, and submissions
+%   may not be posted to preprint servers while under review; proceedings
+%   published by Springer, and the Templates page directs authors to the
+%   Springer LNCS conference-proceedings guidelines -- hence llncs, not
+%   IEEEtran, which the superseded draft in ../main.tex used.
+%
+% BLINDING: no author, affiliation, funder, city, repository URL or vehicle
+% serial appears in this file or any section it includes. The artefact is
+% referred to as "the accompanying repository" without a link.
+%
+% BUILD:  latexmk -pdf main.tex
+%
+% RULE, unchanged from the earlier draft and worth restating: every number
+% must be traceable to a committed experiment file. Nothing is rounded into
+% existence, and nothing that was not measured is reported as if it were.
+%==============================================================================
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+
+\sisetup{detect-weight=true, detect-family=true}
+
+% Two kinds of evidence appear in this paper and must never be confused.
+% These macros make the distinction typographic, so a reader skimming a
+% table still sees which is which.
+\newcommand{\frozenmark}{\textsc{pre}}
+\newcommand{\diagmark}{\textsc{post}}
+\newcommand{\realmark}{\textsc{real}}
+\newcommand{\nomeasure}{\textemdash\,}
+
+\begin{document}
+
+\title{When Calibration Is Not Enough: A Documented Deployment Gap for
+Camera-Driven Underwater Obstacle Avoidance}
+
+\titlerunning{A Documented Deployment Gap in Camera-Driven Avoidance}
+
+\author{Anonymous}
+\authorrunning{Anonymous}
+\institute{}
+
+\maketitle
+
+\input{sections/00_abstract}
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_system}
+\input{sections/04_calibration}
+\input{sections/05_frozen_study}
+\input{sections/06_deployment}
+\input{sections/07_real_results}
+\input{sections/08_diagnostic}
+\input{sections/09_simreal}
+\input{sections/10_limitations}
+\input{sections/11_conclusion}
+
+\begin{credits}
+\subsubsection{\ackname}
+Portions of the text and of the analysis code in the accompanying
+repository were drafted with the assistance of a large language model
+(Anthropic Claude), and were reviewed, corrected and verified against the
+experimental records by the authors, who take full responsibility for the
+content. Disclosure is made in accordance with the conference policy on
+generative AI.
+
+\subsubsection{\discintname}
+The authors have no competing interests to declare.
+\end{credits}
+
+\bibliographystyle{splncs04}
+\bibliography{../references}
+
+\end{document}

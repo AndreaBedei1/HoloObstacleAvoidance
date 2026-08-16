@@ -1,0 +1,67 @@
+# K1M -- MIRRORED offset geometry. POST-DEPLOYMENT DIAGNOSTIC, NOT a
+# frozen pre-real scenario.
+#
+# K1M did not exist when the 80 predictions were frozen. It was invented
+# during the real session of 2026-08-16, after the vehicle had chosen the
+# same side in six of the first seven runs, because K0 and K1 cannot tell
+# an obstacle-relative choice from a fixed rightward bias: K0 puts the
+# anchor dead ahead, and K1 offsets it to the side a rightward bias would
+# already favour. Mirroring the offset separates the two explanations in
+# a single run.
+#
+# Two real runs were flown in this geometry and both went left, against
+# five of five going right in K0. Two runs cannot carry that conclusion,
+# which is exactly why this scenario exists in simulation: many seeds
+# here, two observations there, and the two kept apart in the reporting.
+#
+# Identical to planner_K1.yaml in every respect except the SIGN of the
+# obstacle offset.
+holoocean:
+  stock_world: SimpleUnderwater
+  stock_package: Ocean
+  agent_type: BlueROV2
+  agent_name: rov0
+  camera_sensor: FrontCamera
+  camera_socket: CameraSocket
+  ticks_per_sec: 30   # MUST be 30: UE physics advances max 1/30 s per frame, so dt=1/30 keeps physics time == declared sim time; 30 Hz real-time sustained via high-res pacing + 256x256 camera
+  frames_per_sec: false
+  show_viewport: false   # keep engine below real-time budget for baseline0
+
+sim:
+  motion_model: dynamics
+  cmd_timeout_s: 1.0
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 256   # camera unused by oracle baseline0; small render keeps real-time
+  height: 256
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 0.8
+  max_sway: 0.5
+  max_heave: 0.4
+  max_yaw_rate: 0.6
+
+dynamics:
+  command_latency_s: 0.0
+  max_lin_accel: 1.0
+  max_yaw_accel: 1.5
+
+obstacles:
+  - name: f_obstacle
+    class_name: anchor
+    prop_type: sphere
+    # 0.35 m, not 0.75 m. At 0.75 m and 3.5 m range the bearing is 12
+    # degrees, which lands EXACTLY on the committed planner's central
+    # zone boundary: it judged the obstacle non-blocking and drove
+    # straight past at every calibration level, with zero lateral
+    # excursion, while DWA manoeuvred. The two planners were therefore
+    # solving different problems in this geometry and the C-vs-D
+    # comparison was degenerate. At 0.35 m the obstacle is blocking for
+    # both, and K1 remains a distinct off-centre approach.
+    relative_position: [3.5, -0.35, 0.0]
+    radius_m: 0.25
+    scale: 0.5
+    material: gold

@@ -129,7 +129,31 @@ F_SCENARIOS = {
            "desc": "POOL: central 0.5 m obstacle at 3.5 m, 0.15 m/s"},
     "K1": {"duration_s": 90.0, "yaml": "planner_K1.yaml",
            "args": None,          # filled from the frozen pool benchmark
-           "desc": "POOL: 0.5 m obstacle 0.75 m left at 3.5 m, 0.15 m/s"},
+           # The obstacle is at 0.35 m, not the 0.75 m this line used to
+           # say: 0.75 m was rejected before the freeze as degenerate and
+           # the scenario file has carried 0.35 m throughout, verified in
+           # all 80 frozen runs. Only this string was stale.
+           "desc": "POOL: 0.5 m obstacle 0.35 m off-axis at 3.5 m, 0.15 m/s"},
+    # ---- POST-DEPLOYMENT DIAGNOSTIC SCENARIOS -------------------------
+    # Everything below was added AFTER the real campaign. None of it took
+    # part in the 80 frozen predictions and nothing here may be reported
+    # as a pre-registered result.
+    #
+    # K1M mirrors K1, so that a side choice driven by the obstacle can be
+    # told apart from a fixed directional bias -- the question the real
+    # session raised and which two real runs cannot settle.
+    "K1M": {"duration_s": 90.0, "yaml": "planner_K1M.yaml",
+            "args": None,
+            "desc": "DIAG: K1 mirrored, obstacle 0.35 m to the other side"},
+    # The D-series starts the vehicle 1.86 m from the obstacle instead of
+    # 3.5 m, which is the approach the pool and its overhead camera
+    # actually allowed.
+    "D0": {"duration_s": 60.0, "yaml": "planner_D0.yaml", "args": None,
+           "desc": "DIAG: deployed approach 1.86 m, obstacle centred"},
+    "D1": {"duration_s": 60.0, "yaml": "planner_D1.yaml", "args": None,
+           "desc": "DIAG: deployed approach 1.86 m, obstacle 0.35 m off-axis"},
+    "D1M": {"duration_s": 60.0, "yaml": "planner_D1M.yaml", "args": None,
+            "desc": "DIAG: deployed approach 1.86 m, offset mirrored"},
 }
 DURATION_S = 120.0
 
@@ -433,6 +457,15 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--duration", type=float, default=None)
     parser.add_argument("--dwa-args", nargs="*", default=[])
+    # Arbitrary launch overrides for the POST-DEPLOYMENT diagnostic
+    # campaigns. Passing nothing here reproduces the frozen
+    # configuration, because every diagnostic launch argument
+    # defaults to its frozen value; whatever IS passed is recorded
+    # verbatim in the campaign manifest, so a diagnostic result can
+    # never be mistaken for a frozen one.
+    parser.add_argument("--extra-args", nargs="*", default=[],
+                        help="launch key:=value overrides, recorded "
+                             "in the manifest")
     parser.add_argument("--calib", default="S0",
                         choices=["S0", "S1", "S2", "S3"],
                         help="Phase 10 calibration level. S0 is the "
@@ -491,7 +524,9 @@ def main() -> int:
                 if args.resume:
                     preserve_partial(os.path.join(args.out, "runs",
                                                   f"{sc}_{planner}_{i}"))
-                r = run_once(planner, sc, i, args.out, args.dwa_args)
+                r = run_once(planner, sc, i, args.out,
+                             list(args.dwa_args)
+                             + list(args.extra_args))
                 why = is_technical_invalid(r)
                 if why:
                     # Protocol section 4: technical-invalid runs are
@@ -499,7 +534,8 @@ def main() -> int:
                     print(f"[planner8] technical invalid ({why}) -> "
                           "one re-run", flush=True)
                     r_retry = run_once(planner, sc, i, args.out,
-                                       args.dwa_args)
+                                       list(args.dwa_args)
+                                       + list(args.extra_args))
                     r_retry["replaced_technical_invalid"] = why
                     if not is_technical_invalid(r_retry):
                         r = r_retry
@@ -522,6 +558,8 @@ def main() -> int:
                     "scenarios": {k: v["desc"]
                                   for k, v in F_SCENARIOS.items()},
                     "dwa_args": list(args.dwa_args),
+                    "extra_args": list(args.extra_args),
+                    "frozen_configuration": not args.extra_args,
                     "duration_s": DURATION_S,
                     "resumed": bool(args.resume),
                     "results": results,

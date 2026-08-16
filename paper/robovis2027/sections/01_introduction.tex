@@ -1,0 +1,107 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Simulation is where underwater autonomy is developed, and the water is
+where it is judged. Between the two sits a gap that the field usually
+reports as a number -- a success rate that dropped, a tracking error that
+grew -- and rarely as a mechanism. This paper reports the mechanism for
+one camera-driven obstacle-avoidance stack, on one vehicle, in one pool,
+and argues that the mechanism was not what the calibration effort had
+been aimed at.
+
+The study began from a conventional premise: if a simulator's mismatches
+with reality are measured rather than guessed, closed-loop behaviour in
+simulation should approach closed-loop behaviour in the water. We
+measured three of them against the physical system. A static observation
+model captured how often the real detector sees the obstacle at each
+range and how badly its monocular range estimate is biased. A timing
+model captured the rate at which observations arrive and, separately,
+the burst structure of the gaps between them. A vehicle-response model
+captured saturation, deadband, per-direction asymmetry and first-order
+lag, applied downstream of the planner so that no calibration level ever
+edits the controller. Stacking these on the historical simulator gives
+four levels, S0 to S3, each strictly more realistic than the last.
+
+We then did what a study of predictive validity requires and what small
+robotics campaigns seldom do: we ran the simulated experiment first and
+froze it. Eighty closed-loop runs -- four levels, two planners, two
+obstacle geometries, five repetitions -- were executed, verified, hashed
+and committed before the vehicle entered the water, so that the physical
+campaign could only confirm or refute, never inform, the predictions.
+
+The stack did not work on the vehicle. It detected the anchor in most
+frames and commanded nothing. Making it act required seven changes made
+over a single morning, and the pool was available for that one day. Nine
+runs were flown with the committed planner and eight are admissible; the
+dynamic-window baseline was never flown at all, because it requires a
+pose estimate the vehicle carries no sensor to provide. The pool was
+then drained. The physical dataset is closed and cannot be extended.
+
+That outcome changes what the paper can honestly claim, and we let it.
+A campaign that measures a different stack from the one that was frozen
+cannot attribute a physical result to a calibration level, so we make no
+claim of causal simulator predictivity and no claim about which planner
+is better in the water. What the campaign can support is different, and
+in our view more useful: an enumerated, file-level account of what had to
+change, and a diagnosis of which changes mattered.
+
+Two of the findings are geometric rather than statistical, and neither
+was among the quantities we had spent months calibrating. First, the
+detector that made the real system work is a fallback that accepts a
+candidate only when its image height lies between $0.15$ and $0.90$ of
+the frame; through the shared monocular estimator this is an observable
+range window of \SI{0.29}{\metre} to \SI{2.11}{\metre}. The vehicle
+started \SI{1.86}{\metre} from the anchor and its planner engaged at
+\SI{1.80}{\metre}. The physical experiment therefore had no approach
+phase: the planner was inside engagement range at the instant of
+release, while its simulated counterpart approaches from
+\SI{3.5}{\metre} and engages at \SI{1.5}{\metre}. Second, the planner
+asks for a manoeuvre that the basin cannot contain -- a
+\SI{2.5}{\metre} lateral offset and a \SI{4}{\metre} run past the
+obstacle, in a pool \SIrange{2.7}{3.0}{\metre} wide. Nobody changed
+those two parameters on the day, because nobody had noticed them.
+
+A third finding concerns what a camera-only field campaign can measure at
+all. No external tracking was recorded during the runs, so the vehicle's
+trajectory, path length, lateral excursion and true clearance do not
+exist for any physical run and cannot be recovered. We could have
+integrated the commanded velocity and drawn plausible trajectories; we
+do not, anywhere, because integrating an open-loop model of a
+saturating, deadbanded vehicle in moving water manufactures precisely
+the quantities under test. What remains is the command stream for all
+eight runs, and -- recovered offline from the detector's own annotated
+video -- the observation stream that reached the planner, including the
+range the planner believed. The comparable surface between the two
+domains is therefore the command domain, and we report it as such.
+
+Finally, we audited our own frozen campaign and report what the audit
+found, including a relay that converts image height to range at a
+different field of view from the planner that inverts it, and a random
+seed that is silently discarded. A frozen result whose defects are known
+privately is worse than one whose defects are published.
+
+Our contributions are:
+
+\begin{enumerate}
+\item a measurement-grounded calibration ladder for a camera-driven
+  underwater avoidance loop, with every level fitted to paired
+  observations of the physical vehicle rather than assumed;
+\item a pre-registered, hashed simulated campaign executed before any
+  physical run, together with a candid audit of its own defects;
+\item a file-level account of a deployment gap -- seven changes, each
+  with what forced it -- and the finding that the dominant obstacles were
+  the geometry of the basin and the range window of the detector rather
+  than any calibrated quantity;
+\item a reproducible offline recovery of the physical perception stream
+  from annotated video, and an explicit statement of which physical
+  quantities are and are not measurable without external ground truth;
+\item a post-deployment ablation that separates the effect of each
+  deployment change, which a single pool day could not.
+\end{enumerate}
+
+Throughout, evidence gathered before the physical campaign is marked
+\frozenmark, evidence gathered after it and with its outcome known is
+marked \diagmark, and physical measurements are marked \realmark. The
+distinction is load-bearing: the post-deployment simulations were
+designed by people who already knew how the physical runs had gone, and
+no amount of care makes that the same kind of evidence as a prediction.

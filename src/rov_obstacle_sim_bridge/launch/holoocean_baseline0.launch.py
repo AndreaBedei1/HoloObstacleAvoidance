@@ -101,6 +101,23 @@ def generate_launch_description():
         DeclareLaunchArgument("s2_fit_path", default_value=""),
         DeclareLaunchArgument("calibration_seed", default_value="0"),
         DeclareLaunchArgument("relay_status_path", default_value=""),
+        # ---- POST-DEPLOYMENT DIAGNOSTIC KNOBS ---------------------------
+        # Every default below is the value the 80 frozen runs used, so a
+        # launch that passes none of them reproduces the frozen
+        # configuration exactly. They exist so the changes forced on the
+        # real vehicle can be reintroduced into simulation ONE AT A TIME
+        # and their individual effect measured, which is the only way to
+        # say which of them mattered.
+        DeclareLaunchArgument("relay_vfov_deg", default_value="60.0"),
+        DeclareLaunchArgument("risk_enter_threshold", default_value="0.55"),
+        DeclareLaunchArgument("risk_exit_threshold", default_value="0.30"),
+        DeclareLaunchArgument("min_avoidance_hold_s", default_value="1.0"),
+        DeclareLaunchArgument("min_surge_during_avoidance",
+                              default_value="0.08"),
+        DeclareLaunchArgument("clearance_offset_m", default_value="2.5"),
+        DeclareLaunchArgument("pass_margin_m", default_value="4.0"),
+        DeclareLaunchArgument("warmup_min_updates", default_value="20"),
+        DeclareLaunchArgument("confirm_min_updates", default_value="3"),
 
         Node(
             package="rov_obstacle_sim_bridge",
@@ -153,6 +170,20 @@ def generate_launch_description():
                 "status_path": LaunchConfiguration("relay_status_path"),
                 "target_height_m": LaunchConfiguration(
                     "target_obstacle_height_m"),
+                # The relay converts between apparent height and range to
+                # decide whether a detection survives, and its default
+                # vfov is 60 while the oracle projects and the planner
+                # inverts at 90 (planner.py:106, and no launch file in
+                # either domain overrides it). At 60 the relay believes
+                # the obstacle is about 1.5x further than the planner
+                # does, so the measured detection-probability curve lands
+                # on the wrong range band.
+                #
+                # The DEFAULT STAYS 60 so the 80 frozen runs remain
+                # exactly what they were. Correcting it is a diagnostic
+                # experiment, run separately and reported as such.
+                "vfov_deg": ParameterValue(
+                    LaunchConfiguration("relay_vfov_deg"), value_type=float),
             }],
         ),
         Node(
@@ -176,6 +207,12 @@ def generate_launch_description():
             parameters=[{
                 "method": LaunchConfiguration("estimator_method"),
                 "noise_model_path": LaunchConfiguration("noise_model_path"),
+                "warmup_min_updates": ParameterValue(
+                    LaunchConfiguration("warmup_min_updates"),
+                    value_type=int),
+                "confirm_min_updates": ParameterValue(
+                    LaunchConfiguration("confirm_min_updates"),
+                    value_type=int),
             }],
         ),
         Node(
@@ -208,6 +245,33 @@ def generate_launch_description():
                     value_type=float),
                 "target_obstacle_height_m":
                     LaunchConfiguration("target_obstacle_height_m"),
+                # Diagnostic knobs; defaults equal the frozen values.
+                "risk_enter_threshold": ParameterValue(
+                    LaunchConfiguration("risk_enter_threshold"),
+                    value_type=float),
+                "risk_exit_threshold": ParameterValue(
+                    LaunchConfiguration("risk_exit_threshold"),
+                    value_type=float),
+                "min_avoidance_hold_s": ParameterValue(
+                    LaunchConfiguration("min_avoidance_hold_s"),
+                    value_type=float),
+                "min_surge_during_avoidance": ParameterValue(
+                    LaunchConfiguration("min_surge_during_avoidance"),
+                    value_type=float),
+                # The manoeuvre GEOMETRY. The committed planner strafes to
+                # a 2.5 m lateral offset and runs 4 m past the obstacle
+                # before returning. The pool is 2.7-3.0 m wide and the
+                # anchor sits 1.86 m from the start, so neither figure
+                # fits inside it: the real vehicle was asked for a
+                # manoeuvre the basin could not contain, and one run ended
+                # against the wall. Exposed here so that constraint can be
+                # simulated instead of argued.
+                "clearance_offset_m": ParameterValue(
+                    LaunchConfiguration("clearance_offset_m"),
+                    value_type=float),
+                "pass_margin_m": ParameterValue(
+                    LaunchConfiguration("pass_margin_m"),
+                    value_type=float),
             }],
             condition=IfCondition(PythonExpression(
                 ["'", LaunchConfiguration("planner"), "' == 'committed'"])),

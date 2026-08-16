@@ -1,0 +1,88 @@
+\section{Post-Deployment Diagnostic Simulation \diagmark}
+\label{sec:diagnostic}
+
+\subsection{Why this is a separate kind of evidence}
+
+Everything in this section was run after the physical campaign, by people
+who already knew how it had gone. It is not a prediction, it was not
+pre-registered, and no result here may be read as confirming the frozen
+study. We keep the distinction typographic (\diagmark\ against
+\frozenmark) rather than relying on the reader to remember which section
+they are in.
+
+The motivation is that the physical campaign cannot answer its own most
+interesting question. Seven changes were made to the stack in a single
+morning, all of them together, with no repetitions of the intermediate
+states, because there was one day of pool time. Which of them carried the
+effect is unanswerable from eight runs. Simulation can do what the pool
+cannot: apply the changes one at a time, with repetitions, holding
+everything else at its frozen value.
+
+\subsection{A self-contained baseline, and why the frozen numbers are not
+used as one}
+
+The natural design would compare each rung against the 80 frozen runs.
+We do not, because the frozen campaign is not reproducible. Two causes
+are identified in Section~\ref{sec:limitations}: the observation relay's
+random seed is discarded when it is zero, which is the value the campaign
+used; and the frozen campaign's command loop ran at roughly half its
+intended rate because that loop is wall-clock driven and twenty runs were
+executed back to back on a loaded machine. Re-running the frozen
+configuration on an idle machine gives minimum clearances spanning
+\SIrange{0.29}{3.25}{\metre} where the frozen campaign spanned
+\SIrange{0.50}{0.65}{\metre}.
+
+The ablation is therefore self-contained. Its first rung is the frozen
+\emph{configuration} run in this session, on this machine, alongside
+every other rung, and every comparison is rung-against-rung. Ten
+repetitions per rung are used rather than five, because the baseline's
+own spread demands it, and results are reported as medians with
+interquartile ranges together with the fraction of runs that manoeuvred
+at all -- a bimodal outcome is not honestly summarised by a mean.
+
+\subsection{The ladder}
+
+Each rung adds one documented deployment change to the frozen
+configuration; the final rung is all of them together, which is the
+configuration that flew.
+
+\begin{table}[t]
+\centering
+\caption{The diagnostic ablation \diagmark. All runs use the committed
+planner, the \textsf{K0} geometry and the S3 calibration level, with ten
+repetitions per rung. Rungs A1--A4 are changes made in the pool; A5 is a
+defect found in the frozen study during the final audit; A6 is a
+constraint nobody noticed on the day.}
+\label{tab:ablation-design}
+\begin{tabular}{lll}
+\toprule
+rung & change & origin \\
+\midrule
+A0 & frozen configuration & baseline \\
+A1 & qualifier warm-up $20\!\to\!2$, confirm $3\!\to\!1$ & forced in pool \\
+A2 & risk thresholds $0.55/0.30 \to 0.30/0.15$ & forced in pool \\
+A3 & avoidance hold $1.0 \to \SI{4.0}{\second}$ & forced in pool \\
+A4 & engagement range $1.5 \to \SI{1.8}{\metre}$ & as actually flown \\
+A5 & relay field of view $60 \to \SI{90}{\degree}$ & audit defect \\
+A6 & clearing offset $2.5 \to \SI{0.6}{\metre}$, run-past
+     $4.0 \to \SI{1.0}{\metre}$ & basin constraint \\
+A7 & all of the above & the flown configuration \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A4 uses \SI{1.8}{\metre} and not the \SI{5.0}{\metre} recorded in the
+session file, for the reason given in Section~\ref{sec:deployment}: every
+run records \SI{1.8}{\metre}, and the session file is wrong.
+
+A6 is not a change anyone made. It is included because the frozen planner
+asks for a manoeuvre the basin cannot contain, and
+Section~\ref{sec:simreal} shows from the command stream that no physical
+run ever left the strafe phase. A6 asks what the same planner does when
+given a manoeuvre that fits, and is the rung we expect to matter most --
+a prediction we record here, before reporting the outcome, because the
+rest of this section was written with the physical results already known.
+
+\subsection{Results}
+
+\input{sections/08b_ablation_results}

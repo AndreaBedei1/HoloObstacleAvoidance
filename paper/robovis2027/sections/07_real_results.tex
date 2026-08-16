@@ -1,0 +1,133 @@
+\section{Physical Results \realmark}
+\label{sec:realresults}
+
+\subsection{What was flown, and what was recorded}
+
+Nine runs were flown on a single day, all with the committed planner.
+Run~5 is excluded by the criterion described below, leaving eight
+admissible runs across three geometries: \textsf{K0} with the anchor on
+the approach line ($n=4$), \textsf{K1} offset \SI{0.35}{\metre} ($n=2$),
+and \textsf{K1M}, the mirror of \textsf{K1} ($n=2$). \textsf{K1M} was
+invented during the session and was never pre-registered; its purpose
+and its limits are stated in Section~\ref{sec:sidechoice}.
+
+Each run recorded the command stream at \SI{19}{\hertz} and an annotated
+onboard video. \emph{No external tracking was recorded during any run.}
+The overhead camera was used to measure and verify the start pose before
+each release and was deliberately not opened inside the run process,
+because doing so had killed several runs outright. The consequence is
+permanent and applies to every physical run in this paper: trajectory,
+path length, lateral excursion, forward progress, true range to the
+anchor and true minimum clearance do not exist and cannot be
+reconstructed.
+
+We could have integrated the commanded velocity and produced all six.
+We do not, here or anywhere else, because integrating an open-loop model
+of a saturating, deadbanded vehicle in moving water would manufacture
+precisely the quantities under test. Where a quantity was not observed,
+the tables below say so.
+
+\subsection{Admissibility}
+
+Some recordings contain more command samples than the \SI{19}{\hertz}
+publication grid holds, because orphaned planner processes from earlier
+runs survived a name-based process sweep and published to the same
+topic. Where the surplus samples are exact duplicates they carry no
+information and collapsing them onto the grid is resampling; where they
+are not, they are genuine divergence between publishers and the run
+cannot be repaired. The admission test is measured rather than chosen:
+the threshold is the largest within-cell command spread among recordings
+made \emph{at} the grid rate, which have a single publisher by
+construction (\SI{0.0107}{\metre\per\second}). Eight runs pass; run~5,
+at \SI{0.0349}{\metre\per\second}, does not, and is excluded while its
+recording is retained.
+
+\subsection{Command-domain results}
+
+Table~\ref{tab:real} reports every admissible run individually. With
+eight runs and two per off-axis geometry, we report runs and medians and
+avoid inferential statistics entirely; an effect size computed on $n=2$
+would be decoration.
+
+\begin{table}[t]
+\centering
+\caption{The eight admissible physical runs \realmark. \emph{det}:
+fraction of frames in which the detector reported the obstacle;
+\emph{surge}: mean commanded surge; \emph{lat}: fraction of samples with
+a lateral command; \emph{rev}: sign reversals; \emph{side} and $t_c$:
+side and time of the first sustained lateral commitment
+($>\SI{0.05}{\metre\per\second}$ held \SI{1.0}{\second}). Entries marked
+\emph{cens.}\ began already committed, so the time is a bound.
+Commitment \emph{distance} is absent from this table because it was
+never observed.}
+\label{tab:real}
+\begin{tabular}{rlrrrrrlr}
+\toprule
+run & geo & Hz & det & surge & lat & rev & side & $t_c$ (\si{\second}) \\
+\midrule
+1 & K0  & 18.9 & 0.79 & 0.149 & 0.32 & 1 & right & 8.84 \\
+2 & K0  & 18.8 & 0.89 & 0.113 & 0.53 & 2 & right & 5.16 \\
+3 & K0  & 36.2 & 0.88 & 0.133 & 0.24 & 0 & right & cens. \\
+4 & K0  & 55.6 & 0.97 & 0.113 & 0.53 & 2 & right & cens. \\
+6 & K1  & 18.7 & 0.94 & 0.105 & 0.64 & 1 & right & 6.05 \\
+7 & K1  & 18.7 & 0.85 & 0.123 & 0.38 & 1 & left  & 10.53 \\
+8 & K1M & 18.6 & 0.84 & 0.120 & 0.43 & 1 & left  & 6.58 \\
+9 & K1M & 18.7 & 0.71 & 0.110 & 0.57 & 3 & left  & 8.53 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations. The vehicle detected the anchor in
+\SIrange{71}{97}{\percent} of frames and avoided it in every admissible
+run, never stalling: the commanded surge is zero in less than
+\SI{1}{\percent} of samples throughout. Median commanded surge is
+\SI{0.123}, \SI{0.114} and \SI{0.115}{\metre\per\second} in
+\textsf{K0}, \textsf{K1} and \textsf{K1M} -- propulsion does not depend
+on geometry, as it should not. And three of the four \textsf{K0} runs
+are left-censored: they were already commanding laterally at the first
+recorded sample, which follows directly from starting
+\SI{6}{\centi\metre} outside the engagement range.
+
+\subsection{Side choice follows the obstacle}
+\label{sec:sidechoice}
+
+Through the first seven runs the vehicle chose the same side six times.
+Two explanations fit that equally well -- the planner selects its side
+from where it sees the obstacle, or the vehicle simply always goes right
+for a mechanical, perceptual or tie-breaking reason -- and neither
+\textsf{K0} nor \textsf{K1} can separate them, because \textsf{K0} puts
+the anchor dead ahead and \textsf{K1}'s offset lies on the side a
+rightward bias would already favour. Mirroring the offset separates
+them in a single run, so the geometry was mirrored and two runs flown.
+
+Both went left, against four of four going right in \textsf{K0}. Read
+with its sample size, this is consistent with side choice following the
+obstacle and inconsistent with a fixed bias, and it is the strongest
+statement two runs can carry. \textsf{K1M} was not pre-registered, was
+designed after seeing six same-side outcomes, and has $n=2$; we treat
+it as an exploratory observation that motivated the simulated study in
+Section~\ref{sec:diagnostic}, not as a confirmatory result.
+
+\subsection{The recovered perception stream}
+
+The detector drew its own output on every frame it processed -- a green
+box for an accepted detection, orange for a rejected one, nothing when
+it saw nothing -- so the observation stream that reached the planner can
+be read back exactly from the recordings, for the six runs that have
+video. This is recovery, not re-detection: no detector is re-run, and
+the numbers are what the planner was actually given. Reading the box
+height through Equation~\ref{eq:range} recovers the range the planner
+\emph{believed}, which is the quantity that exists on both sides of the
+sim-real comparison. The recovery's own measurement error, from the
+four-pixel stroke width, has a median of \SI{0.02}{\metre}, two orders
+below the estimator's own bias.
+
+The recovered stream shows what the range window of
+Section~\ref{sec:deployment} implies. Accepted detections occupy
+\SIrange{71}{91}{\percent} of frames; their median believed range is
+\SIrange{0.94}{1.51}{\metre} across runs; and between \SI{0} and
+\SI{28}{\percent} of accepted frames sit exactly at the detector's
+upper size gate, where the reported range saturates at
+\SI{0.30}{\metre} and stops being a measurement. We report that
+saturation fraction rather than a minimum range, because the minimum is
+the gate and not the anchor.

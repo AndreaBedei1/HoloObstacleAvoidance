@@ -1,0 +1,122 @@
+\section{Deployment, and the Gap It Exposed}
+\label{sec:deployment}
+
+\subsection{What happened}
+
+The frozen stack was taken to the pool and did not act. In the first
+runs the detector reported the anchor in a majority of frames, the
+qualifier discarded every message, and the planner issued no lateral
+command while the vehicle drove past the obstacle. Over one morning the
+stack was changed until it avoided the anchor reliably. The pool was
+available for that day only. Table~\ref{tab:gap} is the complete list of
+what differed by the time the campaign ran, each entry verified against
+both source files rather than recalled.
+
+\begin{table}[t]
+\centering
+\caption{The deployment gap \realmark: every difference between the
+stack that produced the frozen predictions and the stack that flew.
+\emph{forced} marks a change made deliberately on the day;
+\emph{unnoticed} marks a difference nobody acted on, which the
+post-deployment ablation (Section~\ref{sec:diagnostic}) finds to matter
+more than most of the forced ones.}
+\label{tab:gap}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llll}
+\toprule
+quantity & frozen & flown & status \\
+\midrule
+qualifier warm-up updates & 20 & 2 & forced \\
+qualifier confirm updates & 3 & 1 & forced \\
+risk enter / exit threshold & 0.55 / 0.30 & 0.30 / 0.15 & forced \\
+minimum avoidance hold & \SI{1.0}{\second} & \SI{4.0}{\second} & forced \\
+engagement range & \SI{1.5}{\metre} & \SI{1.8}{\metre} & unintended \\
+observation source & oracle relay + S1/S2 & image detector, blob
+fallback & structural \\
+approach distance & \SI{3.5}{\metre} & \SI{1.86}{\metre} & structural \\
+observable range window & unbounded & \SIrange{0.29}{2.11}{\metre} &
+unnoticed \\
+clearing offset & \SI{2.5}{\metre} & \SI{2.5}{\metre} (basin
+\SI{2.7}{\metre}) & unnoticed \\
+run-past margin & \SI{4.0}{\metre} & \SI{4.0}{\metre} (basin
+\SI{6}{\metre}) & unnoticed \\
+run duration & \SIrange{90}{120}{\second} & \SI{25}{\second} & forced \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The forced changes, and why each was necessary}
+
+\emph{Qualification.} The warm-up requires twenty mutually coherent
+updates. Simulated perception delivers a coherent detection every tick
+and reaches twenty in a second; the real detector produced a box that
+moved between frames, so twenty never accumulated and the qualifier
+discarded all 1152 messages of a run while the vehicle drove past the
+anchor. Two updates and one confirmation are what the real evidence
+supports.
+
+\emph{Risk threshold.} The risk score combines confidence, centrality and
+apparent area. The simulated obstacle is a broad projection returned at
+full confidence; the real anchor is a thin shank whose apparent area is
+small, so the score stayed far below \num{0.55} even with the anchor
+detected in \SI{79}{\percent} of frames and \SI{75}{\percent} of those
+qualified. Lowering the threshold to \num{0.30} made the planner act;
+\num{0.05}, tried first, made it react to the pool walls.
+
+\emph{Avoidance hold.} A one-second hold was tuned where the simulated
+vehicle strafes at \SIrange{0.20}{0.30}{\metre\per\second}. The real
+vehicle reaches \SI{0.123}{\metre\per\second}, so one second buys
+\SI{12}{\centi\metre} and the anchor is still there. Four seconds buys
+about half a metre. This is the same shortfall that the S3 plant model
+injects in simulation, appearing in the water.
+
+\subsection{The differences nobody noticed, which mattered more}
+
+\emph{The detector has a range window, and the experiment fitted inside
+it.} The fallback detector accepts a candidate only if its image height
+lies between \num{0.15} and \num{0.90} of the frame. Inverting
+Equation~\ref{eq:range} at the \SI{90}{\degree} vertical field of view
+the planner actually used, those gates are an observable range window of
+\SIrange{0.29}{2.11}{\metre}. The vehicle started \SI{1.86}{\metre} from
+the anchor, and the engagement range was \SI{1.80}{\metre}: six
+centimetres apart. The physical planner was inside engagement range at
+the instant of release. Nothing in the physical campaign measures
+\emph{when} the planner decides to act, because the answer was fixed by
+the geometry of the basin and the acceptance gates of the detector
+before the vehicle moved.
+
+That the approach was \SI{1.86}{\metre} was not a choice either. The
+overhead camera used to measure the start pose covers
+\SI{4.24}{\metre}$\times$\SI{2.38}{\metre}, so \SI{1.86}{\metre} is the
+furthest the vehicle can start and still be wholly visible -- and a
+start that cannot be measured before release makes a pre-registered
+start region meaningless.
+
+\emph{The manoeuvre does not fit the basin.} The committed planner
+strafes to a \SI{2.5}{\metre} clearing offset and runs \SI{4}{\metre}
+past the obstacle before returning. The basin is
+\SIrange{2.7}{3.0}{\metre} wide, and the anchor is \SI{1.86}{\metre}
+ahead of the start. Neither figure fits. Both were left at their frozen
+values throughout the campaign, because the deployment effort was
+directed at the parameters the calibration work had made salient. One
+run ended against the far wall after a correctly executed avoidance.
+
+\emph{The engagement range was never what the record said.} The session
+record states \SI{5.0}{\metre}, with a justification for engaging on
+sight. The runs used \SI{1.8}{\metre}: the wrapper that launched every
+run forwards three arguments and the engagement range was the fourth, so
+it silently fell back to the runner's default. All nine runs record
+\SI{1.8}{\metre}. We report this because it is exactly the class of
+error a matched sim-to-real study is supposed to catch and, in this
+instance, only the final audit did.
+
+\subsection{The planner that could not be flown}
+
+The dynamic-window planner issued no command in the physical pipeline.
+It evaluates route adherence and projects candidate velocities forward,
+both of which need a pose estimate; in simulation this comes from
+dead-reckoned odometry that the physical vehicle, with no velocity log
+and no acoustic positioning, cannot produce. The consequence for this
+paper is not subtle and we do not soften it: half of the frozen design
+was never tested, the physical campaign is single-planner, and every
+comparison between the two planners in this paper is simulated.

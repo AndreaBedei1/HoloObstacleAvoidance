@@ -1,0 +1,64 @@
+# D1 -- DEPLOYED-APPROACH geometry. POST-DEPLOYMENT DIAGNOSTIC, NOT a
+# frozen pre-real scenario.
+#
+# The frozen K-series starts the vehicle 3.5 m from the anchor. The real
+# runs could not: the overhead camera covers 4.24 x 2.38 m, so the
+# furthest a vehicle can start and still be WHOLLY visible -- and so have
+# its start pose measured before release, which is what makes the
+# pre-registered start regions mean anything -- is about 1.86 m.
+#
+# The D-series reproduces that approach. It exists to ask how much of the
+# sim-real difference is the stack and how much is simply that reality
+# had half the run-up, and it is reported as a diagnostic, never as a
+# prediction.
+#
+# Obstacle offset: 0.35 m to one side, as K1
+holoocean:
+  stock_world: SimpleUnderwater
+  stock_package: Ocean
+  agent_type: BlueROV2
+  agent_name: rov0
+  camera_sensor: FrontCamera
+  camera_socket: CameraSocket
+  ticks_per_sec: 30   # MUST be 30: UE physics advances max 1/30 s per frame, so dt=1/30 keeps physics time == declared sim time; 30 Hz real-time sustained via high-res pacing + 256x256 camera
+  frames_per_sec: false
+  show_viewport: false   # keep engine below real-time budget for baseline0
+
+sim:
+  motion_model: dynamics
+  cmd_timeout_s: 1.0
+  start_offset: [0.0, 0.0, 0.0]
+
+camera:
+  width: 256   # camera unused by oracle baseline0; small render keeps real-time
+  height: 256
+  horizontal_fov_deg: 90.0
+  vertical_fov_deg: 90.0
+
+limits:
+  max_surge: 0.8
+  max_sway: 0.5
+  max_heave: 0.4
+  max_yaw_rate: 0.6
+
+dynamics:
+  command_latency_s: 0.0
+  max_lin_accel: 1.0
+  max_yaw_accel: 1.5
+
+obstacles:
+  - name: f_obstacle
+    class_name: anchor
+    prop_type: sphere
+    # 0.35 m, not 0.75 m. At 0.75 m and 3.5 m range the bearing is 12
+    # degrees, which lands EXACTLY on the committed planner's central
+    # zone boundary: it judged the obstacle non-blocking and drove
+    # straight past at every calibration level, with zero lateral
+    # excursion, while DWA manoeuvred. The two planners were therefore
+    # solving different problems in this geometry and the C-vs-D
+    # comparison was degenerate. At 0.35 m the obstacle is blocking for
+    # both, and K1 remains a distinct off-centre approach.
+    relative_position: [1.86, 0.35, 0.0]
+    radius_m: 0.25
+    scale: 0.5
+    material: gold
