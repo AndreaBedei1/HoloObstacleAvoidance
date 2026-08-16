@@ -10,8 +10,110 @@
    "calibration": "S3",
    "scenario": "K0",
    "planner": "committed",
-   "runs": 3,
+   "runs": 10,
    "out": "experiments/simulation/diagnostic/ablation_A0_frozen",
+   "returncode": 0
+  },
+  {
+   "rung": "A1_qualifier",
+   "description": "qualifier relaxed",
+   "extra_args": [
+    "warmup_min_updates:=2",
+    "confirm_min_updates:=1"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A1_qualifier",
+   "returncode": 0
+  },
+  {
+   "rung": "A2_risk",
+   "description": "risk thresholds lowered",
+   "extra_args": [
+    "risk_enter_threshold:=0.30",
+    "risk_exit_threshold:=0.15"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A2_risk",
+   "returncode": 0
+  },
+  {
+   "rung": "A3_hold",
+   "description": "avoidance hold lengthened",
+   "extra_args": [
+    "min_avoidance_hold_s:=4.0"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A3_hold",
+   "returncode": 0
+  },
+  {
+   "rung": "A4_engage",
+   "description": "engagement distance as flown",
+   "extra_args": [
+    "engage_distance_m:=1.8"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A4_engage",
+   "returncode": 0
+  },
+  {
+   "rung": "A5_vfov",
+   "description": "relay vfov corrected",
+   "extra_args": [
+    "relay_vfov_deg:=90.0"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A5_vfov",
+   "returncode": 0
+  },
+  {
+   "rung": "A6_geometry",
+   "description": "pool-feasible manoeuvre geometry",
+   "extra_args": [
+    "clearance_offset_m:=0.6",
+    "pass_margin_m:=1.0"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A6_geometry",
+   "returncode": 0
+  },
+  {
+   "rung": "A7_deployed",
+   "description": "everything together: the configuration that flew",
+   "extra_args": [
+    "warmup_min_updates:=2",
+    "confirm_min_updates:=1",
+    "risk_enter_threshold:=0.30",
+    "risk_exit_threshold:=0.15",
+    "min_avoidance_hold_s:=4.0",
+    "engage_distance_m:=1.8",
+    "relay_vfov_deg:=90.0",
+    "clearance_offset_m:=0.6",
+    "pass_margin_m:=1.0"
+   ],
+   "calibration": "S3",
+   "scenario": "K0",
+   "planner": "committed",
+   "runs": 10,
+   "out": "experiments/simulation/diagnostic/ablation_A7_deployed",
    "returncode": 0
   }
  ]

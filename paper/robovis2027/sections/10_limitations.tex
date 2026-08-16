@@ -49,27 +49,21 @@ curve to the wrong range band, in the sixty runs at S1 and above. The
 frozen results are what they are and we do not restate them; the effect
 is quantified as one rung of the post-deployment ablation.
 
-\emph{The frozen runs are not reproducible.} The relay's random seed is
-discarded when it is zero, which is the value the campaign used, so the
-stochastic levels were seeded from system entropy. Separately, the
-frozen campaign's command loop ran at about half its intended rate --
-\SI{10}{\hertz} on the nominal topic against \SI{20}{\hertz} when the
-same configuration is run on an idle machine -- because that loop is
-wall-clock driven and the campaign ran twenty runs back to back on a
-loaded machine, while the perception gate is simulated-time driven and
-was unaffected. Re-running the frozen configuration today produces
-minimum clearances spanning \SIrange{0.29}{3.25}{\metre} where the
-frozen campaign spanned \SIrange{0.50}{0.65}{\metre}. Every
-post-deployment comparison in this paper is therefore made against a
-baseline rung run in the same session on the same machine, and never
-against the frozen numbers.
+\emph{The frozen runs are not reproducible}, for two independent
+reasons. The relay's random seed is discarded when it is zero, the value
+the campaign used, so the stochastic levels were seeded from system
+entropy. And the campaign's command loop ran at about half its intended
+rate -- \SI{10}{\hertz} on the nominal topic against \SI{20}{\hertz} on
+an idle machine -- because that loop is wall-clock driven and twenty runs
+ran back to back on a loaded machine, while the perception gate is
+simulated-time driven and was unaffected.
 
 \emph{A benchmark constant that nothing reads.} The frozen benchmark
-file records a \SI{60}{\degree} vertical field of view for the shared
-range estimator. No node in either domain reads it; both used the
-planner's \SI{90}{\degree} default. The two domains therefore agree, and
-no sim-real mismatch follows, but a file whose stated purpose is to keep
-the domains aligned did not enforce this constant.
+records a \SI{60}{\degree} vertical field of view for the shared range
+estimator. No node in either domain reads it; both used the planner's
+\SI{90}{\degree} default. The domains therefore agree and no sim-real
+mismatch follows, but a file whose purpose is to keep them aligned did
+not enforce this value.
 
 \emph{Individual run failures.} One frozen run of eighty ends in a
 collision; two S2 runs never produced a planner-valid observation; four

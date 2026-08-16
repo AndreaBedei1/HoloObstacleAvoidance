@@ -41,36 +41,33 @@ usable observation at all, given its own acceptance gates. We report it,
 because in our case it -- rather than detection accuracy -- determined
 the shape of the physical experiment.
 
-\subsection{Reactive avoidance and its evaluation}
+\subsection{Reactive avoidance, and sim-to-real reported honestly}
 
 The dynamic-window approach remains the standard local
 baseline~\cite{fox1997thedynam} and continues to be refined for marine
 and dynamic settings~\cite{dobrevski2024dynamica,ma2025amodifie,%
 eriksen2016amodifie}, alongside risk- and chance-constrained
-formulations~\cite{han2025riskaware,han2026riskawar,mohamed2025chanceco}
-and learning-based avoidance for underwater
-vehicles~\cite{mari2026deeprein,li2024anobstac,wu2026collisio}. Vision-based
-avoidance specifically for small ROVs has been demonstrated in pools and
+formulations~\cite{han2025riskaware,mohamed2025chanceco} and
+learning-based avoidance for underwater
+vehicles~\cite{mari2026deeprein,li2024anobstac}. Vision-based avoidance
+for small ROVs has been demonstrated in pools and
 tanks~\cite{alineipoiana2024abluerov,bergantin2024realtime,%
 yao2023visionba}. We use a committed-manoeuvre planner and a holonomic
-dynamic-window baseline, but we make no claim about their relative
-merit in the water: only one of them was ever flown, for a reason we
-report in Section~\ref{sec:deployment}, and the comparison between them
-in this paper is entirely simulated.
-
-\subsection{Sim-to-real transfer reported honestly}
+dynamic-window baseline but claim nothing about their relative merit in
+water: only one was ever flown, for the reason in
+Section~\ref{sec:deployment}.
 
 Sim-to-real transfer for marine vehicles is an active
 topic~\cite{zhang2025simtoreal,groot2025scenario,meyers2025testinga},
 and the field is increasingly explicit that a transfer result is only as
-strong as the protocol that produced it. Pre-registration is rare in
-robotics; where it appears, it is usually as a fixed evaluation protocol
-rather than as predictions committed before the physical trial. Our
-design takes the stronger form, and then encounters the case that makes
-the distinction worth having: the physical system that was eventually
-flown was not the system that had been frozen. We report that outcome
-rather than repairing it retrospectively, and we separate every
-post-deployment simulation from the frozen set at the level of notation.
+strong as the protocol behind it. Pre-registration is rare in robotics,
+and where it appears it is usually a fixed evaluation protocol rather
+than predictions committed before the physical trial. Our design takes
+the stronger form, and then meets the case that makes the distinction
+worth having: the system eventually flown was not the system that had
+been frozen. We report that rather than repairing it retrospectively,
+and separate every post-deployment simulation from the frozen set at the
+level of notation.
 
 We claim no new avoidance algorithm, simulator or detector: the
 contribution is the study design of Section~\ref{sec:introduction} and

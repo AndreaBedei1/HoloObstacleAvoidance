@@ -5,45 +5,46 @@
 % The vertical rule is the moment the vehicle entered the water. Nothing
 % to its left could have been informed by a physical result; nothing to
 % its right can claim not to have been.
+%
+% Wrapped in \resizebox so the row cannot overflow the LNCS text block,
+% whatever the box contents grow into.
 \begin{figure}[t]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
   font=\small,
-  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt,
-              minimum height=9mm, text width=25mm},
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=8mm, text width=22mm},
   pre/.style={box, fill=black!4},
   real/.style={box, fill=black!12},
   post/.style={box, fill=black!4, dashed},
-  arr/.style={-{Latex[length=2mm]}, thick},
+  arr/.style={-{Latex[length=1.8mm]}, thick},
 ]
-\node[pre]  (frozen) at (0,0)      {frozen\\predictions\\\scriptsize 80 runs, hashed};
-\node[real] (deploy) at (3.1,0)    {attempted\\deployment};
-\node[real] (gap)    at (6.2,0)    {observed\\mismatch};
-\node[real] (adapt)  at (9.3,0)    {7 changes,\\one morning};
-\node[real] (runs)   at (12.4,0)   {8 admissible\\physical runs};
+\node[pre]  (frozen) at (0,0)    {frozen\\predictions\\[-1pt]\scriptsize 80 runs, hashed};
+\node[real] (deploy) at (2.9,0)  {attempted\\deployment};
+\node[real] (gap)    at (5.8,0)  {observed\\mismatch};
+\node[real] (adapt)  at (8.7,0)  {7 changes,\\one morning};
+\node[real] (runs)   at (11.6,0) {8 admissible\\physical runs};
 
-\node[post] (diag)   at (7.75,-2.1) {diagnostic\\simulation\\\scriptsize ablation, 80 runs};
-\node[post] (interp) at (12.4,-2.1) {final\\interpretation};
+\node[post] (diag)   at (8.7,-2.3)  {diagnostic\\simulation\\[-1pt]\scriptsize ablation, 80 runs};
+\node[post] (interp) at (11.6,-2.3) {final\\interpretation};
 
 \draw[arr] (frozen) -- (deploy);
 \draw[arr] (deploy) -- (gap);
 \draw[arr] (gap)    -- (adapt);
 \draw[arr] (adapt)  -- (runs);
-\draw[arr] (runs.south) |- (diag.east);
+\draw[arr] (runs.south) -- (interp.north);
+\draw[arr] (runs.south west) -- (diag.north east);
 \draw[arr] (diag)   -- (interp);
-\draw[arr] (runs)   -- (interp);
 
-% The line that the paper's notation encodes.
 \draw[very thick, dash pattern=on 3pt off 2pt]
-  (1.55,0.95) -- (1.55,-2.9);
-\node[anchor=south, font=\scriptsize\itshape] at (1.55,0.95)
+  (1.45,0.8) -- (1.45,-3.1);
+\node[anchor=south, font=\scriptsize\itshape] at (1.45,0.8)
   {vehicle enters the water};
 
-\node[anchor=west, font=\scriptsize] at (-1.35,-2.1)
-  {\begin{tabular}{@{}l@{}}
-     \frozenmark\ before\\ \realmark\ physical\\ \diagmark\ after
-   \end{tabular}};
-\end{tikzpicture}
+\node[anchor=north west, font=\scriptsize, align=left] at (-1.15,-1.4)
+  {\frozenmark\ before\\ \realmark\ physical\\ \diagmark\ after};
+\end{tikzpicture}}
 \caption{The chronology of evidence, and the reason the paper marks it.
 Everything left of the rule was fixed before any physical observation
 existed and can be read as a prediction. Everything right of it, the

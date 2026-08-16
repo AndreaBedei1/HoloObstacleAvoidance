@@ -116,7 +116,23 @@ The dynamic-window planner issued no command in the physical pipeline.
 It evaluates route adherence and projects candidate velocities forward,
 both of which need a pose estimate; in simulation this comes from
 dead-reckoned odometry that the physical vehicle, with no velocity log
-and no acoustic positioning, cannot produce. The consequence for this
-paper is not subtle and we do not soften it: half of the frozen design
-was never tested, the physical campaign is single-planner, and every
-comparison between the two planners in this paper is simulated.
+and no acoustic positioning, cannot produce.
+
+The evidence deserves stating, because four of the six attempted
+dynamic-window runs do contain a command stream and could be mistaken
+for the planner working. Those streams take exactly three values in
+surge, $\{0,\,0.08,\,0.15\}$, and three in sway,
+$\{-0.2,\,0,\,+0.2\}$ -- which are the committed planner's nominal
+surge, its reduced surge during avoidance, and its strafe setpoint. A
+dynamic-window planner scores sampled velocity candidates and emits a
+continuum; a three-level output is a finite-state controller's. Those
+commands came from orphaned committed-planner processes surviving on the
+same topic, the same contamination that the admission criterion of
+Section~\ref{sec:realresults} exists to catch. The two runs with no
+orphan present contain a command stream that is identically zero, and
+that is the dynamic-window planner's actual output on this vehicle.
+
+The consequence is not subtle and we do not soften it: half of the
+frozen design was never tested, the physical campaign is
+single-planner, and every comparison between the two planners in this
+paper is simulated.

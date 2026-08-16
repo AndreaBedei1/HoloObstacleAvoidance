@@ -50,21 +50,18 @@ that loses it for sixteen seconds, at identical average detection rates.
 \subsection{S3: the vehicle, downstream of the planner}
 
 S3 is a plant model applied to \texttt{/planner/cmd\_vel\_safe}, never to
-the planner. It was identified from open-water trials of the physical
-vehicle: full-command speeds of \SI{0.145}{\metre\per\second} in surge
-and \SI{0.123}{\metre\per\second} in sway; yaw response of
+the planner. It was identified from open-water trials: full-command
+speeds of \SI{0.145}{\metre\per\second} in surge and
+\SI{0.123}{\metre\per\second} in sway; yaw response of
 \SI{0.0654}{\degree\per\second} per count with a 383-count deadband in
 one direction and \num{0.0537} with 220 in the other; and first-order
 rise and decay constants of \SI{2.0}{\second}/\SI{1.0}{\second} in surge
-and \SI{0.30}{\second}/\SI{0.97}{\second} in sway.
-
-Three honesty notes belong with those numbers. The translation axes are
-reported as symmetric because the available trials cannot distinguish
-their directions at this sample size, not because symmetry was verified;
-\texttt{sway+} rests on a single valid trial. The rise constants have
-spreads as large as their values. Command latency was never measured, so
-the plant exposes a latency parameter and leaves it at zero rather than
-injecting a plausible-looking value.
+and \SI{0.30}{\second}/\SI{0.97}{\second} in sway. The translation axes
+are reported as symmetric because the trials cannot distinguish their
+directions at this sample size, not because symmetry was verified;
+\texttt{sway+} rests on one valid trial; the rise constants have spreads
+as large as their values; and command latency was never measured, so the
+plant leaves it at zero rather than injecting a plausible value.
 
 \subsection{What the ladder does not contain}
 

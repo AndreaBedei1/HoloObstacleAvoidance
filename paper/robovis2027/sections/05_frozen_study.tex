@@ -48,46 +48,31 @@ absolute agreement with anything.
 \begin{table}[t]
 \centering
 \caption{Frozen simulated campaign \frozenmark, median of five
-repetitions. \emph{cl}: minimum clearance (\si{\metre}); \emph{cmt}:
-commitment distance (\si{\metre}); \emph{lat}: maximum lateral excursion
-(\si{\metre}); \emph{span}: manoeuvre span (\si{\second}); \emph{qual}:
-range at first qualified observation (\si{\metre}). The dynamic-window
-commitment distance equals the starting distance at every level: it
-strafes from the first cycle, so the value is a left-censored bound and
-not a measurement.}
+repetitions, for the three quantities the text uses. \emph{clearance}:
+minimum obstacle clearance (\si{\metre}); \emph{span}: manoeuvre span
+(\si{\second}); \emph{qualified}: range at the first qualified
+observation (\si{\metre}). Lateral excursion and commitment distance are
+in the accompanying repository; the dynamic-window commitment distance
+equals the starting distance at every level, so it is a left-censored
+bound rather than a measurement.}
 \label{tab:frozen}
-\setlength{\tabcolsep}{4.2pt}
-\begin{tabular}{llrrrrrrrrrrrrrrrrrrrr}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llrrrrrrrrrrrr}
 \toprule
-& & \multicolumn{4}{c}{cl} & \multicolumn{4}{c}{cmt}
-& \multicolumn{4}{c}{lat} & \multicolumn{4}{c}{span}
-& \multicolumn{4}{c}{qual} \\
-\cmidrule(lr){3-6}\cmidrule(lr){7-10}\cmidrule(lr){11-14}%
-\cmidrule(lr){15-18}\cmidrule(lr){19-22}
+& & \multicolumn{4}{c}{clearance} & \multicolumn{4}{c}{span}
+& \multicolumn{4}{c}{qualified} \\
+\cmidrule(lr){3-6}\cmidrule(lr){7-10}\cmidrule(lr){11-14}
 geo & planner & S0 & S1 & S2 & S3 & S0 & S1 & S2 & S3
-& S0 & S1 & S2 & S3 & S0 & S1 & S2 & S3
 & S0 & S1 & S2 & S3 \\
 \midrule
 K0 & committed & 1.48 & 2.22 & 0.77 & 0.58
-   & 1.87 & 3.01 & 1.13 & 1.16
-   & 2.48 & 2.49 & 2.47 & 1.11
-   & 65 & 56 & 56 & 51
-   & 3.43 & 3.03 & 1.15 & 1.17 \\
+   & 65 & 56 & 56 & 51 & 3.43 & 3.03 & 1.15 & 1.17 \\
 K0 & dwa & 2.14 & 2.47 & 0.93 & 0.86
-   & 3.50 & 3.50 & 3.50 & 3.50
-   & 3.05 & 3.28 & 2.39 & 1.23
-   & 60 & 86 & 89 & 92
-   & 3.47 & 3.43 & 1.23 & 1.21 \\
+   & 60 & 86 & 89 & 92 & 3.47 & 3.43 & 1.23 & 1.21 \\
 K1 & committed & 1.19 & 2.56 & 0.87 & 0.74
-   & 1.49 & 3.20 & 1.17 & 1.16
-   & 2.48 & 2.48 & 2.48 & 1.11
-   & 57 & 55 & 56 & 49
-   & 3.45 & 3.21 & 1.18 & 1.17 \\
+   & 57 & 55 & 56 & 49 & 3.45 & 3.21 & 1.18 & 1.17 \\
 K1 & dwa & 2.46 & 2.33 & 0.87 & 0.65
-   & 3.52 & 3.52 & 3.52 & 3.52
-   & 2.98 & 2.85 & 2.55 & 1.25
-   & 73 & 31 & 90 & 92
-   & 3.50 & 3.09 & 1.21 & 1.21 \\
+   & 73 & 31 & 90 & 92 & 3.50 & 3.09 & 1.21 & 1.21 \\
 \bottomrule
 \end{tabular}
 \end{table}

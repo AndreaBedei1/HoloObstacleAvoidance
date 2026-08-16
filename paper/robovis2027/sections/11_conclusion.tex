@@ -15,16 +15,31 @@ actuator response are all real, all were measured against the physical
 vehicle, and all were faithfully injected; none of them determined
 whether the system worked in the pool.
 
-We think three things generalise. First, the acceptance gates of a
+The post-deployment ablation sharpened that reading in two ways we did
+not expect. The largest single effect on simulated safety was not a
+calibration level or a field change but a defect in our own frozen
+simulator: correcting the relay's field of view raised median clearance
+from \SI{1.29}{\metre} to \SI{2.91}{\metre} and removed its collisions.
+And giving the planner a manoeuvre that the basin can actually contain
+collapses clearance to \SI{0.30}{\metre} with four collisions in ten
+runs, which makes the pool an unfair test of this planner rather than a
+difficult one: its safety margin is the width of its detour, and the
+basin has no room for it.
+
+We think four things generalise. First, the acceptance gates of a
 perception module belong in its published interface, because they define
-the range interval over which the module produces any observation at all,
-and that interval can silently exclude the experiment. Second, a
-sim-to-real study should derive its scenario geometry from the physical
-site before freezing anything, since a manoeuvre the site cannot contain
-turns a controller result into an architecture result. Third, and most
-uncomfortably, a campaign that adapts a stack in the field has stopped
-testing the stack it froze; saying so plainly costs a claim and buys
-back the reader's ability to judge everything else.
+the range interval over which it produces any observation at all, and
+that interval can silently exclude the experiment. Second, a sim-to-real
+study should derive its scenario geometry from the physical site before
+freezing anything, since a manoeuvre the site cannot contain turns a
+controller result into an architecture result. Third, the boundaries of
+the physical workspace belong in the simulated scenario: ours had none,
+which is why every simulated run completed a manoeuvre that no physical
+run could, and no calibration of sensing or actuation could have
+supplied that. Fourth, and most uncomfortably, a campaign that adapts a
+stack in the field has stopped testing the stack it froze; saying so
+plainly costs a claim and buys back the reader's ability to judge
+everything else.
 
 What the physical campaign does support is narrow and solid: a
 camera-driven avoidance controller ran closed-loop on a BlueROV2 and

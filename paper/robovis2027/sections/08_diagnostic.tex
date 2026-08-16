@@ -1,44 +1,28 @@
 \section{Post-Deployment Diagnostic Simulation \diagmark}
 \label{sec:diagnostic}
 
-\subsection{Why this is a separate kind of evidence}
+\subsection{Motivation, and a self-contained baseline}
 
 Everything in this section was run after the physical campaign, by people
-who already knew how it had gone. It is not a prediction, it was not
-pre-registered, and no result here may be read as confirming the frozen
-study. We keep the distinction typographic (\diagmark\ against
-\frozenmark) rather than relying on the reader to remember which section
-they are in.
-
-The motivation is that the physical campaign cannot answer its own most
-interesting question. Seven changes were made to the stack in a single
-morning, all of them together, with no repetitions of the intermediate
-states, because there was one day of pool time. Which of them carried the
-effect is unanswerable from eight runs. Simulation can do what the pool
-cannot: apply the changes one at a time, with repetitions, holding
-everything else at its frozen value.
-
-\subsection{A self-contained baseline, and why the frozen numbers are not
-used as one}
+who already knew how it had gone, and is marked \diagmark\ accordingly.
+Its motivation is that the physical campaign cannot answer its own most
+interesting question: seven changes were made in a single morning, all
+together, with no repetitions of the intermediate states, so which of
+them carried the effect is unanswerable from eight runs. Simulation can
+apply them one at a time.
 
 The natural design would compare each rung against the 80 frozen runs.
-We do not, because the frozen campaign is not reproducible. Two causes
-are identified in Section~\ref{sec:limitations}: the observation relay's
-random seed is discarded when it is zero, which is the value the campaign
-used; and the frozen campaign's command loop ran at roughly half its
-intended rate because that loop is wall-clock driven and twenty runs were
-executed back to back on a loaded machine. Re-running the frozen
-configuration on an idle machine gives minimum clearances spanning
-\SIrange{0.29}{3.25}{\metre} where the frozen campaign spanned
-\SIrange{0.50}{0.65}{\metre}.
-
-The ablation is therefore self-contained. Its first rung is the frozen
-\emph{configuration} run in this session, on this machine, alongside
-every other rung, and every comparison is rung-against-rung. Ten
-repetitions per rung are used rather than five, because the baseline's
-own spread demands it, and results are reported as medians with
-interquartile ranges together with the fraction of runs that manoeuvred
-at all -- a bimodal outcome is not honestly summarised by a mean.
+We do not, because the frozen campaign is not reproducible for the two
+reasons given in Section~\ref{sec:limitations}, and re-running its
+configuration on an idle machine gives clearances spanning
+\SIrange{0.29}{3.25}{\metre} against the campaign's
+\SIrange{0.50}{0.65}{\metre}. The ablation is therefore self-contained:
+its first rung is the frozen \emph{configuration} run in this session
+alongside every other rung, and every comparison is rung-against-rung.
+Ten repetitions are used rather than five because the baseline's own
+spread demands it, and results are medians with interquartile ranges
+plus the count of runs that manoeuvred at all, since a bimodal outcome
+is not honestly summarised by a mean.
 
 \subsection{The ladder}
 

@@ -22,12 +22,18 @@ the planner's manoeuvre asks for a \SI{2.5}{\metre} lateral offset in a
 basin \SIrange{2.7}{3.0}{\metre} wide. Because no external tracking was
 recorded, the physical runs can validate the command domain and nothing
 spatial, which we state as a result about what camera-only field
-campaigns can prove rather than as a caveat. We recover the real
-perception stream offline from the detector's own annotated video, audit
-our own frozen campaign and report the defects we found in it, and use
-post-deployment simulations -- explicitly labelled as such throughout --
-to separate the effect of each deployment change, which the single
-available pool day could not.
+campaigns can prove rather than as a caveat; within that domain, all
+eight physical runs stop at the planner's strafe setpoint while all
+twenty frozen simulated runs reach its go-around setpoint, so the
+physical manoeuvre demonstrably never left its first phase. A
+post-deployment ablation, explicitly labelled as such, separates the
+effect of each deployment change and finds that the changes forced in
+the pool were individually benign, that the largest single effect on
+simulated safety was a defect in our own frozen simulator, and that a
+manoeuvre resized to fit the basin collides in four runs of ten. The
+mismatches that governed the outcome were the detector's acceptance
+gates, the size of the room and the absence of any room at all in the
+simulator -- none of them quantities we had calibrated.
 \keywords{Sim-to-real transfer \and Underwater robotics \and Obstacle
 avoidance \and Monocular perception \and Deployment gap \and HoloOcean.}
 \end{abstract}
