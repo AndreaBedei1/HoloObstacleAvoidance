@@ -227,3 +227,66 @@ could cause transmission, or recorded, at any point in this work.
   at this sample size, not because symmetry was verified.
 * Two actuator trials ended in contact (pool wall, anchor) and are
   excluded from the fit and kept in the record with their reason.
+
+---
+
+## 10. Final audit, 2026-08-16, after the campaign
+
+The pool is drained and the physical dataset is closed at eight
+admissible runs. This section records what a full audit of the frozen
+material found. The 80 runs are NOT modified; what follows is the errata
+they are read with from now on.
+
+### 10.1 The freeze itself is intact
+
+All 80 runs still reproduce the committed aggregate exactly, every run
+carries its own level's relay and plant sentinel with no leakage, and the
+recorded sha256 matches the committed content once Windows line endings
+are normalised (the working-tree file is CRLF; the hash was taken over
+LF). No data was lost or altered.
+
+### 10.2 Defects found IN the frozen campaign
+
+**The relay and the planner disagree about the camera.** The calibrated
+observation relay converts apparent height to range at a 60 deg vertical
+FOV (`calibrated_observation_relay_node.py:108`), while the oracle
+projects and the planner inverts at 90 deg (`planner.py:106`). The relay
+therefore believes the obstacle about 1.5x further than the planner does,
+and applies the measured detection-probability curve to the wrong range
+band, in the 60 runs at S1 and above. S0 is a passthrough and is
+unaffected.
+
+**The runs are not reproducible.** `random.Random(seed if seed else None)`
+with the campaign's `seed=0` seeds from system entropy, because 0 is
+falsy.
+
+**The command loop ran at half rate.** The frozen runs record ~10 Hz on
+`/cmd_vel_nominal` and ~20 Hz on `/planner/cmd_vel_safe`; the same
+configuration on an idle machine records ~20 and ~40 Hz. That loop is
+wall-clock driven; the perception gate is simulated-time driven and was
+unaffected. Re-running the frozen configuration now gives minimum
+clearances spanning 0.29-3.25 m where the campaign spanned 0.50-0.65 m.
+
+**A benchmark constant nothing reads.** `camera_vfov_deg: 60.0` in
+`config/pool_benchmark_FROZEN.yaml` is read by no node in either domain;
+both used the planner's 90 deg default. The two domains therefore agree,
+so no sim-real mismatch follows -- but a file whose purpose is to keep
+them aligned did not enforce this value.
+
+**Individual runs.** One collision (S2, K0 committed); two S2 runs with
+no planner-valid detection; four DWA runs with no commitment distance,
+making those cells medians of four.
+
+### 10.3 Consequence for everything run afterwards
+
+The frozen numbers are not used as a baseline for any later experiment.
+The post-deployment ablation carries its own frozen-configuration rung,
+executed in the same session on the same machine, and every comparison is
+rung-against-rung.
+
+### 10.4 The 20-run campaign did not happen
+
+Nine runs were flown, all with the committed planner; eight are
+admissible. DWA was never flown: it needs a pose estimate the vehicle has
+no sensor for. Section 7 above describes a campaign that was planned and
+is superseded by `experiments/real/campaign_provenance.json`.

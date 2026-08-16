@@ -4,24 +4,16 @@
 We set out to test whether measuring a simulator's mismatches against the
 real system makes its closed-loop predictions transfer, and we committed
 the predictions before going to the water so that the test would be a
-test. The stack did not transfer. Making it work took seven documented
-changes, and the two that shaped the physical experiment most were not
-calibrated quantities at all: the acceptance gates of the fallback
-detector confined it to an observable range window of
-\SIrange{0.29}{2.11}{\metre}, so that a vehicle released
-\SI{1.86}{\metre} from the anchor with an engagement range of
-\SI{1.80}{\metre} had no approach phase; and the planner's manoeuvre
-asks for a \SI{2.5}{\metre} lateral offset in a basin
-\SIrange{2.7}{3.0}{\metre} wide.
+test. The stack did not transfer, and the two differences that shaped the
+physical experiment most were not calibrated quantities at all: the
+detector's acceptance gates, and the size of the room.
 
 The honest reading is that our calibration effort was aimed at the
 quantities that were easy to measure rather than the ones that governed
 the outcome. Detection probability, range bias, dropout burstiness and
 actuator response are all real, all were measured against the physical
 vehicle, and all were faithfully injected; none of them determined
-whether the system worked in the pool. What determined it was the
-interaction between a perception module's acceptance criteria and the
-size of the room.
+whether the system worked in the pool.
 
 We think three things generalise. First, the acceptance gates of a
 perception module belong in its published interface, because they define
