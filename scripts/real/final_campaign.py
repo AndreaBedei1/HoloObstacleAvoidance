@@ -249,6 +249,10 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="check the gates and the start pose, actuate "
                          "nothing")
+    ap.add_argument("--rehearsal", action="store_true",
+                    help="prova completa NON conteggiata: attua, registra "
+                         "e scrive in experiments/real/rehearsal_runs, ma "
+                         "non tocca il manifest ne l'ordine")
     args = ap.parse_args()
 
     seq, order_cfg = frozen_order()
@@ -298,8 +302,20 @@ def main() -> int:
         return 2
     print("previsioni congelate: %s" % digest[:16])
 
-    run_dir = os.path.join(OUT, "runs", "%s_%s_%d"
-                           % (args.geometry, args.planner, args.run))
+    # A rehearsal writes somewhere else entirely and never reaches the
+    # manifest. A full end-to-end test is worth doing, but if it landed
+    # in the campaign it would be a 21st run scored as one of 20, and
+    # the decision of whether to keep it would arrive after seeing how
+    # it went -- which is the one decision that must not be available.
+    base = (os.path.join(_ROOT, "experiments", "real", "rehearsal_runs")
+            if args.rehearsal else OUT)
+    run_dir = os.path.join(base, "runs", "%s_%s_%d%s"
+                           % (args.geometry, args.planner, args.run,
+                              "_rehearsal" if args.rehearsal else ""))
+    if args.rehearsal:
+        run_dir = os.path.join(base, time.strftime("%Y%m%d_%H%M%S"))
+        print("PROVA NON CONTEGGIATA: nulla di questo entra nella "
+              "campagna")
     os.makedirs(run_dir, exist_ok=True)
 
     gt = GroundTruth()
@@ -395,6 +411,12 @@ def main() -> int:
     }
     with open(os.path.join(run_dir, "result.json"), "w") as f:
         json.dump(result, f, indent=2)
+
+    if args.rehearsal:
+        print("\nprova non conteggiata completata -> %s" % run_dir)
+        print("l'ordine congelato resta a %s %s replica %d"
+              % (args.geometry, args.planner, args.run))
+        return 0
 
     man_path = os.path.join(OUT, "manifest.json")
     manifest = {"results": []}

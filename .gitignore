@@ -31,3 +31,11 @@ experiments/real/missions/*/f[0-9]*.png
 experiments/real/missions/*/seq_*.png
 experiments/real/avoid_runs/*/f[0-9]*.png
 experiments/real/supervised/*/seq_*.png
+
+# Phase 10 final campaign: raw video, about 60 MB per run and 1.2 GB for
+# the campaign. The manifest carries the sha256 of every file and names
+# the release archive, so the dataset stays complete and verifiable
+# without git holding the bytes. A 640 MB history once made pushes time
+# out; committing 20 runs of video would repeat that.
+experiments/real/final_campaign/**/*.mp4
+experiments/real/rehearsal_runs/**/*.mp4
