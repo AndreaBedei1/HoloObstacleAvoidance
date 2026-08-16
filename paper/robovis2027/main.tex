@@ -1,17 +1,15 @@
 %==============================================================================
 % ROBOVIS 2027 -- Regular Paper.
 %
-% VENUE FACTS, checked at https://robovis.scitevents.org on 2026-08-16:
-%   conference 27-28 February 2027; regular-paper deadline 15 September 2026;
-%   25-page limit, 10,000-50,000 characters; DOUBLE BLIND, and submissions
-%   may not be posted to preprint servers while under review; proceedings
-%   published by Springer, and the Templates page directs authors to the
-%   Springer LNCS conference-proceedings guidelines -- hence llncs, not
-%   IEEEtran, which the superseded draft in ../main.tex used.
+% VENUE FACTS, checked at https://robovis.scitevents.org/Guidelines.aspx
+% on 2026-08-17: review PDF, 10,000--50,000 characters excluding white
+% space and including references, tables, graphs and appendices; double
+% blind. The official Templates page points to Springer's proceedings
+% template, hence llncs.
 %
-% BLINDING: no author, affiliation, funder, city, repository URL or vehicle
-% serial appears in this file or any section it includes. The artefact is
-% referred to as "the accompanying repository" without a link.
+% BLINDING: this review build contains no author, affiliation, funder,
+% city, repository URL, acknowledgement or identifying PDF metadata.
+% The mandatory AI disclosure is retained separately for camera-ready use.
 %
 % BUILD:  latexmk -pdf main.tex
 %
@@ -23,6 +21,7 @@
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
+\usepackage{lmodern}
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
@@ -31,15 +30,21 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
 \usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdfauthor={},
+  pdftitle={When Calibration Is Not Enough: A Documented Deployment Gap for Camera-Driven Underwater Obstacle Avoidance},
+  pdfsubject={ROBOVIS 2027 double-blind review submission},
+  pdfkeywords={sim-to-real transfer, underwater robotics, obstacle avoidance}
+}
 
 \sisetup{detect-weight=true, detect-family=true}
 
 % Two kinds of evidence appear in this paper and must never be confused.
 % These macros make the distinction typographic, so a reader skimming a
 % table still sees which is which.
-\newcommand{\frozenmark}{\textsc{pre}}
-\newcommand{\diagmark}{\textsc{post}}
-\newcommand{\realmark}{\textsc{real}}
+\newcommand{\frozenmark}{\textnormal{\textsc{pre}}}
+\newcommand{\diagmark}{\textnormal{\textsc{post}}}
+\newcommand{\realmark}{\textnormal{\textsc{real}}}
 \newcommand{\nomeasure}{\textemdash\,}
 
 \begin{document}
@@ -49,8 +54,8 @@ Camera-Driven Underwater Obstacle Avoidance}
 
 \titlerunning{A Documented Deployment Gap in Camera-Driven Avoidance}
 
-\author{Anonymous}
-\authorrunning{Anonymous}
+\author{Anonymous Authors}
+\authorrunning{Anonymous Authors}
 \institute{}
 
 \maketitle
@@ -67,19 +72,6 @@ Camera-Driven Underwater Obstacle Avoidance}
 \input{sections/09_simreal}
 \input{sections/10_limitations}
 \input{sections/11_conclusion}
-
-\begin{credits}
-\subsubsection{\ackname}
-Portions of the text and of the analysis code in the accompanying
-repository were drafted with the assistance of a large language model
-(Anthropic Claude), and were reviewed, corrected and verified against the
-experimental records by the authors, who take full responsibility for the
-content. Disclosure is made in accordance with the conference policy on
-generative AI.
-
-\subsubsection{\discintname}
-The authors have no competing interests to declare.
-\end{credits}
 
 \bibliographystyle{splncs04}
 \bibliography{../references}

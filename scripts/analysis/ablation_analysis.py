@@ -28,14 +28,14 @@ _ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 DIAG = os.path.join(_ROOT, "experiments", "simulation", "diagnostic")
 
 RUNGS = [
-    ("A0_frozen", "A0", "frozen configuration"),
-    ("A1_qualifier", "A1", "qualifier relaxed"),
-    ("A2_risk", "A2", "risk thresholds lowered"),
-    ("A3_hold", "A3", "avoidance hold lengthened"),
-    ("A4_engage", "A4", "engagement range as flown"),
-    ("A5_vfov", "A5", "relay field of view corrected"),
-    ("A6_geometry", "A6", "pool-feasible manoeuvre"),
-    ("A7_deployed", "A7", "the flown configuration"),
+    ("A0_frozen", "A0", "frozen"),
+    ("A1_qualifier", "A1", "qualifier"),
+    ("A2_risk", "A2", "risk thresholds"),
+    ("A3_hold", "A3", "hold"),
+    ("A4_engage", "A4", "engagement"),
+    ("A5_vfov", "A5", "relay FOV fix"),
+    ("A6_geometry", "A6", "tested pool rescaling"),
+    ("A7_deployed", "A7", "combined diagnostic"),
 ]
 
 
@@ -133,7 +133,7 @@ def main() -> int:
 
     if latex and table:
         tex = os.path.join(_ROOT, "paper", "robovis2027", "sections",
-                           "08b_ablation_results.tex")
+                           "08b_ablation_table.tex")
         with open(tex, "w") as f:
             f.write(render(table))
         print("->", os.path.relpath(tex, _ROOT).replace("\\", "/"))
@@ -142,24 +142,20 @@ def main() -> int:
 
 def render(table) -> str:
     lines = []
-    a0 = table[0]
-    lines.append(
-        "Table~\\ref{tab:ablation} reports the ablation. Each rung is ten\n"
-        "runs of the committed planner in \\textsf{K0} at S3, and every\n"
-        "comparison is against A0 in the same session.\n")
     lines.append("""
 \\begin{table}[t]
 \\centering
-\\caption{Deployment-gap ablation \\diagmark, ten runs per rung, medians
-with interquartile range in brackets. \\emph{go-around} counts runs that
-reached the planner's second manoeuvre phase, the observable used on the
-physical runs in Section~\\ref{sec:simreal}; no physical run reached it.}
+\\caption{Deployment-gap ablation \\diagmark, ten runs per configuration.
+Continuous values are medians with interquartile ranges. \\emph{go-around}
+counts runs reaching the second manoeuvre phase; Table~\\ref{tab:ablation-design}
+defines each change.}
 \\label{tab:ablation}
-\\setlength{\\tabcolsep}{4pt}
+\\scriptsize
+\\setlength{\\tabcolsep}{2.5pt}
 \\begin{tabular}{llrrrrr}
 \\toprule
-rung & change & clearance (\\si{\\metre}) & lateral (\\si{\\metre})
-& manoeuvred & go-around & collisions \\\\
+rung & change & clear. (\\si{\\metre}) & lateral (\\si{\\metre})
+& manoeuvred & go-around & coll. \\\\
 \\midrule""")
     for e in table:
         lines.append(

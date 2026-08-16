@@ -7,8 +7,8 @@ The frozen stack was taken to the pool and did not act. In the first
 runs the detector reported the anchor in a majority of frames, the
 qualifier discarded every message, and the planner issued no lateral
 command while the vehicle drove past the obstacle. Over one morning the
-stack was changed until it avoided the anchor reliably. The pool was
-available for that day only. Table~\ref{tab:gap} is the complete list of
+stack was changed until it produced repeatable lateral responses. The
+pool was available for that day only. Table~\ref{tab:gap} is the complete list of
 what differed by the time the campaign ran, each entry verified against
 both source files rather than recalled.
 
@@ -22,6 +22,7 @@ post-deployment ablation (Section~\ref{sec:diagnostic}) finds to matter
 more than most of the forced ones.}
 \label{tab:gap}
 \setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{llll}
 \toprule
 quantity & frozen & flown & status \\
@@ -43,6 +44,7 @@ run-past margin & \SI{4.0}{\metre} & \SI{4.0}{\metre} (basin
 run duration & \SIrange{90}{120}{\second} & \SI{25}{\second} & forced \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 \subsection{The forced changes, and why each was necessary}

@@ -12,9 +12,10 @@ repetitions of the intermediate states. Simulation can do what the pool
 cannot: apply them ONE AT A TIME, with repetitions, everything else held
 at its frozen value.
 
-THE LADDER. Each rung adds one documented change to the frozen
-configuration; the last rung is all of them together, which is the
-configuration the vehicle actually flew.
+THE ABLATION. A1--A6 each change one factor relative to the frozen
+configuration; A7 combines them. A7 is diagnostic only: it includes the
+post-session FOV fix (A5) and the unflown manoeuvre rescaling (A6), so it
+is not the configuration the vehicle flew.
 
     A0  frozen configuration, as the 80 predictions ran it
     A1  + qualifier relaxed          warmup 20->2, confirm 3->1
@@ -23,7 +24,7 @@ configuration the vehicle actually flew.
     A4  + engagement distance        1.5 -> 1.8 m
     A5  + relay vfov corrected       60 -> 90 deg
     A6  + pool-feasible manoeuvre    offset 2.5->0.6 m, pass 4.0->1.0 m
-    A7  = all of the above
+    A7  = A1--A6 combined diagnostic configuration (not flown)
 
 A4 is 1.8 m and not the 5.0 m that config/real_session_20260816.yaml
 records, because 1.8 m is what the vehicle actually ran: the runner's
@@ -78,8 +79,10 @@ LADDER = [
     ("A4_engage", ENGAGE, "engagement distance as flown"),
     ("A5_vfov", VFOV, "relay vfov corrected"),
     ("A6_geometry", GEOMETRY, "pool-feasible manoeuvre geometry"),
+    # Keep the historical output-directory identifier for compatibility
+    # with the completed 80-run artefact; the scientific label is corrected.
     ("A7_deployed", QUALIFIER + RISK + HOLD + ENGAGE + VFOV + GEOMETRY,
-     "everything together: the configuration that flew"),
+     "combined diagnostic configuration (A1--A6; not flown)"),
 ]
 
 

@@ -1,77 +1,38 @@
 \section{Related Work}
 \label{sec:related}
 
-\subsection{Underwater simulation and its fidelity}
+\subsection{Simulation fidelity and sim-to-real evaluation}
 
-Underwater robotics has converged on a small number of photorealistic,
-physics-backed simulators, of which HoloOcean is the one used
-here~\cite{potokar2022holoocea,potokar2024holoocea}; OceanSim and
-comparable environments pursue the same goal of rendering and dynamics
-close enough to support perception work~\cite{song2025oceansim}, and
-recent digital-twin efforts push towards site-specific
-replicas~\cite{mari2025digitalt,torroba2026marinari}. The value of such
-tools rests on an assumption that is stated more often than it is
-tested: that behaviour developed against simulated sensing survives
-contact with real sensing. Work on simulation fidelity for autonomy has
-begun to interrogate the assumption directly, both by quantifying how
-sensing error propagates through a closed
-loop~\cite{elmquist2022aperform,mahajan2024quantify} and by arguing that
-sim-to-real evaluation protocols themselves need
-rethinking~\cite{truong2022rethinki,kadian2020simrealp}. Our contribution
-sits in that line, but differs in a way we consider important: rather
-than measuring the gap after the fact, we measured the mismatches first,
-built them into the simulator, committed the resulting predictions, and
-only then went to the water.
+HoloOcean provides the physics and rendering used in this
+study~\cite{potokar2022holoocea,potokar2024holoocea}; OceanSim reflects
+the broader effort to support underwater perception in
+simulation~\cite{song2025oceansim}. Simulation quality, however, is not
+equivalent to real-world predictivity. Kadian et al. formalise
+sim-to-real predictivity, while Truong et al. show that higher fidelity
+need not improve transfer~\cite{kadian2020simrealp,truong2022rethinki}.
+Underwater work has examined direct high-fidelity transfer and
+HoloOcean-based hardware-in-the-loop
+evaluation~\cite{zhang2025simtoreal,meyers2025testinga}. We instead
+freeze predictions before deployment and preserve the later diagnosis as
+a separate evidence class.
 
-\subsection{Monocular perception for underwater obstacles}
+\subsection{Vision-based underwater avoidance}
 
-A camera is the sensor of choice on small inspection-class vehicles
-because it is the sensor they already carry, and a great deal of work
-addresses the resulting degradation: turbidity and colour
-attenuation~\cite{yu2023udepthfa,drewsjr2016realtime}, learned monocular
-depth in water~\cite{yang2022monocula,yang2025duvindif}, and
-detection under the conditions a real basin
-imposes~\cite{aldhaheri2025underwat,zhang2024localpat}. Benchmarks for
-underwater perception have appeared~\cite{yang2025upbencha}, as have
-uncertainty-aware treatments that acknowledge how unreliable the
-resulting estimates are~\cite{lee2024uncertai,mustafa2023probabil}. What
-this literature seldom reports is the quantity that mattered most in our
-deployment: the range interval over which a given detector produces any
-usable observation at all, given its own acceptance gates. We report it,
-because in our case it -- rather than detection accuracy -- determined
-the shape of the physical experiment.
+Attenuation, turbidity and uncertain monocular depth complicate underwater
+vision. Relevant approaches include learned depth
+estimation~\cite{yu2023udepthfa}, navigation combining monocular vision
+with sonar and domain randomisation~\cite{yang2022monocula}, and direct vision-based
+avoidance~\cite{drewsjr2016realtime,bergantin2024realtime,yao2023visionba}.
+Our focus is not detector accuracy but the interval over which detector
+acceptance gates produce any planner-usable observation.
 
-\subsection{Reactive avoidance, and sim-to-real reported honestly}
+\subsection{Scope of the contribution}
 
-The dynamic-window approach remains the standard local
-baseline~\cite{fox1997thedynam} and continues to be refined for marine
-and dynamic settings~\cite{dobrevski2024dynamica,ma2025amodifie,%
-eriksen2016amodifie}, alongside risk- and chance-constrained
-formulations~\cite{han2025riskaware,mohamed2025chanceco} and
-learning-based avoidance for underwater
-vehicles~\cite{mari2026deeprein,li2024anobstac}. Vision-based avoidance
-for small ROVs has been demonstrated in pools and
-tanks~\cite{alineipoiana2024abluerov,bergantin2024realtime,%
-yao2023visionba}. We use a committed-manoeuvre planner and a holonomic
-dynamic-window baseline but claim nothing about their relative merit in
-water: only one was ever flown, for the reason in
-Section~\ref{sec:deployment}.
-
-Sim-to-real transfer for marine vehicles is an active
-topic~\cite{zhang2025simtoreal,groot2025scenario,meyers2025testinga},
-and the field is increasingly explicit that a transfer result is only as
-strong as the protocol behind it. Pre-registration is rare in robotics,
-and where it appears it is usually a fixed evaluation protocol rather
-than predictions committed before the physical trial. Our design takes
-the stronger form, and then meets the case that makes the distinction
-worth having: the system eventually flown was not the system that had
-been frozen. We report that rather than repairing it retrospectively,
-and separate every post-deployment simulation from the frozen set at the
-level of notation.
-
-We claim no new avoidance algorithm, simulator or detector: the
-contribution is the study design of Section~\ref{sec:introduction} and
-what it exposed. We make no priority claim for the combination, only the
-observation that auditing one's own frozen campaign, and stating which
-physical quantities a camera-only campaign cannot measure, are not
-common practice in this literature.
+The dynamic-window approach is a standard local
+baseline~\cite{fox1997thedynam}; an underwater adaptation is given by
+Eriksen et al.~\cite{eriksen2016amodifie}. We compare it with a
+committed-manoeuvre controller only in simulation because the physical
+vehicle supplied no pose estimate for the dynamic-window planner. We
+claim no new planner, detector or simulator. The contribution is an
+experimentally traced deployment gap, including negative and post-hoc
+evidence, rather than an algorithmic advance.

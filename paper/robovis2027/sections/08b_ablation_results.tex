@@ -1,73 +1,24 @@
-Table~\ref{tab:ablation} reports the ablation. Each rung is ten
-runs of the committed planner in \textsf{K0} at S3, and every
-comparison is against A0 in the same session.
+\input{sections/08b_ablation_table}
 
+A5 produces the largest single-factor increase in median clearance:
+\SI{1.29}{\metre} to \SI{2.91}{\metre}, with zero rather than two
+collisions. The relay had applied the measured detection-probability
+curve in the wrong range band. This quantifies a defect in the frozen
+simulator; it does not revise the frozen results.
 
-\begin{table}[t]
-\centering
-\caption{Deployment-gap ablation \diagmark, ten runs per rung, medians
-with interquartile range in brackets. \emph{go-around} counts runs that
-reached the planner's second manoeuvre phase, the observable used on the
-physical runs in Section~\ref{sec:simreal}; no physical run reached it.}
-\label{tab:ablation}
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{llrrrrr}
-\toprule
-rung & change & clearance (\si{\metre}) & lateral (\si{\metre})
-& manoeuvred & go-around & collisions \\
-\midrule
-A0 & frozen configuration & 1.29 \tiny[0.42--2.66] & 1.67 \tiny[1.35--3.96] & 8/10 & 10/10 & 2 \\
-A1 & qualifier relaxed & 2.22 \tiny[1.33--3.12] & 2.76 \tiny[2.21--4.47] & 9/10 & 10/10 & 2 \\
-A2 & risk thresholds lowered & 1.90 \tiny[0.73--2.23] & 1.98 \tiny[1.29--3.31] & 9/10 & 10/10 & 2 \\
-A3 & avoidance hold lengthened & 2.43 \tiny[1.79--3.15] & 1.73 \tiny[1.28--4.23] & 9/10 & 10/10 & 0 \\
-A4 & engagement range as flown & 1.48 \tiny[0.30--2.62] & 1.52 \tiny[1.20--2.06] & 10/10 & 10/10 & 3 \\
-A5 & relay field of view corrected & 2.91 \tiny[2.41--3.23] & 1.56 \tiny[0.03--2.73] & 7/10 & 10/10 & 0 \\
-A6 & pool-feasible manoeuvre & 0.30 \tiny[0.28--2.95] & 0.47 \tiny[0.00--0.82] & 7/10 & 10/10 & 4 \\
-A7 & the flown configuration & 3.13 \tiny[2.84--3.14] & 2.33 \tiny[0.85--6.02] & 10/10 & 6/10 & 2 \\
-\bottomrule
-\end{tabular}
-\end{table}
+A6 yields median clearance \SI{0.30}{\metre} and four collisions. The
+tested pool-feasible rescaling was therefore unsafe. It indicates strong
+sensitivity to detour width but does not establish that every
+basin-compatible manoeuvre is unsafe.
 
-Four results stand out, and the first two were not anticipated.
+A1--A3 individually improve median clearance relative to A0, and A3 has
+no collisions. A4 is the only executed single-factor change that reduces
+safety in this simulation, with three collisions. These post-hoc results
+do not identify causal effects in the physical runs.
 
-\emph{Our own frozen-campaign defect was the single largest effect on
-safety.} Correcting the relay's field of view (A5) raises median
-clearance from \SI{1.29}{\metre} to \SI{2.91}{\metre} and removes both
-collisions. The defect made the relay believe the obstacle roughly
-\num{1.5} times further away than the planner did, so the measured
-detection-probability curve was applied in the wrong band and
-observations were suppressed where they mattered most. The frozen
-predictions are not wrong about the ladder they describe; they are a
-description of a simulator with a bug in it, and the bug cost more
-clearance than any calibration level added.
-
-\emph{The manoeuvre that fits the basin is not safe.} A6 gives the
-planner a clearing offset and run-past margin that a
-\SIrange{2.7}{3.0}{\metre} basin can contain. Median clearance collapses
-to \SI{0.30}{\metre} and four runs of ten end in collision -- the worst
-of any rung. The committed planner's safety margin comes from the width
-of its detour, and there is no version of that detour that both fits this
-pool and keeps the vehicle away from the anchor. This is an architectural
-result, not a tuning one: the physical campaign was not a fair test of
-this planner, because the basin cannot accommodate the manoeuvre the
-planner is built around.
-
-\emph{The changes forced in the pool were individually benign.}
-Relaxing the qualifier (A1), lowering the risk thresholds (A2) and
-lengthening the avoidance hold (A3) all raise median clearance relative
-to A0, and A3 removes collisions entirely. Engaging at the distance
-actually flown (A4) is the only forced change that degrades safety, and
-mildly. The morning of adaptation was not, in simulation, the source of
-the deployment gap.
-
-\emph{The simulated world has no walls, so it cannot reproduce what
-reality did.} Every rung reaches the go-around phase in ten runs of ten,
-except the fully deployed configuration at six of ten. No physical run
-reached it at all (Section~\ref{sec:simreal}). The reason is not a
-parameter: the simulated scenario is open water with an obstacle in it,
-so a \SI{2.5}{\metre} strafe always completes, while in the pool it
-cannot. The basin boundary is absent from the simulator and from all
-three calibration levels, and it is the structural mismatch that most
-shaped the physical runs. We report it as the clearest instance of this
-paper's general point -- that the mismatches which mattered were not the
-ones we measured.
+A0--A6 reach the go-around phase in all ten runs; A7 does so in six.
+No physical run reached it. Because A7 includes the post-audit FOV fix
+and the unflown A6 rescaling, it is a combined diagnostic configuration,
+not the flown stack. More generally, the open simulated scene contains
+no basin boundary, so none of these configurations reproduces the
+structural constraint that dominated deployment.

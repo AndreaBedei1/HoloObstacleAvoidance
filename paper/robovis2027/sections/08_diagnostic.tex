@@ -1,71 +1,49 @@
 \section{Post-Deployment Diagnostic Simulation \diagmark}
 \label{sec:diagnostic}
 
-\subsection{Motivation, and a self-contained baseline}
+\subsection{Design and provenance}
 
-Everything in this section was run after the physical campaign, by people
-who already knew how it had gone, and is marked \diagmark\ accordingly.
-Its motivation is that the physical campaign cannot answer its own most
-interesting question: seven changes were made in a single morning, all
-together, with no repetitions of the intermediate states, so which of
-them carried the effect is unanswerable from eight runs. Simulation can
-apply them one at a time.
+All simulations in this section were designed and run after the physical
+campaign, with its outcome known. They are diagnostic evidence
+(\diagmark), never pre-deployment predictions.
 
-The natural design would compare each rung against the 80 frozen runs.
-We do not, because the frozen campaign is not reproducible for the two
-reasons given in Section~\ref{sec:limitations}, and re-running its
-configuration on an idle machine gives clearances spanning
-\SIrange{0.29}{3.25}{\metre} against the campaign's
-\SIrange{0.50}{0.65}{\metre}. The ablation is therefore self-contained:
-its first rung is the frozen \emph{configuration} run in this session
-alongside every other rung, and every comparison is rung-against-rung.
-Ten repetitions are used rather than five because the baseline's own
-spread demands it, and results are medians with interquartile ranges
-plus the count of runs that manoeuvred at all, since a bimodal outcome
-is not honestly summarised by a mean.
-
-\subsection{The ladder}
-
-Each rung adds one documented deployment change to the frozen
-configuration; the final rung is all of them together, which is the
-configuration that flew.
+The frozen 80-run aggregate is unsuitable as an ablation baseline because
+its stochastic seed is not reproducible and its loaded execution rate
+differs from an idle rerun (Section~\ref{sec:limitations}). We therefore
+ran a self-contained 80-run ablation: eight configurations, ten
+repetitions each, all using the committed planner, \textsf{K0} and S3.
+A0 reproduces the frozen configuration in the same session. A1--A6 each
+change only the listed factor relative to A0; A7 combines A1--A6.
+Comparisons use medians, interquartile ranges and counts because the
+outcomes are bimodal.
 
 \begin{table}[t]
 \centering
-\caption{The diagnostic ablation \diagmark. All runs use the committed
-planner, the \textsf{K0} geometry and the S3 calibration level, with ten
-repetitions per rung. Rungs A1--A4 are changes made in the pool; A5 is a
-defect found in the frozen study during the final audit; A6 is a
-constraint nobody noticed on the day.}
+\caption{Diagnostic configurations \diagmark. A1--A6 are single-factor
+changes from A0. A7 combines them and was not flown.}
 \label{tab:ablation-design}
 \begin{tabular}{lll}
 \toprule
-rung & change & origin \\
+rung & change & provenance \\
 \midrule
-A0 & frozen configuration & baseline \\
-A1 & qualifier warm-up $20\!\to\!2$, confirm $3\!\to\!1$ & forced in pool \\
-A2 & risk thresholds $0.55/0.30 \to 0.30/0.15$ & forced in pool \\
-A3 & avoidance hold $1.0 \to \SI{4.0}{\second}$ & forced in pool \\
-A4 & engagement range $1.5 \to \SI{1.8}{\metre}$ & as actually flown \\
-A5 & relay field of view $60 \to \SI{90}{\degree}$ & audit defect \\
-A6 & clearing offset $2.5 \to \SI{0.6}{\metre}$, run-past
-     $4.0 \to \SI{1.0}{\metre}$ & basin constraint \\
-A7 & all of the above & the flown configuration \\
+A0 & frozen configuration & same-session baseline \\
+A1 & qualifier $20/3 \to 2/1$ updates & forced in pool \\
+A2 & risk $0.55/0.30 \to 0.30/0.15$ & forced in pool \\
+A3 & hold $1.0 \to \SI{4.0}{\second}$ & forced in pool \\
+A4 & engagement $1.5 \to \SI{1.8}{\metre}$ & executed value \\
+A5 & relay FOV $60 \to \SI{90}{\degree}$ & post-session audit fix \\
+A6 & offset $2.5 \to \SI{0.6}{\metre}$, run-past
+     $4.0 \to \SI{1.0}{\metre}$ & diagnostic; not flown \\
+A7 & A1--A6 together & combined diagnostic; not flown \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-A4 uses \SI{1.8}{\metre} and not the \SI{5.0}{\metre} recorded in the
-session file, for the reason given in Section~\ref{sec:deployment}: every
-run records \SI{1.8}{\metre}, and the session file is wrong.
-
-A6 is not a change anyone made. It is included because the frozen planner
-asks for a manoeuvre the basin cannot contain, and
-Section~\ref{sec:simreal} shows from the command stream that no physical
-run ever left the strafe phase. A6 asks what the same planner does when
-given a manoeuvre that fits, and is the rung we expect to matter most --
-a prediction we record here, before reporting the outcome, because the
-rest of this section was written with the physical results already known.
+A4 uses the \SI{1.8}{\metre} value in every run record, not the erroneous
+\SI{5.0}{\metre} session file. A5 measures the relay defect found only in
+the final audit. A6 tests one specific rescaling intended to fit the
+basin; it is neither an executed configuration nor an exhaustive search
+over basin-compatible manoeuvres.
 
 \subsection{Results}
 

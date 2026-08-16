@@ -1,39 +1,26 @@
 \begin{abstract}
-We report a camera-driven underwater obstacle-avoidance study in which a
-simulation calibrated against measurements of the target vehicle still
-failed to transfer to it, and we trace why. Three calibration levels were
-fitted to paired observations of a BlueROV2 and a test pool -- a static
-observation model, a timing and burst-dropout model, and a vehicle
-response model applied downstream of the planner -- and stacked on a
-HoloOcean baseline. Eighty closed-loop runs covering two planners, two
-obstacle geometries and five repetitions per cell were executed and
-hashed \emph{before} any physical run, so that the field campaign would
-test a prediction rather than illustrate one. The stack then did not
-work on the vehicle. Making it work required seven documented changes,
-after which nine runs were flown and eight are admissible, all with the
-committed planner; the dynamic-window baseline never issued a command
-because it needs a pose estimate the vehicle has no sensor for. Two
-findings dominate, and neither is a calibrated quantity. The detector's
-blob-size gates admit an obstacle only between \SI{0.29}{\metre} and
-\SI{2.11}{\metre}, while the vehicle started \SI{1.86}{\metre} from the
-anchor and engaged at \SI{1.80}{\metre}: the physical experiment had no
-approach phase at all, against two metres of run-up in simulation. And
-the planner's manoeuvre asks for a \SI{2.5}{\metre} lateral offset in a
-basin \SIrange{2.7}{3.0}{\metre} wide. Because no external tracking was
-recorded, the physical runs can validate the command domain and nothing
-spatial, which we state as a result about what camera-only field
-campaigns can prove rather than as a caveat; within that domain, all
-eight physical runs stop at the planner's strafe setpoint while all
-twenty frozen simulated runs reach its go-around setpoint, so the
-physical manoeuvre demonstrably never left its first phase. A
-post-deployment ablation, explicitly labelled as such, separates the
-effect of each deployment change and finds that the changes forced in
-the pool were individually benign, that the largest single effect on
-simulated safety was a defect in our own frozen simulator, and that a
-manoeuvre resized to fit the basin collides in four runs of ten. The
-mismatches that governed the outcome were the detector's acceptance
-gates, the size of the room and the absence of any room at all in the
-simulator -- none of them quantities we had calibrated.
-\keywords{Sim-to-real transfer \and Underwater robotics \and Obstacle
-avoidance \and Monocular perception \and Deployment gap \and HoloOcean.}
+We investigate why calibrating measured sensing and actuation did not yield
+closed-loop transfer for camera-driven underwater obstacle avoidance. A HoloOcean
+baseline was augmented with observation, timing and vehicle-response
+models fitted to a BlueROV2. Eighty closed-loop simulations covering two
+planners and two obstacle geometries were frozen, hashed and committed
+before the physical campaign (\frozenmark). The deployed stack required
+documented changes; nine runs were then acquired and eight were
+admissible, all with the committed planner (\realmark). No overhead
+tracking was recorded during these runs, so spatial metrics such as true
+clearance and trajectory cannot be validated. The comparable command
+stream nevertheless shows that all eight physical runs remained at the
+planner's strafe setpoint, whereas all twenty corresponding frozen runs
+reached its go-around setpoint. The principal mismatches were structural:
+the detector accepted the obstacle only from \SI{0.29}{\metre} to
+\SI{2.11}{\metre}; the vehicle started \SI{1.86}{\metre} away and
+engaged at \SI{1.80}{\metre}; and a \SI{2.5}{\metre} clearing offset
+could not fit the \SIrange{2.7}{3.0}{\metre}-wide basin. Eighty further
+simulations performed only after deployment (\diagmark) isolate these
+effects. Correcting a relay field-of-view defect improved simulated
+clearance, but the tested pool-feasible manoeuvre rescaling was unsafe in
+four of ten runs. Thus, calibrating measurable sensing and actuation
+mismatches did not ensure transfer when deployment was governed by
+structural mismatches absent from the model.
+\keywords{Sim-to-real transfer \and Underwater obstacle avoidance.}
 \end{abstract}
