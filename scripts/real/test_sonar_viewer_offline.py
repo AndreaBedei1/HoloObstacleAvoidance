@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+import queue
 import struct
 import sys
 import unittest
@@ -29,6 +30,58 @@ class SonarViewerOfflineTests(unittest.TestCase):
     def test_profile_normalization(self):
         self.assertEqual(viewer.normalized_row([0, 5, 10], 0, 10), [0, 128, 255])
         self.assertEqual(viewer.normalized_row([], 0, 1), [])
+
+    def test_ping1d_profile_uses_official_field_names(self):
+        profile = {
+            "distance": 1234,
+            "confidence": 87,
+            "transmit_duration": 42,
+            "ping_number": 19,
+            "scan_start": 500,
+            "scan_length": 3000,
+            "gain_setting": 4,
+            "profile_data": bytearray([0, 32, 128, 255]),
+        }
+        record = viewer.ping1d_profile_record(profile, profile)
+        self.assertEqual(record["distance_m"], 1.234)
+        self.assertEqual(record["confidence"], 87)
+        self.assertEqual(record["scan_start_mm"], 500)
+        self.assertEqual(record["scan_length_mm"], 3000)
+        self.assertEqual(record["gain"], 4)
+        self.assertEqual(record["profile"], [0, 32, 128, 255])
+
+    def test_connect_path_does_not_start_omniscan(self):
+        original = viewer.Omniscan450
+
+        class FakeOmniscan(object):
+            instances = []
+
+            def __init__(self):
+                self.commands = []
+                FakeOmniscan.instances.append(self)
+
+            def connect_tcp(self, host, port):
+                self.connection = (host, port)
+
+            def initialize(self):
+                return True
+
+            def control_os_ping_params(self, **kwargs):
+                self.commands.append(kwargs)
+
+            def close(self):
+                pass
+
+        viewer.Omniscan450 = FakeOmniscan
+        events = queue.Queue()
+        worker = viewer.OmniscanWorker("offline", 51200, events)
+        worker.start()
+        kind, _ = events.get(timeout=1.0)
+        self.assertEqual(kind, "omni_connected")
+        self.assertEqual(FakeOmniscan.instances[0].commands, [])
+        worker.stop_event.set()
+        worker.join(timeout=1.0)
+        viewer.Omniscan450 = original
 
     def test_gui_builds_without_connecting(self):
         try:

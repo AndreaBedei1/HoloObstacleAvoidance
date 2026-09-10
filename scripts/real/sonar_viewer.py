@@ -218,7 +218,7 @@ def ping1d_profile_record(profile, distance_record):
     """Normalize an official Ping1D profile and mark the selected distance."""
     if not profile:
         return None
-    data = list(profile.get("data", []))
+    data = list(profile.get("profile_data", []))
     start_mm = int(profile.get("scan_start", 0))
     length_mm = int(profile.get("scan_length", 0))
     distance_mm = int((distance_record or {}).get("distance", profile.get("distance", 0)))
@@ -230,7 +230,7 @@ def ping1d_profile_record(profile, distance_record):
         "confidence": int((distance_record or {}).get("confidence", profile.get("confidence", 0))),
         "scan_start_mm": start_mm,
         "scan_length_mm": length_mm,
-        "gain": int(profile.get("gain_index", -1)),
+        "gain": int(profile.get("gain_setting", -1)),
         "profile": [int(value) for value in data],
         "display_row": row,
     }
@@ -330,18 +330,28 @@ class Ping1DWorker(threading.Thread):
                 raise RuntimeError("Ping1D initialize() fallita")
             self.events.put(("ping_connected", None))
             while not self.stop_event.is_set():
-                distance = self.device.get_distance()
+                # PING1D_PROFILE already contains distance and confidence.
+                # Read it first so the displayed range, confidence and echo
+                # profile belong to the same acoustic ping.  Only fall back
+                # to get_distance() when profile support is unavailable.
+                profile = None
+                get_profile = getattr(self.device, "get_profile", None)
+                if callable(get_profile):
+                    try:
+                        profile = get_profile()
+                    except Exception:
+                        profile = None
+                if profile:
+                    distance = {
+                        "distance": profile.get("distance", 0),
+                        "confidence": profile.get("confidence", 0),
+                    }
+                else:
+                    distance = self.device.get_distance()
                 if not distance:
-                    self.events.put(("ping_warning", "get_distance() senza risposta"))
+                    self.events.put(("ping_warning", "nessuna risposta Ping1D"))
                     time.sleep(0.1)
                     continue
-                profile = None
-                try:
-                    profile = self.device.get_profile()
-                except Exception:
-                    # Some older Ping1D firmware/proxy combinations expose
-                    # distance but not profile; keep distance diagnostics alive.
-                    profile = None
                 record = {
                     "timestamp": datetime.now().isoformat(timespec="milliseconds"),
                     "distance_mm": int(distance.get("distance", 0)),
