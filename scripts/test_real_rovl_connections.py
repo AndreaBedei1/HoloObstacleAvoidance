@@ -25,7 +25,7 @@ except ImportError as exc:
 else:
     SERIAL_IMPORT_ERROR = None
 
-from rovl_protocol import parse_gps_sentence, parse_rovl_sentence  # noqa: E402
+from rovl_protocol import classify_serial_sentence, parse_gps_sentence  # noqa: E402
 
 
 ROVL_BAUD = 115200
@@ -61,6 +61,41 @@ def read_probe(port, baud, seconds, parser):
                 pass
 
 
+def read_combined_probe(port, baud, seconds):
+    """Read one ROVL port and retain both $USRTH and GPS retweets."""
+    result = {"rovl": None, "gps": None}
+    if serial is None:
+        return result
+    device = None
+    try:
+        device = serial.Serial(port, baudrate=baud, timeout=0.15)
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            line = device.readline()
+            if not line:
+                continue
+            try:
+                classified = classify_serial_sentence(line)
+            except ValueError:
+                continue
+            if classified is None:
+                continue
+            kind, message = classified
+            if kind == "rovl_message":
+                result["rovl"] = message
+            elif kind == "gps_message":
+                result["gps"] = message
+    except Exception:
+        pass
+    finally:
+        if device is not None:
+            try:
+                device.close()
+            except Exception:
+                pass
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Read-only ROVL/GPS COM diagnostics")
     parser.add_argument("--seconds", type=float, default=1.5, help="read time per baud/port")
@@ -74,10 +109,18 @@ def main():
     rovl_found = []
     gps_found = []
     for port in ports:
-        rovl = read_probe(port, ROVL_BAUD, args.seconds, parse_rovl_sentence)
+        combined = read_combined_probe(port, ROVL_BAUD, args.seconds)
+        rovl = combined["rovl"]
+        retweeted_gps = combined["gps"]
         if rovl is not None:
             rovl_found.append(port)
             print("ROVL %s @ %d: $USRTH OK; last raw: %s" % (port, ROVL_BAUD, rovl["raw"]))
+        if retweeted_gps is not None:
+            gps_found.append((port, ROVL_BAUD))
+            print("GPS  %s @ %d: %s retweet; last raw: %s" % (port, ROVL_BAUD, "FIX" if retweeted_gps.get("fix") else "NO FIX", retweeted_gps["raw"]))
+        if rovl is not None and retweeted_gps is not None:
+            print("COM %s identificata come ROVL + GPS retweet" % port)
+        if retweeted_gps is not None:
             continue
         for baud in GPS_BAUDS:
             gps = read_probe(port, baud, args.seconds, parse_gps_sentence)

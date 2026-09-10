@@ -68,7 +68,7 @@ def parse_rovl_sentence(sentence):
     payload = fields[1:]
     for index, name in enumerate(ROVL_FIELD_NAMES):
         value = payload[index] if index < len(payload) else ""
-        values[name] = _float_or_none(value) if name not in ("im", "oc") else (value or None)
+        values[name] = _float_or_none(value) if name not in ("ah", "ag", "im", "oc") else (value or None)
     values.update(
         {
             "message_type": "USRTH",
@@ -116,11 +116,42 @@ def parse_gps_sentence(sentence):
     return {"fix": lat is not None and lon is not None, "lat": lat, "lon": lon, "raw": raw, "sentence_type": kind}
 
 
+def classify_serial_sentence(sentence):
+    """Classify one read-only serial line as ROVL or GPS, if recognized."""
+    rovl_error = None
+    try:
+        message = parse_rovl_sentence(sentence)
+    except ValueError as exc:
+        message = None
+        rovl_error = exc
+    if message is not None:
+        return "rovl_message", message
+
+    try:
+        message = parse_gps_sentence(sentence)
+    except ValueError:
+        if rovl_error is not None:
+            raise rovl_error
+        raise
+    if message is not None:
+        return "gps_message", message
+    if rovl_error is not None:
+        raise rovl_error
+    return None
+
+
 def relative_position(rovl):
-    """Return ``east_m``, ``north_m`` and horizontal range from $USRTH."""
+    """Return relative position, preferring true/IMU-compensated fields."""
     slant = rovl.get("sr")
     bearing = rovl.get("cb")
     elevation = rovl.get("te")
+    mode = "TRUE / IMU COMPENSATED"
+    global_eligible = True
+    if slant is None or bearing is None or elevation is None:
+        bearing = rovl.get("ac")
+        elevation = rovl.get("ae")
+        mode = "APPARENT / UNCOMPENSATED"
+        global_eligible = False
     if slant is None or bearing is None or elevation is None:
         return None
     horizontal = math.cos(math.radians(elevation)) * slant
@@ -131,6 +162,8 @@ def relative_position(rovl):
         "elevation_deg": float(elevation),
         "east_m": math.sin(math.radians(bearing)) * horizontal,
         "north_m": math.cos(math.radians(bearing)) * horizontal,
+        "mode": mode,
+        "global_eligible": global_eligible,
     }
 
 

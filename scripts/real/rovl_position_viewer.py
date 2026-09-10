@@ -32,7 +32,7 @@ except ImportError as exc:
     list_ports = None
     SERIAL_IMPORT_ERROR = exc
 
-from rovl_protocol import forward_geodesic, parse_gps_sentence, parse_rovl_sentence, relative_position
+from rovl_protocol import classify_serial_sentence, forward_geodesic, parse_gps_sentence, parse_rovl_sentence, relative_position
 
 
 ROVL_BAUD = 115200
@@ -71,12 +71,12 @@ class ROVLSerialWorker(threading.Thread):
                 if not line:
                     continue
                 try:
-                    message = parse_rovl_sentence(line)
+                    classified = classify_serial_sentence(line)
                 except ValueError as exc:
                     self.events.put(("rovl_warning", str(exc)))
                     continue
-                if message is not None:
-                    self.events.put(("rovl_message", message))
+                if classified is not None:
+                    self.events.put(classified)
         except Exception as exc:
             self.events.put(("rovl_error", str(exc)))
         finally:
@@ -171,6 +171,41 @@ def probe_port(port, baud, seconds, parser):
                 pass
 
 
+def probe_rovl_gps_port(port, baud, seconds):
+    """Read one ROVL port once and retain both ROVL and GPS retweets."""
+    result = {"rovl": None, "gps": None}
+    if serial is None:
+        return result
+    device = None
+    try:
+        device = serial.Serial(port, baud, timeout=0.15)
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            line = device.readline()
+            if not line:
+                continue
+            try:
+                classified = classify_serial_sentence(line)
+            except ValueError:
+                continue
+            if classified is None:
+                continue
+            kind, message = classified
+            if kind == "rovl_message":
+                result["rovl"] = message
+            elif kind == "gps_message":
+                result["gps"] = message
+    except Exception:
+        pass
+    finally:
+        if device is not None:
+            try:
+                device.close()
+            except Exception:
+                pass
+    return result
+
+
 class PortScanWorker(threading.Thread):
     def __init__(self, events, seconds=1.2):
         super(PortScanWorker, self).__init__(daemon=True)
@@ -183,21 +218,34 @@ class PortScanWorker(threading.Thread):
         gps_bauds = {}
         details = []
         for port in port_names():
-            rovl = probe_port(port, ROVL_BAUD, self.seconds, parse_rovl_sentence)
+            combined = probe_rovl_gps_port(port, ROVL_BAUD, self.seconds)
+            rovl = combined["rovl"]
+            retweeted_gps = combined["gps"]
             if rovl is not None:
                 rovl_ports.append(port)
+            if retweeted_gps is not None:
+                gps_ports.append(port)
+                gps_bauds[port] = ROVL_BAUD
+            if rovl is not None and retweeted_gps is not None:
+                details.append("%s: ROVL + GPS retweet @ %d" % (port, ROVL_BAUD))
+            elif rovl is not None:
                 details.append("%s: ROVL $USRTH" % port)
-                continue
+            elif retweeted_gps is not None:
+                details.append("%s: GPS %d" % (port, ROVL_BAUD))
             found_gps = False
-            for baud in GPS_BAUDS:
-                gps = probe_port(port, baud, self.seconds, parse_gps_sentence)
-                if gps is not None:
-                    gps_ports.append(port)
-                    gps_bauds[port] = baud
-                    details.append("%s: GPS %d" % (port, baud))
-                    found_gps = True
-                    break
-            if not found_gps:
+            if retweeted_gps is None:
+                for baud in GPS_BAUDS:
+                    if baud == ROVL_BAUD:
+                        continue
+                    gps = probe_port(port, baud, self.seconds, parse_gps_sentence)
+                    if gps is not None:
+                        if port not in gps_ports:
+                            gps_ports.append(port)
+                        gps_bauds[port] = baud
+                        details.append("%s: GPS %d" % (port, baud))
+                        found_gps = True
+                        break
+            if not found_gps and rovl is None and retweeted_gps is None:
                 details.append("%s: nessun NMEA riconosciuto" % port)
         self.events.put(("scan_done", {"rovl": rovl_ports, "gps": gps_ports, "gps_bauds": gps_bauds, "details": details}))
 
@@ -232,7 +280,8 @@ class PositionTracker(tk.Tk):
         self.relative_values = {name: tk.StringVar(value="—") for name in ("slant", "horizontal", "bearing", "elevation", "east", "north")}
         self.topside_var = tk.StringVar(value="Topside: —")
         self.rov_global_var = tk.StringVar(value="ROV: —")
-        self.global_info_var = tk.StringVar(value="Distanza: — | Bearing: —")
+        self.global_info_var = tk.StringVar(value="WGS84: — | Distanza: — | Bearing: —")
+        self.relative_mode_var = tk.StringVar(value="Mode: —")
         self.rovl_badge = None
         self.gps_badge = None
         self.relative_canvas = None
@@ -282,7 +331,7 @@ class PositionTracker(tk.Tk):
         relative_tab = ttk.Frame(notebook, padding=8)
         global_tab = ttk.Frame(notebook, padding=8)
         notebook.add(relative_tab, text="RELATIVE POSITION")
-        notebook.add(global_tab, text="GLOBAL MAP")
+        notebook.add(global_tab, text="GLOBAL POSITION")
         self._build_relative_tab(relative_tab)
         self._build_global_tab(global_tab)
 
@@ -306,10 +355,11 @@ class PositionTracker(tk.Tk):
             ttk.Label(values, text=title).grid(row=row, column=0, sticky="w", pady=5)
             ttk.Label(values, textvariable=self.relative_values[key], font=("Segoe UI", 12, "bold")).grid(row=row, column=1, sticky="e", pady=5)
             ttk.Label(values, text=unit).grid(row=row, column=2, sticky="w", pady=5)
-        ttk.Label(values, text="N ↑   E →\nTopside receiver = (0, 0)", justify="left").grid(row=7, column=0, columnspan=3, pady=(25, 0), sticky="w")
+        ttk.Label(values, textvariable=self.relative_mode_var, foreground="#9b4d00", wraplength=230, justify="left").grid(row=6, column=0, columnspan=3, pady=(15, 5), sticky="w")
+        ttk.Label(values, text="N ↑   E →\nTopside receiver = (0, 0)", justify="left").grid(row=7, column=0, columnspan=3, pady=(10, 0), sticky="w")
 
     def _build_global_tab(self, parent):
-        ttk.Label(parent, text="Offline-capable local geographic view — no map tiles required", foreground="#555555").pack(anchor="w")
+        ttk.Label(parent, text="GLOBAL POSITION — local East/North diagnostic view; WGS84 lat/lon shown when TRUE bearing is available. No map tiles required.", foreground="#555555", wraplength=900).pack(anchor="w")
         body = ttk.Frame(parent)
         body.pack(fill="both", expand=True, pady=(5, 0))
         self.global_canvas = tk.Canvas(body, background="#102018", highlightthickness=0, width=self.CANVAS_SIZE, height=self.CANVAS_SIZE)
@@ -345,14 +395,21 @@ class PositionTracker(tk.Tk):
                 self.rovl_worker.start()
             else:
                 messagebox.showwarning("ROVL", "Seleziona o autodetecta una porta ROVL.")
-        if self.gps_worker is None and self.gps_var.get().strip():
+        gps_port = self.gps_var.get().strip()
+        rovl_port = self.rovl_var.get().strip()
+        # A detected ROVL + GPS-retweet port already emits both event types;
+        # opening the same COM a second time would be unsafe and unnecessary.
+        same_rovl_port = bool(gps_port and rovl_port and gps_port.upper() == rovl_port.upper())
+        if self.gps_worker is None and gps_port and not same_rovl_port:
             try:
                 baud = int(self.gps_baud_var.get())
             except (TypeError, ValueError):
                 messagebox.showerror("GPS", "Baud GPS non valido.")
                 return
-            self.gps_worker = GPSSerialWorker(self.gps_var.get().strip(), baud, self.events)
+            self.gps_worker = GPSSerialWorker(gps_port, baud, self.events)
             self.gps_worker.start()
+        elif same_rovl_port:
+            self.status_var.set("ROVL + GPS retweet sulla stessa COM: un solo collegamento read-only")
 
     def disconnect(self):
         if self.rovl_worker is not None:
@@ -414,7 +471,9 @@ class PositionTracker(tk.Tk):
         self.last_rovl_time = now
         self.arrivals.append(now)
         if self.relative is not None:
-            geodetic = forward_geodesic(self.gps.get("lat"), self.gps.get("lon"), self.relative["bearing_deg"], self.relative["horizontal_range_m"])
+            geodetic = None
+            if self.relative.get("global_eligible"):
+                geodetic = forward_geodesic(self.gps.get("lat"), self.gps.get("lon"), self.relative["bearing_deg"], self.relative["horizontal_range_m"])
             entry = {"timestamp": datetime.now().isoformat(timespec="milliseconds"), "message": message, "relative": self.relative, "rov_lat": geodetic[0] if geodetic else None, "rov_lon": geodetic[1] if geodetic else None, "topside_lat": self.gps.get("lat"), "topside_lon": self.gps.get("lon")}
             self.trail.append(entry)
             self._update_values()
@@ -428,11 +487,13 @@ class PositionTracker(tk.Tk):
         for key, value in mapping.items():
             unit = "°" if key in ("bearing", "elevation") else "m"
             self.relative_values[key].set("%.2f %s" % (value, unit))
+        self.relative_mode_var.set("Mode: %s" % self.relative.get("mode", "UNKNOWN"))
         if self.trail:
             latest = self.trail[-1]
             self.topside_var.set("Topside: %s, %s" % (self._coord_text(latest["topside_lat"]), self._coord_text(latest["topside_lon"])))
             self.rov_global_var.set("ROV: %s, %s" % (self._coord_text(latest["rov_lat"]), self._coord_text(latest["rov_lon"])))
-            self.global_info_var.set("Distanza: %.2f m | Bearing: %.2f°" % (self.relative["horizontal_range_m"], self.relative["bearing_deg"]))
+            global_mode = "TRUE bearing" if self.relative.get("global_eligible") else "unavailable (APPARENT / UNCOMPENSATED)"
+            self.global_info_var.set("WGS84: %s | Distanza: %.2f m | Bearing: %.2f°" % (global_mode, self.relative["horizontal_range_m"], self.relative["bearing_deg"]))
 
     @staticmethod
     def _coord_text(value):

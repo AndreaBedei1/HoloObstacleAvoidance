@@ -11,7 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from rovl_position_viewer import PositionTracker  # noqa: E402
-from rovl_protocol import forward_geodesic, nmea_checksum, parse_gps_sentence, parse_rovl_sentence, relative_position  # noqa: E402
+from rovl_protocol import classify_serial_sentence, forward_geodesic, nmea_checksum, parse_gps_sentence, parse_rovl_sentence, relative_position  # noqa: E402
 
 
 def sentence(body):
@@ -27,6 +27,8 @@ class ROVLPositionOfflineTests(unittest.TestCase):
         self.assertEqual(message["cb"], 37.2)
         self.assertEqual(message["te"], 2.8)
         self.assertEqual(message["ch"], 178.1)
+        self.assertEqual(message["ah"], "T")
+        self.assertEqual(message["ag"], "T")
         self.assertEqual(message["extra_fields"], ["FUTURE"])
         with self.assertRaises(ValueError):
             parse_rovl_sentence(sentence(body)[:-5] + "00\r\n")
@@ -35,6 +37,15 @@ class ROVLPositionOfflineTests(unittest.TestCase):
         message = {"sr": 10.0, "cb": 90.0, "te": 30.0}
         result = relative_position(message)
         self.assertAlmostEqual(result["horizontal_range_m"], 10.0 * math.cos(math.radians(30.0)))
+        self.assertAlmostEqual(result["east_m"], result["horizontal_range_m"])
+        self.assertAlmostEqual(result["north_m"], 0.0, places=8)
+        self.assertEqual(result["mode"], "TRUE / IMU COMPENSATED")
+        self.assertTrue(result["global_eligible"])
+
+    def test_apparent_fallback_is_explicitly_degraded(self):
+        result = relative_position({"sr": 10.0, "ac": 90.0, "ae": 30.0})
+        self.assertEqual(result["mode"], "APPARENT / UNCOMPENSATED")
+        self.assertFalse(result["global_eligible"])
         self.assertAlmostEqual(result["east_m"], result["horizontal_range_m"])
         self.assertAlmostEqual(result["north_m"], 0.0, places=8)
 
@@ -49,6 +60,13 @@ class ROVLPositionOfflineTests(unittest.TestCase):
         self.assertTrue(gps["fix"])
         self.assertAlmostEqual(gps["lat"], 48.1173, places=4)
         self.assertAlmostEqual(gps["lon"], 11.5166667, places=4)
+
+    def test_alternating_rovl_and_gps_on_same_stream(self):
+        rovl_line = sentence("USRTH,358.5,1.5,2.8,10.0,,37.2,2.8,,,,178.1,16,T,T,1,3313,B,-2,-2")
+        gps_line = sentence("GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,")
+        events = [classify_serial_sentence(line) for line in (rovl_line, gps_line, rovl_line, gps_line)]
+        self.assertEqual([event[0] for event in events], ["rovl_message", "gps_message", "rovl_message", "gps_message"])
+        self.assertTrue(events[1][1]["fix"])
 
     def test_gui_builds_without_hardware(self):
         try:
