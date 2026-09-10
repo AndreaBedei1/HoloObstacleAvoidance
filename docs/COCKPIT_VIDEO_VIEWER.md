@@ -84,22 +84,24 @@ Separatori `|` e tabulazioni permettono di riconoscere più campi nella stessa
 riga. Le righe che non seguono questo formato restano in `Other / Raw` e non
 vengono scartate.
 
-`RAW ASS EVENTS AT CURRENT TIME` conserva il testo originale dell'evento,
-oltre alla versione leggibile e agli intervalli temporali. Se non c'è alcun
-evento attivo, il pannello lo dichiara esplicitamente: non vengono inventati
-campi come depth, heading, roll o pitch.
+Il testo completo e i campi raw restano disponibili nell'indice interno e
+nell'esportazione CSV, ma non vengono più mostrati nella schermata principale:
+lo spazio è riservato al video. Se non c'è alcun evento attivo, la tabella lo
+dichiara esplicitamente: non vengono inventati campi come depth, heading, roll
+o pitch.
 
 La vista CSV esporta una riga per ogni evento temporizzato con start, end,
 layer, style, testo raw, testo leggibile e campi riconosciuti. L'ASS originale
 resta invariato.
 
-## Informazioni file
+## Layout video
 
-Per ogni registrazione sono mostrati filename, data ricavata dal pattern
-`Cockpit (Mon DD, YYYY - HH꞉MM꞉SS GMT±N)`, durata, ASS associato, numero eventi
-e intervallo temporale ASS. Risoluzione, FPS e codec vengono aggiunti quando
-`ffprobe` è disponibile; la sua assenza non impedisce la riproduzione con VLC.
-È disponibile anche lo screenshot del frame corrente quando VLC lo supporta.
+La schermata principale mostra il video incorporato e la tabella
+`CURRENT TELEMETRY`. I pannelli dettagliati `RAW ASS EVENTS AT CURRENT TIME` e
+`FILE INFORMATION` sono stati rimossi dall'interfaccia per lasciare più spazio
+al video. I dati ASS completi restano esportabili tramite `Export telemetry
+CSV`; è disponibile anche lo screenshot del frame corrente quando VLC lo
+supporta.
 
 ## Cosa rappresentano i dati
 

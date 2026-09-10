@@ -356,9 +356,11 @@ class CockpitVideoViewer(tk.Tk):
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=20, pady=(0, 16))
-        body.columnconfigure(0, weight=0, minsize=340)
+        body.columnconfigure(0, weight=0, minsize=300)
         body.columnconfigure(1, weight=1)
-        body.columnconfigure(2, weight=0, minsize=390)
+        # Keep the telemetry panel compact so the embedded video gets the
+        # majority of the horizontal space.
+        body.columnconfigure(2, weight=0, minsize=300)
         body.rowconfigure(0, weight=1)
 
         left = ttk.Frame(body, style="Panel.TFrame", padding=12)
@@ -417,8 +419,7 @@ class CockpitVideoViewer(tk.Tk):
 
         right = ttk.Frame(body, style="Panel.TFrame", padding=12)
         right.grid(row=0, column=2, sticky="nsew")
-        right.rowconfigure(3, weight=1)
-        right.rowconfigure(5, weight=1)
+        right.rowconfigure(2, weight=1)
         right.columnconfigure(0, weight=1)
         ttk.Label(right, text="CURRENT TELEMETRY", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w")
         self.telemetry_time = ttk.Label(right, text="Video time 00:00", style="Panel.TLabel")
@@ -432,19 +433,6 @@ class CockpitVideoViewer(tk.Tk):
         field_scroll = ttk.Scrollbar(right, orient="vertical", command=self.field_tree.yview)
         field_scroll.grid(row=2, column=1, sticky="ns")
         self.field_tree.configure(yscrollcommand=field_scroll.set)
-        ttk.Label(right, text="RAW ASS EVENTS AT CURRENT TIME", style="PanelTitle.TLabel").grid(row=4, column=0, sticky="w", pady=(12, 6))
-        raw_frame = ttk.Frame(right, style="Panel.TFrame")
-        raw_frame.grid(row=5, column=0, sticky="nsew")
-        raw_frame.rowconfigure(0, weight=1)
-        raw_frame.columnconfigure(0, weight=1)
-        self.raw_text = tk.Text(raw_frame, bg="#07111f", fg="#d9e8f0", insertbackground="#ffffff", wrap="word", relief="flat", font=("Consolas", 9), state="disabled")
-        raw_scroll = ttk.Scrollbar(raw_frame, orient="vertical", command=self.raw_text.yview)
-        self.raw_text.configure(yscrollcommand=raw_scroll.set)
-        self.raw_text.grid(row=0, column=0, sticky="nsew")
-        raw_scroll.grid(row=0, column=1, sticky="ns")
-        ttk.Label(right, text="FILE INFORMATION", style="PanelTitle.TLabel").grid(row=6, column=0, sticky="w", pady=(12, 6))
-        self.file_info = ttk.Label(right, text="--", style="Panel.TLabel", justify="left", wraplength=340)
-        self.file_info.grid(row=7, column=0, sticky="ew")
 
     def _init_vlc(self) -> None:
         if vlc is None:
@@ -500,7 +488,6 @@ class CockpitVideoViewer(tk.Tk):
         self._set_timeline(0, 1)
         self.video_message.configure(text=message)
         self._update_telemetry(0)
-        self.file_info.configure(text="--")
 
     def _load_pair(self, index: int) -> None:
         if not (0 <= index < len(self.pairs)):
@@ -515,7 +502,6 @@ class CockpitVideoViewer(tk.Tk):
                 self.ass_index = parse_ass_file(self.selected_pair.ass)
             except Exception as exc:
                 self.video_message.configure(text=f"ASS non caricabile: {exc}")
-        self._update_file_info()
         self._update_telemetry(0)
         if not self.selected_pair.video:
             self.video_message.configure(text="ASS presente senza video MKV.")
@@ -547,35 +533,6 @@ class CockpitVideoViewer(tk.Tk):
             self._sync_spu()
             self.video_message.configure(text="")
             self._update_duration_from_player()
-
-    def _update_file_info(self) -> None:
-        pair = self.selected_pair
-        if not pair:
-            self.file_info.configure(text="--")
-            return
-        lines = [f"filename: {pair.display_name}", f"recording date: {recording_date_from_name(pair.video or pair.ass)}"]
-        if pair.video:
-            stat = pair.video.stat()
-            meta = ffprobe_metadata(pair.video)
-            lines.extend([
-                f"video: {pair.video.name}",
-                f"size: {format_bytes(stat.st_size)}",
-                f"duration: {meta.get('duration', '--')}",
-                f"resolution: {meta.get('resolution', '--')}",
-                f"FPS: {meta.get('fps', '--')}",
-                f"video codec: {meta.get('codec', '--')}",
-            ])
-        else:
-            lines.append("video: VIDEO WITHOUT VIDEO")
-        if pair.ass:
-            lines.extend([
-                f"ASS: {pair.ass.name}",
-                f"ASS events: {len(self.ass_index.events) if self.ass_index else '--'}",
-                f"ASS start/end: {format_ms(self.ass_index.start_ms) if self.ass_index else '--'} → {format_ms(self.ass_index.end_ms) if self.ass_index else '--'}",
-            ])
-        else:
-            lines.append("ASS: ASS WITHOUT VIDEO")
-        self.file_info.configure(text="\n".join(lines))
 
     def _previous_recording(self) -> None:
         self._move_recording(-1)
@@ -689,7 +646,6 @@ class CockpitVideoViewer(tk.Tk):
             if value > 0:
                 self.duration_ms = value
                 self._set_timeline(self.current_ms, self.duration_ms)
-                self._update_file_info()
         except Exception:
             pass
 
@@ -710,23 +666,14 @@ class CockpitVideoViewer(tk.Tk):
         self.telemetry_time.configure(text=f"Video time {format_ms(timestamp_ms)}")
         for item in self.field_tree.get_children():
             self.field_tree.delete(item)
-        raw_lines: List[str] = []
         active = self.ass_index.active_at(timestamp_ms) if self.ass_index else []
         for event in active:
             for field_name, value in event.fields:
                 self.field_tree.insert("", "end", values=(field_name, value))
             for line in event.other_lines:
                 self.field_tree.insert("", "end", values=("Other / Raw", line))
-            raw_lines.append(f"[{ass_time(event.start_ms)} → {ass_time(event.end_ms)}] EVENT {event.index}")
-            raw_lines.append(f"  {event.raw_dialogue}")
-            raw_lines.append(f"  readable: {event.readable_text}")
         if not active:
             self.field_tree.insert("", "end", values=("--", "Nessun evento ASS attivo"))
-            raw_lines.append("Nessun evento ASS attivo a questo timestamp.")
-        self.raw_text.configure(state="normal")
-        self.raw_text.delete("1.0", "end")
-        self.raw_text.insert("1.0", "\n".join(raw_lines))
-        self.raw_text.configure(state="disabled")
 
     def _export_csv(self) -> None:
         if not self.ass_index:
