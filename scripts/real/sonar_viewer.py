@@ -78,6 +78,11 @@ try:
 except ImportError:  # Camera is optional for replay/offline use.
     cv2 = None
 
+try:
+    import av
+except ImportError:  # PyAV is preferred, but offline/replay stays importable.
+    av = None
+
 
 def utc_iso(ns: Optional[int] = None) -> str:
     value = time.time_ns() if ns is None else int(ns)
@@ -206,6 +211,26 @@ def normalise_device_timestamp(value: int) -> Optional[int]:
     if value > 10_000_000_000_000:
         return value
     return value * 1_000_000
+
+
+def time_base_parts(time_base) -> Tuple[Optional[int], Optional[int]]:
+    """Return a PyAV Fraction-like time base as numerator/denominator."""
+    if time_base is None:
+        return None, None
+    try:
+        return int(time_base.numerator), int(time_base.denominator)
+    except (AttributeError, TypeError, ValueError):
+        return None, None
+
+
+def timestamp_seconds(timestamp, time_base) -> Optional[float]:
+    """Convert a native PTS/DTS only when both value and time base exist."""
+    if timestamp is None or time_base is None:
+        return None
+    try:
+        return float(timestamp * time_base)
+    except (TypeError, ValueError):
+        return None
 
 
 def serializable_surveyor_record(record: Dict[str, object]) -> Dict[str, object]:
@@ -480,41 +505,200 @@ class Ping1DWorker(threading.Thread):
 
 
 class CameraWorker(threading.Thread):
-    """Single-ingest RGB camera reader; the same frames feed preview/recording."""
+    """Single-ingest camera reader with PyAV remux/decode fan-out.
+
+    PyAV demuxes each encoded packet once. The packet is offered to the
+    session remuxer and then decoded frames are sent to the GUI. OpenCV is
+    used only when PyAV is unavailable or cannot open the selected source.
+    """
 
     def __init__(self, port=CAMERA_DEFAULT_PORT, source=None, events=None):
         super(CameraWorker, self).__init__(daemon=True)
         self.port = int(port)
         self.source = source or "udp://0.0.0.0:%d" % self.port
-        self.events = events or queue.Queue()
+        self.events = events if events is not None else queue.Queue()
         self.stop_event = threading.Event()
         self.capture = None
+        self.container = None
+        self.packet_callback = None
+        self.backend = "PENDING"
+
+    @staticmethod
+    def _stream_metadata(stream, source, backend, recording_mode, reason=None):
+        codec_context = getattr(stream, "codec_context", None)
+        codec = getattr(codec_context, "name", None) or getattr(stream, "codec", None)
+        if not isinstance(codec, str):
+            codec = getattr(codec, "name", None)
+        average_rate = getattr(stream, "average_rate", None)
+        try:
+            nominal_fps = float(average_rate) if average_rate is not None else None
+        except (TypeError, ValueError):
+            nominal_fps = None
+        tb_num, tb_den = time_base_parts(getattr(stream, "time_base", None))
+        result = {
+            "backend": backend,
+            "recording_mode": recording_mode,
+            "source": str(source),
+            "codec": codec,
+            "width": int(getattr(codec_context, "width", 0) or 0) or None,
+            "height": int(getattr(codec_context, "height", 0) or 0) or None,
+            "nominal_fps": nominal_fps,
+            "time_base": {"num": tb_num, "den": tb_den},
+            "video_pts": "AVAILABLE" if tb_num is not None and tb_den is not None else "UNAVAILABLE",
+        }
+        if reason:
+            result["reason"] = str(reason)
+        return result
+
+    @staticmethod
+    def _packet_frame_metadata(packet, stream, packet_index, frame=None, host_monotonic_ns=None, host_utc_ns=None, frame_index=None):
+        time_base = getattr(frame, "time_base", None) or getattr(packet, "time_base", None) or getattr(stream, "time_base", None)
+        tb_num, tb_den = time_base_parts(time_base)
+        pts = getattr(frame, "pts", None) if frame is not None else None
+        dts = getattr(frame, "dts", None) if frame is not None else None
+        if pts is None:
+            pts = getattr(packet, "pts", None)
+        if dts is None:
+            dts = getattr(packet, "dts", None)
+        return {
+            "frame_index": frame_index,
+            "packet_index": packet_index,
+            "pts": int(pts) if pts is not None else None,
+            "dts": int(dts) if dts is not None else None,
+            "time_base_num": tb_num,
+            "time_base_den": tb_den,
+            "pts_seconds": timestamp_seconds(pts, time_base),
+            "dts_seconds": timestamp_seconds(dts, time_base),
+            "host_monotonic_ns": int(host_monotonic_ns or time.monotonic_ns()),
+            "host_utc_ns": int(host_utc_ns or time.time_ns()),
+            "session_time_s": None,
+            "key_frame": bool(getattr(packet, "is_keyframe", False) or getattr(frame, "key_frame", False)),
+            "packet_size": int(len(packet)) if packet is not None else None,
+        }
+
+    def _emit_backend(self, metadata):
+        self.backend = metadata.get("backend", "UNKNOWN")
+        self.events.put(("camera_backend", metadata))
+
+    def _run_pyav(self):
+        if av is None:
+            raise RuntimeError("PyAV non installato")
+        self.container = av.open(self.source, mode="r", options={"fflags": "nobuffer", "flags": "low_delay"})
+        streams = [stream for stream in self.container.streams if getattr(stream, "type", None) == "video"]
+        if not streams:
+            raise RuntimeError("la sorgente non contiene uno stream video")
+        stream = streams[0]
+        metadata = self._stream_metadata(stream, self.source, "PyAV", "REMUX H264")
+        metadata["port"] = self.port
+        self._emit_backend(metadata)
+        self.events.put(("camera_connected", metadata))
+        packet_index = 0
+        frame_index = 0
+        for packet in self.container.demux(stream):
+            if self.stop_event.is_set():
+                break
+            if packet is None:
+                continue
+            host_mono = time.monotonic_ns()
+            host_utc = time.time_ns()
+            try:
+                frames = list(packet.decode())
+            except Exception as exc:
+                frames = []
+                self.events.put(("camera_decode_warning", str(exc)))
+            if self.packet_callback is not None:
+                self.packet_callback(packet, stream, packet_index, host_mono, host_utc)
+            if not frames:
+                packet_index += 1
+                continue
+            for frame in frames:
+                if self.stop_event.is_set():
+                    break
+                image = frame.to_ndarray(format="bgr24")
+                frame_metadata = self._packet_frame_metadata(packet, stream, packet_index, frame, host_mono, host_utc, frame_index)
+                self.events.put(("camera_frame", (image, frame_metadata)))
+                frame_index += 1
+            packet_index += 1
+
+    def _run_opencv_fallback(self, reason):
+        if cv2 is None:
+            raise RuntimeError("PyAV non disponibile e OpenCV non installato: installare requirements_sonar.txt")
+        self.capture = cv2.VideoCapture(self.source, getattr(cv2, "CAP_FFMPEG", 0))
+        if not self.capture.isOpened():
+            self.capture.release()
+            self.capture = cv2.VideoCapture(self.source)
+        if not self.capture.isOpened():
+            raise RuntimeError("PyAV non ha aperto %s; OpenCV fallback non riesce ad aprire la sorgente: %s" % (self.source, reason))
+        width = int(self.capture.get(getattr(cv2, "CAP_PROP_FRAME_WIDTH", 3)) or 0) or None
+        height = int(self.capture.get(getattr(cv2, "CAP_PROP_FRAME_HEIGHT", 4)) or 0) or None
+        fps = float(self.capture.get(getattr(cv2, "CAP_PROP_FPS", 5)) or 0.0) or None
+        metadata = {
+            "backend": "OpenCV fallback",
+            "recording_mode": "DECODED/REENCODED FALLBACK",
+            "source": str(self.source),
+            "codec": None,
+            "width": width,
+            "height": height,
+            "nominal_fps": fps,
+            "time_base": {"num": None, "den": None},
+            "video_pts": "UNAVAILABLE",
+            "reason": str(reason),
+            "port": self.port,
+        }
+        self._emit_backend(metadata)
+        self.events.put(("camera_connected", metadata))
+        frame_index = 0
+        while not self.stop_event.is_set():
+            ok, frame = self.capture.read()
+            if not ok or frame is None:
+                time.sleep(0.02)
+                continue
+            host_mono = time.monotonic_ns()
+            host_utc = time.time_ns()
+            self.events.put(("camera_frame", (frame, {
+                "frame_index": frame_index,
+                "packet_index": None,
+                "pts": None,
+                "dts": None,
+                "time_base_num": None,
+                "time_base_den": None,
+                "pts_seconds": None,
+                "dts_seconds": None,
+                "host_monotonic_ns": host_mono,
+                "host_utc_ns": host_utc,
+                "session_time_s": None,
+                "key_frame": None,
+                "packet_size": None,
+            })))
+            frame_index += 1
 
     def run(self):
-        if cv2 is None:
-            self.events.put(("camera_error", "OpenCV non installato: installare requirements_sonar.txt"))
-            self.events.put(("camera_closed", None))
-            return
         try:
-            self.capture = cv2.VideoCapture(self.source, getattr(cv2, "CAP_FFMPEG", 0))
-            if not self.capture.isOpened():
-                self.capture.release()
-                self.capture = cv2.VideoCapture(self.source)
-            if not self.capture.isOpened():
-                raise RuntimeError("impossibile aprire %s; usare un SDP locale/URL se il flusso è RTP" % self.source)
-            self.events.put(("camera_connected", {"source": self.source, "port": self.port}))
-            while not self.stop_event.is_set():
-                ok, frame = self.capture.read()
-                if not ok or frame is None:
-                    time.sleep(0.02)
-                    continue
-                self.events.put(("camera_frame", (frame, time.monotonic_ns(), time.time_ns())))
+            if av is not None:
+                try:
+                    self._run_pyav()
+                    return
+                except Exception as exc:
+                    if self.container is not None:
+                        try:
+                            self.container.close()
+                        except Exception:
+                            pass
+                    self.container = None
+                    self._run_opencv_fallback(exc)
+            else:
+                self._run_opencv_fallback("PyAV non installato")
         except Exception as exc:
             if not self.stop_event.is_set():
                 self.events.put(("camera_error", str(exc)))
         finally:
             if self.capture is not None:
                 self.capture.release()
+            if self.container is not None:
+                try:
+                    self.container.close()
+                except Exception:
+                    pass
             self.events.put(("camera_closed", None))
 
     def stop(self):
@@ -554,7 +738,7 @@ class BlueOSWorker(threading.Thread):
 class SessionRecorder:
     """Write a local synchronized session without changing source files."""
 
-    def __init__(self, root=SESSION_ROOT, camera_port=CAMERA_DEFAULT_PORT, camera_source=None):
+    def __init__(self, root=SESSION_ROOT, camera_port=CAMERA_DEFAULT_PORT, camera_source=None, surveyor_mode="live", surveyor_replay_source=None):
         self.root = Path(root)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_id = "%s_%s" % (timestamp, uuid.uuid4().hex[:8])
@@ -563,23 +747,42 @@ class SessionRecorder:
         self.session_start_utc_ns = time.time_ns()
         self.session_start_monotonic_ns = time.monotonic_ns()
         self.camera_port = int(camera_port)
-        self.camera_source = camera_source
+        self.camera_source = camera_source or "udp://0.0.0.0:%d" % self.camera_port
+        self.surveyor_mode = str(surveyor_mode)
+        self.surveyor_replay_source = str(surveyor_replay_source) if surveyor_replay_source else None
         self.lock = threading.Lock()
         self.closed = False
         self.files = {}
         self.camera_writer = None
+        self.camera_container = None
+        self.camera_stream = None
         self.camera_size = None
         self.camera_frame_index = 0
-        self._open_files()
-        self._write_session({
+        self.camera_backend = "PENDING"
+        self.camera_recording_mode = "PENDING"
+        self.camera_metadata = {
+            "backend": "PENDING",
+            "recording_mode": "PENDING",
+            "source": self.camera_source,
+            "codec": None,
+            "width": None,
+            "height": None,
+            "nominal_fps": None,
+            "time_base": {"num": None, "den": None},
+            "video_pts": "UNAVAILABLE",
+        }
+        self.session_metadata = {
             "session_id": self.session_id,
             "session_start_utc_ns": self.session_start_utc_ns,
             "session_start_monotonic_ns": self.session_start_monotonic_ns,
             "session_start_utc": utc_iso(self.session_start_utc_ns),
-            "camera": {"port": self.camera_port, "source": self.camera_source},
-            "surveyor": {"host": SURVEYOR_HOST, "port": SURVEYOR_PORT, "tx": "LOCKED"},
+            "camera": self.camera_metadata,
+            "surveyor": {"host": SURVEYOR_HOST, "port": SURVEYOR_PORT, "mode": self.surveyor_mode, "replay_source": self.surveyor_replay_source, "tx": "LOCKED"},
             "ping1d": {"host": PING1D_HOST, "port": PING1D_PORT},
-        })
+        }
+        self._open_files()
+        self.session_metadata["camera"].update({"port": self.camera_port})
+        self._write_session(self.session_metadata)
         self._write_svlog_metadata()
 
     def _open_files(self):
@@ -588,12 +791,29 @@ class SessionRecorder:
         self.files["events"] = open(str(self.directory / "events.jsonl"), "w", encoding="utf-8")
         self.files["camera_timestamps"] = open(str(self.directory / "camera_timestamps.csv"), "w", newline="", encoding="utf-8")
         self.camera_csv = csv.writer(self.files["camera_timestamps"])
-        self.camera_csv.writerow(["session_id", "session_start_utc_ns", "session_start_monotonic_ns", "host_monotonic_ns", "host_utc_ns", "frame_index", "pts_seconds"])
-        self.files["svlog"] = open(str(self.directory / "surveyor_raw.svlog"), "wb")
+        self.camera_csv.writerow([
+            "session_id", "session_start_utc_ns", "session_start_monotonic_ns",
+            "frame_index", "packet_index", "pts", "dts", "time_base_num",
+            "time_base_den", "pts_seconds", "dts_seconds", "host_monotonic_ns",
+            "host_utc_ns", "session_time_s", "key_frame", "packet_size",
+        ])
+        if self.surveyor_mode != "skipped":
+            self.files["svlog"] = open(str(self.directory / "surveyor_raw.svlog"), "wb")
 
     def _write_session(self, data):
         with open(str(self.directory / "session.json"), "w", encoding="utf-8") as stream:
             json.dump(data, stream, ensure_ascii=False, indent=2)
+
+    def update_camera_metadata(self, metadata):
+        with self.lock:
+            if self.closed:
+                return
+            self.camera_metadata.update(dict(metadata or {}))
+            self.camera_backend = self.camera_metadata.get("backend", self.camera_backend)
+            self.camera_recording_mode = self.camera_metadata.get("recording_mode", self.camera_recording_mode)
+            self.session_metadata["camera"] = dict(self.camera_metadata)
+            self.session_metadata["camera"]["port"] = self.camera_port
+            self._write_session(self.session_metadata)
 
     def _write_svlog_metadata(self):
         metadata = {
@@ -604,15 +824,18 @@ class SessionRecorder:
             "sonarlink_version": "",
             "timestamp": utc_iso(self.session_start_utc_ns),
             "recorder": "BlueROV2 Multimodal Recorder",
+            "mode": self.surveyor_mode,
+            "replay_source": self.surveyor_replay_source,
             "session_start_utc_ns": self.session_start_utc_ns,
             "session_start_monotonic_ns": self.session_start_monotonic_ns,
         }
-        self.files["svlog"].write(make_packet(MSG_JSON, json.dumps(metadata, indent=2).encode("utf-8")))
-        self.files["svlog"].flush()
+        if "svlog" in self.files:
+            self.files["svlog"].write(make_packet(MSG_JSON, json.dumps(metadata, indent=2).encode("utf-8")))
+            self.files["svlog"].flush()
 
     def write_surveyor_packet(self, raw_packet, host_monotonic_ns=None, host_utc_ns=None):
         with self.lock:
-            if not self.closed:
+            if not self.closed and "svlog" in self.files:
                 self.files["svlog"].write(bytes(raw_packet))
                 self.files["svlog"].flush()
 
@@ -638,11 +861,70 @@ class SessionRecorder:
                 self.files["events"].write(json.dumps({"timestamp": utc_iso(), "session_id": self.session_id, "session_start_utc_ns": self.session_start_utc_ns, "session_start_monotonic_ns": self.session_start_monotonic_ns, "kind": kind, "data": data}, ensure_ascii=False) + "\n")
                 self.files["events"].flush()
 
-    def write_camera(self, frame, host_monotonic_ns, host_utc_ns):
+    def _set_camera_recording_mode(self, mode, reason=None):
+        self.camera_recording_mode = str(mode)
+        self.camera_metadata["recording_mode"] = self.camera_recording_mode
+        if reason:
+            self.camera_metadata["recording_reason"] = str(reason)
+        self.session_metadata["camera"] = dict(self.camera_metadata)
+        self.session_metadata["camera"]["port"] = self.camera_port
+        self._write_session(self.session_metadata)
+
+    def write_camera_packet(self, packet, stream, packet_index, host_monotonic_ns, host_utc_ns):
+        """Remux one encoded packet into MKV without decoding/re-encoding."""
+        with self.lock:
+            if self.closed or av is None:
+                return False
+            if self.camera_container is None:
+                try:
+                    self.camera_container = av.open(str(self.directory / "camera_rgb.mkv"), mode="w", format="matroska")
+                    try:
+                        self.camera_stream = self.camera_container.add_stream(template=stream)
+                    except TypeError:
+                        codec_context = getattr(stream, "codec_context", None)
+                        codec_name = getattr(codec_context, "name", None) or "h264"
+                        self.camera_stream = self.camera_container.add_stream(codec_name)
+                        self.camera_stream.time_base = getattr(stream, "time_base", None)
+                        if codec_context is not None:
+                            self.camera_stream.codec_context.extradata = getattr(codec_context, "extradata", None)
+                    backend = self.camera_backend if self.camera_backend != "PENDING" else "PyAV"
+                    metadata = CameraWorker._stream_metadata(stream, self.camera_source, backend, "REMUX H264")
+                    self.camera_metadata.update(metadata)
+                    self.camera_backend = metadata.get("backend", "PyAV")
+                    self._set_camera_recording_mode("REMUX H264")
+                except Exception as exc:
+                    self.camera_container = None
+                    self.camera_stream = None
+                    self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc)
+                    return False
+            try:
+                original_stream = getattr(packet, "stream", None)
+                packet.stream = self.camera_stream
+                self.camera_container.mux(packet)
+                packet.stream = original_stream
+                return True
+            except Exception as exc:
+                try:
+                    packet.stream = original_stream
+                except Exception:
+                    pass
+                self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc)
+                try:
+                    self.camera_container.close()
+                except Exception:
+                    pass
+                self.camera_container = None
+                self.camera_stream = None
+                return False
+
+    def write_camera_frame(self, frame, frame_metadata):
+        """Record decoded frames only for the explicit fallback path."""
         if cv2 is None:
             return
         with self.lock:
             if self.closed:
+                return
+            if self.camera_recording_mode == "REMUX H264":
                 return
             height, width = frame.shape[:2]
             if self.camera_writer is None:
@@ -652,17 +934,39 @@ class SessionRecorder:
                 if not self.camera_writer.isOpened():
                     self.camera_writer.release()
                     self.camera_writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), 30.0, self.camera_size)
+                self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", self.camera_metadata.get("recording_reason"))
             if self.camera_writer is not None and self.camera_writer.isOpened():
                 self.camera_writer.write(frame)
-            self.camera_csv.writerow([self.session_id, self.session_start_utc_ns, self.session_start_monotonic_ns, int(host_monotonic_ns), int(host_utc_ns), self.camera_frame_index, (int(host_monotonic_ns) - self.session_start_monotonic_ns) / 1_000_000_000.0])
-            self.files["camera_timestamps"].flush()
-            self.camera_frame_index += 1
+            item = dict(frame_metadata or {})
+            host_mono = int(item.get("host_monotonic_ns") or time.monotonic_ns())
+            item["session_time_s"] = (host_mono - self.session_start_monotonic_ns) / 1_000_000_000.0
+            self._write_camera_timestamp(item)
+
+    def _write_camera_timestamp(self, item):
+        values = [
+            self.session_id, self.session_start_utc_ns, self.session_start_monotonic_ns,
+            item.get("frame_index"), item.get("packet_index"), item.get("pts"),
+            item.get("dts"), item.get("time_base_num"), item.get("time_base_den"),
+            item.get("pts_seconds"), item.get("dts_seconds"), item.get("host_monotonic_ns"),
+            item.get("host_utc_ns"), item.get("session_time_s"), item.get("key_frame"),
+            item.get("packet_size"),
+        ]
+        if values[13] is None and item.get("host_monotonic_ns") is not None:
+            values[13] = (int(item["host_monotonic_ns"]) - self.session_start_monotonic_ns) / 1_000_000_000.0
+        self.camera_csv.writerow(values)
+        self.files["camera_timestamps"].flush()
+        self.camera_frame_index = max(self.camera_frame_index, int(item.get("frame_index") or 0) + 1)
 
     def close(self):
         with self.lock:
             if self.closed:
                 return
             self.closed = True
+            if self.camera_container is not None:
+                try:
+                    self.camera_container.close()
+                except Exception:
+                    pass
             if self.camera_writer is not None:
                 self.camera_writer.release()
             for stream in self.files.values():
@@ -687,10 +991,23 @@ def nearest_sample(target_monotonic_ns: int, samples: Sequence[Dict[str, object]
 
 def match_surveyor_ping(ping_record, rgb_frames, ping1d_samples):
     """Match one Surveyor ping with nearest RGB frame and Ping1D sample."""
+    target = int(ping_record.get("host_monotonic_ns", 0))
+    camera = nearest_sample(target, rgb_frames)
+    ping1d = nearest_sample(target, ping1d_samples)
+
+    def delta_ms(sample):
+        if sample is None:
+            return None
+        return (int(sample.get("host_monotonic_ns", 0)) - target) / 1_000_000.0
+
     return {
         "surveyor": ping_record,
-        "rgb_frame": nearest_sample(int(ping_record.get("host_monotonic_ns", 0)), rgb_frames),
-        "ping1d": nearest_sample(int(ping_record.get("host_monotonic_ns", 0)), ping1d_samples),
+        "rgb_frame": camera,
+        "ping1d": ping1d,
+        "time_delta_camera_ms": delta_ms(camera),
+        "time_delta_ping1d_ms": delta_ms(ping1d),
+        "camera_pts": camera.get("pts") if camera is not None else None,
+        "camera_pts_seconds": camera.get("pts_seconds") if camera is not None else None,
     }
 
 
@@ -769,7 +1086,7 @@ class SonarViewer(tk.Tk):
     PROFILE_W = 560
     PROFILE_H = 230
 
-    def __init__(self, offline=False, replay_path=None, wet_authorized=False):
+    def __init__(self, offline=False, replay_path=None, wet_authorized=False, skip_surveyor=False):
         super(SonarViewer, self).__init__()
         self.title("BlueROV2 Multimodal Recorder")
         self.geometry("1600x950")
@@ -778,6 +1095,7 @@ class SonarViewer(tk.Tk):
         self.offline = bool(offline)
         self.replay_path = Path(replay_path) if replay_path else None
         self.wet_authorized = bool(wet_authorized)
+        self.skip_surveyor = bool(skip_surveyor) and self.replay_path is None
         self.surveyor_worker = None
         self.ping_worker = None
         self.camera_worker = None
@@ -788,6 +1106,10 @@ class SonarViewer(tk.Tk):
         self.latest_ping_profile = None
         self.latest_camera = None
         self.latest_camera_pil = None
+        self.camera_metadata = {"backend": "PENDING", "recording_mode": "PENDING", "video_pts": "UNAVAILABLE"}
+        self.camera_frame_count = 0
+        self.surveyor_ping_count = 0
+        self.ping1d_sample_count = 0
         self.photos = {}
         self.show_atof = tk.BooleanVar(value=True)
         self.fan_brightness = tk.DoubleVar(value=1.0)
@@ -812,6 +1134,10 @@ class SonarViewer(tk.Tk):
         for column in range(5):
             top.columnconfigure(column, weight=1)
         self._set_badge(self.tx_badge, False, "LOCKED / DRY MODE")
+        if self.replay_path is not None:
+            self._set_badge(self.surveyor_badge, False, "REPLAY")
+        elif self.skip_surveyor:
+            self._set_badge(self.surveyor_badge, False, "SKIPPED")
 
         toolbar = ttk.Frame(self, padding=(8, 0, 8, 8))
         toolbar.pack(fill="x")
@@ -903,13 +1229,25 @@ class SonarViewer(tk.Tk):
 
     def connect_all(self):
         if self.offline:
-            self.status_text.set("Offline: nessuna connessione hardware avviata")
+            if self.replay_path is not None and self.surveyor_worker is None:
+                self.surveyor_worker = SurveyorWorker(SURVEYOR_HOST, SURVEYOR_PORT, self.events, dry_mode=True, wet_authorized=False, replay_path=self.replay_path)
+                if self.session is not None:
+                    self.surveyor_worker.raw_callback = self.session.write_surveyor_packet
+                self.surveyor_worker.start()
+                self.status_text.set("Offline replay avviato — nessuna connessione hardware")
+            else:
+                self.status_text.set("Offline: nessuna connessione hardware avviata")
             return
         if self.blueos_worker is None:
             self.blueos_worker = BlueOSWorker(BLUEOS_HOST, self.events)
             self.blueos_worker.start()
-        if self.surveyor_worker is None:
+        if self.surveyor_worker is None and self.replay_path is not None:
             self.surveyor_worker = SurveyorWorker(SURVEYOR_HOST, SURVEYOR_PORT, self.events, dry_mode=not self.wet_authorized, wet_authorized=self.wet_authorized, replay_path=self.replay_path)
+            if self.session is not None:
+                self.surveyor_worker.raw_callback = self.session.write_surveyor_packet
+            self.surveyor_worker.start()
+        elif self.surveyor_worker is None and not self.skip_surveyor:
+            self.surveyor_worker = SurveyorWorker(SURVEYOR_HOST, SURVEYOR_PORT, self.events, dry_mode=not self.wet_authorized, wet_authorized=self.wet_authorized)
             if self.session is not None:
                 self.surveyor_worker.raw_callback = self.session.write_surveyor_packet
             self.surveyor_worker.start()
@@ -920,7 +1258,8 @@ class SonarViewer(tk.Tk):
             source = self.camera_sdp.get().strip() or None
             self.camera_worker = CameraWorker(self.camera_port.get(), source, self.events)
             self.camera_worker.start()
-        self.status_text.set("Connessioni avviate — SURVEYOR TX: LOCKED / DRY MODE" if not self.wet_authorized else "Connessioni avviate")
+        mode = "REPLAY" if self.replay_path is not None else ("SKIPPED" if self.skip_surveyor else ("TX: LOCKED / DRY MODE" if not self.wet_authorized else "LIVE"))
+        self.status_text.set("Connessioni avviate — SURVEYOR %s" % mode)
 
     def start_surveyor(self):
         if not self.wet_authorized or self.surveyor_worker is None:
@@ -946,9 +1285,14 @@ class SonarViewer(tk.Tk):
         if self.session is not None:
             return
         try:
-            self.session = SessionRecorder(SESSION_ROOT, self.camera_port.get(), self.camera_sdp.get().strip() or None)
+            surveyor_mode = "replay" if self.replay_path is not None else ("skipped" if self.skip_surveyor else "live")
+            self.camera_frame_count = 0
+            self.surveyor_ping_count = 0
+            self.ping1d_sample_count = 0
+            self.session = SessionRecorder(SESSION_ROOT, self.camera_port.get(), self.camera_sdp.get().strip() or None, surveyor_mode, self.replay_path)
             if self.surveyor_worker is not None:
                 self.surveyor_worker.raw_callback = self.session.write_surveyor_packet
+            self.session.update_camera_metadata(self.camera_metadata)
             self.session.write_event("session_started", {"tx": "LOCKED" if not self.wet_authorized else "manual-authorized"})
             self.status_text.set("Registrazione sessione: %s" % self.session.directory)
         except Exception as exc:
@@ -978,11 +1322,16 @@ class SonarViewer(tk.Tk):
                     self._set_badge(self.blueos_badge, data)
                 elif kind == "camera_connected":
                     self._set_badge(self.camera_badge, True, "UDP %s" % data.get("port"))
+                elif kind == "camera_backend":
+                    self.camera_metadata = dict(data or {})
+                    self._set_badge(self.camera_badge, True, self.camera_metadata.get("backend", "UNKNOWN"))
+                    if self.session is not None:
+                        self.session.update_camera_metadata(self.camera_metadata)
                 elif kind == "camera_frame":
-                    frame, host_mono, host_utc = data
+                    frame, frame_metadata = data
                     self.latest_camera = frame
                     if self.session is not None:
-                        self.session.write_camera(frame, host_mono, host_utc)
+                        self.session.write_camera_frame(frame, frame_metadata)
                     self._update_camera(frame)
                 elif kind == "camera_error":
                     self._set_badge(self.camera_badge, False, data)
@@ -993,6 +1342,7 @@ class SonarViewer(tk.Tk):
                     self._set_badge(self.surveyor_badge, True, "REPLAY" if data.get("replay") else "PASSIVE")
                 elif kind == "surveyor_ping":
                     self.latest_surveyor = data
+                    self.surveyor_ping_count += 1
                     if self.session is not None:
                         self.session.write_surveyor_ping(data)
                     self._update_surveyor(data)
@@ -1013,6 +1363,7 @@ class SonarViewer(tk.Tk):
                     self._set_badge(self.ping_badge, True)
                 elif kind == "ping_sample":
                     distance, profile = data
+                    self.ping1d_sample_count += 1
                     self.latest_ping = distance
                     self.latest_ping_profile = profile or self.latest_ping_profile
                     if self.session is not None:
@@ -1038,7 +1389,11 @@ class SonarViewer(tk.Tk):
             image.thumbnail((560, 520), Image.Resampling.LANCZOS)
             self.photos["camera"] = ImageTk.PhotoImage(image)
             self.camera_label.configure(image=self.photos["camera"], text="")
-            self.camera_stats.set("%d×%d · frame ricevuto · single ingest" % (frame.shape[1], frame.shape[0]))
+            backend = self.camera_metadata.get("backend", "PENDING")
+            recording = self.camera_metadata.get("recording_mode", "PENDING")
+            pts = self.camera_metadata.get("video_pts", "UNAVAILABLE")
+            self.camera_frame_count += 1
+            self.camera_stats.set("%d×%d · %s · %s · Video PTS: %s" % (frame.shape[1], frame.shape[0], backend, recording, pts))
         except Exception:
             pass
 
@@ -1102,8 +1457,15 @@ class SonarViewer(tk.Tk):
     def _refresh_status_age(self):
         if self.latest_surveyor:
             age = max(0.0, (time.monotonic_ns() - int(self.latest_surveyor.get("host_monotonic_ns", time.monotonic_ns()))) / 1_000_000_000.0)
-            mode = "ACTIVE" if self.wet_authorized and not self.replay_path else "LOCKED / DRY MODE"
-            self.status_text.set("SURVEYOR TX: %s · last ping %.1fs ago%s" % (mode, age, " · recording" if self.session else ""))
+            mode = "REPLAY" if self.replay_path is not None else ("SKIPPED" if self.skip_surveyor else ("ACTIVE" if self.wet_authorized else "LOCKED / DRY MODE"))
+            session = ""
+            if self.session is not None:
+                elapsed = (time.monotonic_ns() - self.session.session_start_monotonic_ns) / 1_000_000_000.0
+                session = " · session %s %.1fs · frames %d · Surveyor pings %d · Ping1D %d" % (self.session.session_id, elapsed, self.camera_frame_count, self.surveyor_ping_count, self.ping1d_sample_count)
+            self.status_text.set("SURVEYOR: %s · last ping %.1fs ago%s" % (mode, age, session))
+        elif self.session is not None:
+            elapsed = (time.monotonic_ns() - self.session.session_start_monotonic_ns) / 1_000_000_000.0
+            self.status_text.set("SESSION %s %.1fs · frames %d · Surveyor pings %d · Ping1D %d" % (self.session.session_id, elapsed, self.camera_frame_count, self.surveyor_ping_count, self.ping1d_sample_count))
         self.after(250, self._refresh_status_age)
 
     def _snapshot_image(self):
@@ -1140,9 +1502,10 @@ def main():
     parser = argparse.ArgumentParser(description="BlueROV2 Multimodal Recorder — Surveyor/Ping1D/RGB")
     parser.add_argument("--offline", action="store_true", help="build the GUI without connecting to hardware")
     parser.add_argument("--replay-surveyor", metavar="FILE.svlog", help="replay a local Surveyor log without transmitting")
+    parser.add_argument("--skip-surveyor", action="store_true", help="do not instantiate or connect the hardware Surveyor")
     parser.add_argument("--wet-authorized", action="store_true", help="manual future authorization for Surveyor ping transmission")
     args = parser.parse_args()
-    app = SonarViewer(offline=args.offline, replay_path=args.replay_surveyor, wet_authorized=args.wet_authorized)
+    app = SonarViewer(offline=args.offline, replay_path=args.replay_surveyor, wet_authorized=args.wet_authorized, skip_surveyor=args.skip_surveyor)
     app.mainloop()
 
 

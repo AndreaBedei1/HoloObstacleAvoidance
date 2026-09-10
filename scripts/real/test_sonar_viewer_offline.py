@@ -9,6 +9,8 @@ import sys
 import tempfile
 import threading
 import unittest
+import csv
+from fractions import Fraction
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -118,6 +120,70 @@ class SonarViewerOfflineTests(unittest.TestCase):
         matched = viewer.match_surveyor_ping({"host_monotonic_ns": 110}, samples, samples)
         self.assertEqual(matched["rgb_frame"], samples[0])
 
+        detailed = viewer.match_surveyor_ping({"host_monotonic_ns": 100}, [{"host_monotonic_ns": 10_100, "pts": 22, "pts_seconds": 0.22}], [{"host_monotonic_ns": -9_900}])
+        self.assertEqual(detailed["camera_pts"], 22)
+        self.assertEqual(detailed["time_delta_camera_ms"], 0.01)
+        self.assertEqual(detailed["time_delta_ping1d_ms"], -0.01)
+
+    def test_pts_timebase_and_session_time_are_separate(self):
+        self.assertEqual(viewer.timestamp_seconds(100, Fraction(1, 1000)), 0.1)
+        self.assertIsNone(viewer.timestamp_seconds(None, Fraction(1, 1000)))
+        with tempfile.TemporaryDirectory() as directory:
+            session = viewer.SessionRecorder(Path(directory))
+            session._write_camera_timestamp({
+                "frame_index": 2, "packet_index": 8, "pts": 100, "dts": 90,
+                "time_base_num": 1, "time_base_den": 1000,
+                "pts_seconds": 0.1, "dts_seconds": 0.09,
+                "host_monotonic_ns": session.session_start_monotonic_ns + 2_500_000_000,
+                "host_utc_ns": session.session_start_utc_ns + 2_500_000_000,
+                "key_frame": True, "packet_size": 123,
+            })
+            csv_text = (session.directory / "camera_timestamps.csv").read_text()
+            self.assertIn("pts_seconds", csv_text.splitlines()[0])
+            self.assertIn(",100,90,1,1000,0.1,0.09,", csv_text)
+            self.assertIn(",2.5,True,123", csv_text)
+
+            session._write_camera_timestamp({
+                "frame_index": 3, "packet_index": None, "pts": None, "dts": None,
+                "time_base_num": None, "time_base_den": None,
+                "pts_seconds": None, "dts_seconds": None,
+                "host_monotonic_ns": session.session_start_monotonic_ns + 3_000_000_000,
+                "host_utc_ns": session.session_start_utc_ns + 3_000_000_000,
+                "key_frame": None, "packet_size": None,
+            })
+            # PTS/DTS remain empty when unavailable, while host session time is
+            # still a real synchronization clock.
+            with (session.directory / "camera_timestamps.csv").open(newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(rows[-1]["pts"], "")
+            self.assertEqual(rows[-1]["dts_seconds"], "")
+            self.assertEqual(rows[-1]["session_time_s"], "3.0")
+            session.close()
+
+    def test_camera_backend_is_importable_without_real_source(self):
+        worker = viewer.CameraWorker(5602, "C:/synthetic/test.sdp", queue.Queue())
+        self.assertEqual(worker.port, 5602)
+        self.assertEqual(worker.source, "C:/synthetic/test.sdp")
+        self.assertIsNone(worker.packet_callback)
+
+    def test_skip_surveyor_and_replay_precedence_are_offline_only(self):
+        try:
+            skipped = viewer.SonarViewer(offline=True, skip_surveyor=True)
+        except Exception as exc:
+            self.skipTest("Tk GUI non disponibile in questo ambiente: %s" % exc)
+        skipped.connect_all()
+        self.assertTrue(skipped.skip_surveyor)
+        self.assertIsNone(skipped.surveyor_worker)
+        self.assertIn("SKIPPED", skipped.surveyor_badge["state"].get())
+        skipped.destroy()
+
+        try:
+            replay = viewer.SonarViewer(offline=True, replay_path="synthetic.svlog", skip_surveyor=True)
+        except Exception as exc:
+            self.skipTest("Tk GUI non disponibile in questo ambiente: %s" % exc)
+        self.assertFalse(replay.skip_surveyor)
+        replay.destroy()
+
     def test_session_recorder_creates_local_copies_and_shared_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             session = viewer.SessionRecorder(Path(directory))
@@ -129,8 +195,17 @@ class SonarViewerOfflineTests(unittest.TestCase):
             self.assertTrue((session.directory / "surveyor_raw.svlog").stat().st_size > 0)
             self.assertEqual(metadata["session_id"], session.session_id)
             self.assertEqual(metadata["closed"], True)
+            self.assertEqual(metadata["camera"]["source"], "udp://0.0.0.0:5600")
             ping_line = (session.directory / "surveyor_pings.jsonl").read_text().strip()
             self.assertIn(session.session_id, ping_line)
+
+    def test_skipped_session_has_explicit_mode_without_fake_raw_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = viewer.SessionRecorder(Path(directory), surveyor_mode="skipped")
+            session.close()
+            metadata = __import__("json").loads((session.directory / "session.json").read_text())
+            self.assertEqual(metadata["surveyor"]["mode"], "skipped")
+            self.assertFalse((session.directory / "surveyor_raw.svlog").exists())
 
     def test_gui_builds_offline_with_tx_button_locked(self):
         try:
