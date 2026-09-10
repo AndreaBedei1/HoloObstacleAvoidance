@@ -55,18 +55,47 @@ angle, yellow = right/positive angle). The white vertical cursor is the
 selected ping and the yellow horizontal cursor marks its farthest displayed
 return. Click the panorama to jump to a ping.
 
-### SONAR IMAGE / INTENSITY FAN
+### SURVEYOR FAN IMAGE
 
-The first four recordings contain message-3009 raw profile tiles in addition
-to ATOF detections. In these files the viewer lazily decodes the raw complex
-half-float samples, uses their magnitude as intensity, and lays the tiles out
-as a polar fan. Only the selected ping is decoded, so the 500 MB recording is
-not loaded wholly into memory.
+When a ping contains a complete set of validated message-3009 channel data,
+the viewer reconstructs a Surveyor fan by beamforming the 16 receive channels.
+The image uses the real Surveyor sector (-40°…+40°), 1° beam spacing, and the
+range start/end stored in message 3010. ATOF detections can be overlaid as
+white rings. Brightness is a robust *relative* normalization of beam power;
+it is not presented as calibrated dB.
 
-The short `2026-09-10-13-14.svlog` recording contains ATOF detections but no
-message-3009 raw profile tiles. For that file the intensity view deliberately
-reports that no raw intensity is available and the POLAR FAN remains the
-correct representation.
+The viewer does not guess the sample format. The decoder follows the
+`ChPairGoertzelData` definition used by SonarView:
+
+```text
+offset 0   uint32  ping_number
+offset 4   float32 analog_gain
+offset 8   uint8   device_number
+offset 10  uint16  device_index_unused
+offset 12  int32   adc_pp_signal
+offset 16  uint8   ch1
+offset 17  uint8   ch2
+offset 18  uint16  results_per_channel
+offset 20  float32 IQ pairs for ch1, then float32 IQ pairs for ch2
+```
+
+Each channel contains `[I,Q]` for each range step. Eight packets with channel
+pairs 0/1 through 14/15 therefore make one 16-channel ping. The public
+`bluerobotics-ping` package installed in this environment does not expose the
+3009 definition; the format was cross-checked against the official SonarView
+bundle and its Surveyor beamformer. The decoder reads only the
+protocol-defined Float32 region. If a packet has extra trailing bytes, they
+are reported in the diagnostic and are not reinterpreted as pixels.
+
+For the large 2026-09-10 logs, `CHANNEL DATA: AVAILABLE` is shown only after
+the ping passes all checks: eight packets, one consistent ping number, all 16
+channels exactly once, a consistent range-step count, and a complete Float32
+IQ region. Logs with only ATOF detections remain usable in POLAR FAN but do
+not claim to contain a fan image.
+
+An ATOF-only recording contains detections but no validated message-3009
+channel set. For that file the fan-image view reports that channel data is not
+available and POLAR FAN remains the correct representation.
 
 ## Surveyor multibeam vs imaging sonar
 
@@ -75,11 +104,19 @@ message is a sparse set of echoes, each with an angle and a time of flight.
 That is why ANGLE / DISTANCE and POLAR FAN show individual returns.
 
 An imaging sonar display is an intensity field: many range/beam samples are
-shown as pixels or cells, with brightness representing echo strength. When
-message-3009 raw beam/profile data is present, SONAR IMAGE / INTENSITY FAN
-provides that richer view. It should still be treated as a reconstruction of
-the recorded beam tiles, not as a calibrated photographic image or a
+shown as pixels or cells, with brightness representing echo strength. The
+Surveyor fan above is reconstructed from coherent channel IQ and a known
+receive aperture; it is therefore richer than sparse ATOF points, but it is
+still a relative visualization, not a calibrated photographic image or a
 guaranteed bathymetric map.
+
+This is different from an imaging sonar such as a mechanically scanned or
+forward-looking camera-like sonar: those systems usually provide a directly
+sampled angle/range intensity image. The Surveyor 240-16 is a 16-channel
+multibeam echosounder. SonarView combines the receive-channel IQ data with
+the array geometry to form beams, while ATOF is a separate compact detection
+report. The two views should not be interpreted as interchangeable sensor
+products.
 
 ## Raw files and Git safety
 

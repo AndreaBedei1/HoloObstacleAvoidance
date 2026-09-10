@@ -3,8 +3,8 @@
 The SonarView files are Ping Protocol streams.  This viewer reads the
 well-defined end_ping_info (3010) and atof_point_data (3012) messages and
 renders the detected sonar returns without touching the vehicle or rewriting
-the recordings. Surveyor raw profile packets (3009) are decoded lazily for
-the optional intensity fan; only the selected ping is loaded.
+the recordings. Surveyor channel IQ packets (3009) are beamformed lazily for
+the optional fan image; only the selected ping is loaded.
 
 Run from the repository root:
     python scripts/real/sonar_log_viewer.py
@@ -33,6 +33,10 @@ from PIL import Image, ImageDraw, ImageTk
 PACKET_HEADER = struct.Struct("<BBHHBB")
 END_PING = struct.Struct("<IfffffIfffffffiHHHBBIQ")
 ATOF_HEADER = struct.Struct("<IQffIIfIHH")
+# Cerulean/SonarView ChPairGoertzelData (message 3009).  The first 20 bytes
+# are protocol fields; signal_cs_ch1/ch2 are Float32 IQ pairs immediately
+# afterwards.  The official parser reads 4 * results_per_channel floats.
+CHANNEL_DATA_HEADER = struct.Struct("<IfBxHiBBH")
 
 MSG_JSON = 10
 MSG_ATTITUDE = 504
@@ -58,6 +62,8 @@ class PingRecord:
     raw_profile_packets: int = 0
     raw_packet_offsets: List[Tuple[int, int]] = field(default_factory=list)
     bins: int = 0
+    channel_data_valid: bool = False
+    channel_data_note: str = ""
 
     @property
     def timestamp(self) -> str:
@@ -74,7 +80,12 @@ class PingRecord:
 
     @property
     def has_raw_intensity(self) -> bool:
-        return bool(self.raw_packet_offsets)
+        """Compatibility name: true when validated 3009 channel IQ exists."""
+        return self.channel_data_valid
+
+    @property
+    def has_channel_data(self) -> bool:
+        return self.channel_data_valid
 
 
 @dataclass
@@ -154,6 +165,72 @@ def parse_atof(payload: bytes, record: PingRecord) -> None:
         record.points.append((float(angle), range_m))
 
 
+def parse_channel_data_header(payload: bytes) -> Optional[Dict[str, int | float]]:
+    """Read the confirmed SonarView 3009 ChPairGoertzelData header."""
+    if len(payload) < CHANNEL_DATA_HEADER.size:
+        return None
+    try:
+        ping_number, analog_gain, device_number, device_index, adc_pp_signal, ch1, ch2, results = CHANNEL_DATA_HEADER.unpack_from(payload)
+    except struct.error:
+        return None
+    return {
+        "ping_number": int(ping_number),
+        "analog_gain": float(analog_gain),
+        "device_number": int(device_number),
+        "device_index_unused": int(device_index),
+        "adc_pp_signal": int(adc_pp_signal),
+        "ch1": int(ch1),
+        "ch2": int(ch2),
+        "results_per_channel": int(results),
+    }
+
+
+def validate_channel_data(log: SonarLog, record: PingRecord) -> None:
+    """Validate a complete 16-channel Surveyor ping without decoding samples."""
+    record.channel_data_valid = False
+    record.channel_data_note = ""
+    if not record.raw_packet_offsets:
+        record.channel_data_note = "no packet 3009"
+        return
+    headers = []
+    try:
+        with log.path.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            for payload_offset, payload_len in record.raw_packet_offsets:
+                payload = data[payload_offset : payload_offset + payload_len]
+                header = parse_channel_data_header(payload)
+                if header is None:
+                    record.channel_data_note = "invalid 3009 header"
+                    return
+                results = int(header["results_per_channel"])
+                expected = CHANNEL_DATA_HEADER.size + 4 * results * 4
+                if results <= 0 or payload_len < expected:
+                    record.channel_data_note = f"short 3009 sample area ({payload_len} < {expected} bytes)"
+                    return
+                if not (0 <= int(header["ch1"]) < 16 and 0 <= int(header["ch2"]) < 16 and int(header["ch1"]) != int(header["ch2"])):
+                    record.channel_data_note = "invalid channel indices"
+                    return
+                headers.append(header)
+    except (OSError, ValueError):
+        record.channel_data_note = "could not read packet 3009"
+        return
+
+    ping_numbers = {int(item["ping_number"]) for item in headers}
+    channels = {int(item["ch1"]) for item in headers} | {int(item["ch2"]) for item in headers}
+    pairs = {(int(item["ch1"]), int(item["ch2"])) for item in headers}
+    results = {int(item["results_per_channel"]) for item in headers}
+    if ping_numbers != {record.number}:
+        record.channel_data_note = f"ping mismatch in 3009 ({sorted(ping_numbers)})"
+    elif len(headers) != 8 or channels != set(range(16)) or len(pairs) != 8:
+        record.channel_data_note = f"incomplete channel set ({len(headers)} packets, {len(channels)} channels)"
+    elif len(results) != 1:
+        record.channel_data_note = "inconsistent results_per_channel"
+    else:
+        record.channel_data_valid = True
+        record.bins = next(iter(results))
+        trailing = sum(max(0, length - CHANNEL_DATA_HEADER.size - 4 * record.bins * 4) for _, length in record.raw_packet_offsets)
+        record.channel_data_note = f"16 channels · {record.bins} range steps · Float32 IQ · {trailing} trailing bytes ignored by SonarView schema"
+
+
 def scan_svlog(path: Path) -> SonarLog:
     """Index a .svlog without retaining its raw profile payloads."""
     records: Dict[int, PingRecord] = {}
@@ -178,7 +255,10 @@ def scan_svlog(path: Path) -> SonarLog:
                     record = records.setdefault(ping_no, PingRecord(number=ping_no))
                     record.range_start_m = float(values[1])
                     record.range_end_m = max(float(values[2]), record.range_start_m + 0.1)
-                    record.bins = int(values[17])
+                    # END_PING_INFO: index 16 is n_range_steps.  Index 17 is
+                    # samples_per_range_bin and is not the image row count.
+                    record.bins = int(values[16])
+                    record.ping_hz = float(values[13] or 0.0)
                     record.timestamp_ms = int(values[-1] / 1_000_000) if values[-1] > 10_000_000_000_000 else int(values[-1])
                 elif message_id == MSG_ATOF:
                     if payload_len < ATOF_HEADER.size:
@@ -203,12 +283,14 @@ def scan_svlog(path: Path) -> SonarLog:
         records.setdefault(ping_no, PingRecord(number=ping_no)).raw_profile_packets = count
     pings = sorted(records.values(), key=lambda item: (item.timestamp_ms or 2**63, item.number))
     # Some logs have ATOF packets but no end_ping_info.  Keep them useful.
+    result = SonarLog(path, pings, counts, metadata)
     for index, record in enumerate(pings):
         if not record.timestamp_ms:
             record.timestamp_ms = (pings[index - 1].timestamp_ms + 1 if index else 0)
         if record.range_end_m <= record.range_start_m:
             record.range_end_m = max(record.range_start_m + 0.1, record.range_max, 10.0)
-    return SonarLog(path, pings, counts, metadata)
+        validate_channel_data(result, record)
+    return result
 
 
 def discover_logs(root: Path) -> List[Path]:
@@ -260,53 +342,92 @@ def cross_track_depth(record: PingRecord) -> List[Tuple[float, float, float]]:
 
 
 def load_raw_intensity(log: SonarLog, record: PingRecord) -> Optional[Tuple[List[List[float]], float, float]]:
-    """Decode a Surveyor raw-profile ping into rows x angle-columns.
+    """Beamform one validated Surveyor ping into angle x range power.
 
-    Message 3009 stores complex half-float samples.  The packets in these
-    logs are tiled as range rows; magnitude is used as intensity.  The result
-    is deliberately kept lazy: only the selected ping is decoded, so the
-    500 MB sessions do not become a multi-gigabyte in-memory array.
+    SonarView calls message 3009 ``ChPairGoertzelData``.  Its confirmed
+    payload is a 20-byte header followed by Float32 little-endian IQ pairs:
+    ``[I,Q]`` for channel 1, then ``[I,Q]`` for channel 2, each with
+    ``results_per_channel`` range steps.  The official Surveyor processor
+    uses the 16-element aperture and a 240 kHz acoustic frequency to
+    beamform 1-degree beams from -40 to +40 degrees.  Any bytes after the
+    protocol-defined sample area are intentionally ignored; they are not
+    reinterpreted as pixels.
+
+    The operation is lazy: only the selected ping is read from disk.
     """
-    if not record.raw_packet_offsets:
+    if not record.channel_data_valid or not record.raw_packet_offsets:
         return None
     try:
         with log.path.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
-            tiles = []
+            channel_signals: Dict[int, List[float]] = {}
             rows = int(record.bins or 200)
             for payload_offset, payload_len in record.raw_packet_offsets:
-                payload = data[payload_offset : payload_offset + payload_len]
-                if len(payload) < 20:
-                    continue
-                _ping, _range_m, _reserved, _timestamp, tile_start, tile_rows = struct.unpack_from("<IffIHH", payload, 0)
-                tile_rows = int(tile_rows or rows)
-                if tile_rows != rows:
-                    rows = tile_rows
-                raw = payload[20:]
-                complex_count = len(raw) // 4
-                if rows <= 0 or complex_count == 0 or complex_count % rows:
-                    continue
-                cols = complex_count // rows
-                tile = []
-                for row in range(rows):
-                    values = []
-                    base = row * cols * 4
-                    for col in range(cols):
-                        offset = base + col * 4
-                        try:
-                            real, imag = struct.unpack_from("<ee", raw, offset)
-                        except struct.error:
-                            real, imag = 0.0, 0.0
-                        magnitude = math.hypot(real, imag) if math.isfinite(real) and math.isfinite(imag) else 0.0
-                        values.append(math.log1p(max(0.0, magnitude)))
-                    tile.append(values)
-                tiles.append(tile)
-            if not tiles:
+                payload = bytes(data[payload_offset : payload_offset + payload_len])
+                header = parse_channel_data_header(payload)
+                if header is None:
+                    return None
+                ch1, ch2 = int(header["ch1"]), int(header["ch2"])
+                n = int(header["results_per_channel"])
+                expected = CHANNEL_DATA_HEADER.size + 4 * n * 4
+                if n != rows or payload_len < expected:
+                    return None
+                values = struct.unpack_from(f"<{4 * n}f", payload, CHANNEL_DATA_HEADER.size)
+                channel_signals[ch1] = list(values[: 2 * n])
+                channel_signals[ch2] = list(values[2 * n : 4 * n])
+            if set(channel_signals) != set(range(16)):
                 return None
-            columns = sum(len(tile[0]) for tile in tiles if tile)
-            matrix = [[] for _ in range(rows)]
-            for tile in tiles:
-                for row in range(rows):
-                    matrix[row].extend(tile[row])
+            sos = float(record.sos_mps or 1500.0)
+            acoustic_hz = 240_000.0
+            channel_spacing_m = 0.136 * 0.0254
+            channel_positions = [index * channel_spacing_m - 0.5 * 15 * channel_spacing_m for index in range(16)]
+            beam_angles = [math.radians(angle) for angle in range(-40, 41)]
+            wavelength_m = sos / acoustic_hz
+            delays = []
+            for angle in beam_angles:
+                row = []
+                for position in channel_positions:
+                    phase = math.sin(angle) / wavelength_m * 2.0 * math.pi * position
+                    row.append((math.cos(phase), math.sin(phase)))
+                delays.append(row)
+
+            # This is the same range compensation used by SonarView's
+            # Surveyor detector.  It changes relative display power only.
+            end_m = max(record.range_end_m, record.range_start_m + 1e-6)
+            if end_m <= 8.0:
+                exponent = 0.0
+            elif end_m >= 20.0:
+                exponent = 2.0
+            else:
+                exponent = (end_m - 8.0) / 12.0 * 2.0
+            ratio = max(0.0, min(1.0, record.range_start_m / end_m))
+            compensated = [[0.0] * (2 * rows) for _ in range(16)]
+            for channel in range(16):
+                source = channel_signals[channel]
+                for range_index in range(rows):
+                    factor = (ratio + (1.0 - ratio) * range_index / max(1, rows - 1)) ** exponent
+                    compensated[channel][2 * range_index] = source[2 * range_index] * factor
+                    compensated[channel][2 * range_index + 1] = source[2 * range_index + 1] * factor
+
+            average_by_range = []
+            for range_index in range(rows):
+                average_by_range.append(sum(
+                    compensated[channel][2 * range_index] ** 2 + compensated[channel][2 * range_index + 1] ** 2
+                    for channel in range(16)
+                ))
+            mean_power = sum(average_by_range) / max(1, rows)
+            matrix = [[0.0] * rows for _ in beam_angles]
+            for range_index, range_power in enumerate(average_by_range):
+                if range_power < mean_power:
+                    continue
+                for beam_index, beam_delays in enumerate(delays):
+                    real_sum = 0.0
+                    imag_sum = 0.0
+                    for channel, (cos_phase, sin_phase) in enumerate(beam_delays):
+                        real = compensated[channel][2 * range_index]
+                        imag = compensated[channel][2 * range_index + 1]
+                        real_sum += real * cos_phase - imag * sin_phase
+                        imag_sum += imag * cos_phase + real * sin_phase
+                    matrix[beam_index][range_index] = real_sum * real_sum + imag_sum * imag_sum
             return matrix, float(record.range_start_m), float(record.range_end_m)
     except (OSError, ValueError, struct.error):
         return None
@@ -376,7 +497,7 @@ class SonarLogViewer(tk.Tk):
                 "ANGLE / DISTANCE",
                 "POLAR FAN",
                 "CROSS-TRACK / DEPTH",
-                "SONAR IMAGE / INTENSITY FAN",
+                "SURVEYOR FAN IMAGE",
             ),
         )
         self.view_selector.pack(side="left")
@@ -418,7 +539,7 @@ class SonarLogViewer(tk.Tk):
         for i in range(5):
             self.cards.columnconfigure(i, weight=1)
         self.card_labels = []
-        for title in ("PING", "ORARIO", "RANGE", "ECHI", "FREQUENZA"):
+        for title in ("PING", "ORARIO", "RANGE", "ECHI", "FREQUENZA", "CHANNEL DATA"):
             box = ttk.Frame(self.cards, style="Panel.TFrame", padding=(12, 8))
             box.grid(row=0, column=len(self.card_labels), sticky="ew", padx=(0 if not self.card_labels else 6, 0))
             ttk.Label(box, text=title, style="Panel.TLabel").pack(anchor="w")
@@ -461,7 +582,9 @@ class SonarLogViewer(tk.Tk):
         self.logs = [log for log in logs if log.pings and not log.error]
         self.log_list.delete(0, "end")
         for log in self.logs:
-            text = f"{log.path.name}\n  {format_bytes(log.path.stat().st_size)} · {format_duration(log.duration_s)} · {len(log.pings):,} ping"
+            available = sum(1 for ping in log.pings if ping.has_channel_data)
+            channel_text = "CHANNEL DATA: AVAILABLE" if available else "CHANNEL DATA: not available"
+            text = f"{log.path.name}\n  {format_bytes(log.path.stat().st_size)} · {format_duration(log.duration_s)} · {len(log.pings):,} ping\n  {channel_text} ({available:,} ping)"
             self.log_list.insert("end", text)
         self.log_hint.configure(text=f"{len(self.logs)} registrazioni indicizzate\nSeleziona un file per vedere la scansione.")
         self.status.configure(text=f"Pronto · {sum(len(log.pings) for log in self.logs):,} ping indicizzati")
@@ -534,6 +657,7 @@ class SonarLogViewer(tk.Tk):
             f"{record.number:,}", record.timestamp,
             f"{record.range_start_m:.1f}–{record.range_end_m:.1f} m",
             f"{len(record.points)} punti", f"{record.ping_hz / 1000:.0f} kHz" if record.ping_hz else "--",
+            "AVAILABLE" if record.has_channel_data else "not available",
         ]
         for label, value in zip(self.card_labels, values):
             label.configure(text=value)
@@ -541,7 +665,7 @@ class SonarLogViewer(tk.Tk):
             self._draw_polar_fan(record)
         elif self.view_mode.get() == "CROSS-TRACK / DEPTH":
             self._draw_cross_track_depth(record)
-        elif self.view_mode.get() == "SONAR IMAGE / INTENSITY FAN":
+        elif self.view_mode.get() == "SURVEYOR FAN IMAGE":
             self._draw_intensity_fan(record)
         else:
             self._draw_angle_distance(record)
@@ -702,15 +826,15 @@ class SonarLogViewer(tk.Tk):
         self._show_image(canvas, image)
 
     def _draw_intensity_fan(self, record: PingRecord) -> None:
-        """Render raw complex half-float packets as an intensity fan."""
+        """Render the selected 16-channel ping as a beamformed fan image."""
         canvas = self.main_canvas
         width = max(500, canvas.winfo_width())
         height = max(300, canvas.winfo_height())
         image = Image.new("RGB", (width, height), "#030a14")
         draw = ImageDraw.Draw(image)
         if not record.has_raw_intensity:
-            draw.text((40, height // 2 - 12), "Questo log contiene solo detection ATOF; nessun raw intensity disponibile.", fill="#ffcf72")
-            draw.text((40, height // 2 + 14), "Usa POLAR FAN per visualizzare i ritorni del ping.", fill="#a8c2d0")
+            draw.text((40, height // 2 - 12), "CHANNEL DATA non disponibile o non validato per questo ping.", fill="#ffcf72")
+            draw.text((40, height // 2 + 14), "Usa POLAR FAN per visualizzare le detection ATOF.", fill="#a8c2d0")
             self._show_image(canvas, image)
             return
         key = (str(self.selected_log.path), record.number)
@@ -719,38 +843,48 @@ class SonarLogViewer(tk.Tk):
             self._intensity_cache_key = key
         decoded = self._intensity_cache
         if not decoded:
-            draw.text((40, height // 2 - 12), "Pacchetti raw presenti ma non decodificabili in questo log.", fill="#ffcf72")
+            draw.text((40, height // 2 - 12), "CHANNEL DATA presente ma il ping non è decodificabile.", fill="#ffcf72")
             self._show_image(canvas, image)
             return
         matrix, range_start, range_end = decoded
-        values = sorted(value for row in matrix for value in row if math.isfinite(value))
+        values = sorted(value for row in matrix for value in row if math.isfinite(value) and value > 0.0)
         if not values:
-            draw.text((40, height // 2), "Nessuna intensità valida nel ping selezionato.", fill="#ffcf72")
+            draw.text((40, height // 2), "Nessuna potenza valida nel ping selezionato.", fill="#ffcf72")
             self._show_image(canvas, image)
             return
-        lo = values[int(len(values) * 0.15)]
-        hi = values[int(len(values) * 0.98)]
+        # Relative robust normalization keeps the fan legible without
+        # pretending that the log contains an absolute calibrated dB image.
+        db_values = [10.0 * math.log10(value) for value in values]
+        lo = db_values[int(len(db_values) * 0.05)]
+        hi = db_values[int(len(db_values) * 0.995)]
         if hi <= lo:
             hi = lo + 1.0
         cx, cy = width / 2.0, height - 36.0
         radius = min(width * 0.46, max(80.0, height - 68.0))
-        rows = len(matrix)
-        cols = max((len(row) for row in matrix), default=0)
-        for row_index, row in enumerate(matrix):
-            r0 = range_start + (range_end - range_start) * row_index / max(1, rows)
-            r1 = range_start + (range_end - range_start) * (row_index + 1) / max(1, rows)
-            for col_index, value in enumerate(row):
-                a0 = math.radians(-40.0 + 80.0 * col_index / max(1, cols))
-                a1 = math.radians(-40.0 + 80.0 * (col_index + 1) / max(1, cols))
-                strength = max(0.0, min(1.0, (value - lo) / (hi - lo)))
+        beam_count = len(matrix)
+        range_count = max((len(row) for row in matrix), default=0)
+        for beam_index, row in enumerate(matrix):
+            a0 = math.radians(-40.0 + 80.0 * beam_index / max(1, beam_count))
+            a1 = math.radians(-40.0 + 80.0 * (beam_index + 1) / max(1, beam_count))
+            for range_index, value in enumerate(row):
+                r0 = range_start + (range_end - range_start) * range_index / max(1, range_count)
+                r1 = range_start + (range_end - range_start) * (range_index + 1) / max(1, range_count)
+                db = 10.0 * math.log10(value) if value > 0.0 and math.isfinite(value) else lo
+                strength = max(0.0, min(1.0, (db - lo) / (hi - lo)))
                 p0 = self._fan_xy(cx, cy, radius, a0, r0, max(range_end, 1.0))
                 p1 = self._fan_xy(cx, cy, radius, a1, r0, max(range_end, 1.0))
                 p2 = self._fan_xy(cx, cy, radius, a1, r1, max(range_end, 1.0))
                 p3 = self._fan_xy(cx, cy, radius, a0, r1, max(range_end, 1.0))
                 draw.polygon((p0, p1, p2, p3), fill=heat_color(strength))
+        # Optional ATOF detections are overlaid in white/yellow on the
+        # beamformed image; they come from a different protocol message.
+        for angle_rad, distance in record.points:
+            if -math.radians(40) <= angle_rad <= math.radians(40):
+                x, y = self._fan_xy(cx, cy, radius, angle_rad, distance, max(range_end, 1.0))
+                draw.ellipse((x - 3, y - 3, x + 3, y + 3), outline="#ffffff", width=2)
         self._draw_fan_grid(draw, width, height, max(range_end, 1.0), fill_sector=False)
-        draw.text((18, 12), "SONAR IMAGE / INTENSITY FAN · MAGNITUDINE RAW", fill="#c8e9f1")
-        draw.text((width - 310, 12), f"{len(record.raw_packet_offsets)} raw tiles · {rows}×{cols}", fill="#ffcf72")
+        draw.text((18, 12), "SURVEYOR FAN IMAGE · BEAMFORMED CHANNEL IQ", fill="#c8e9f1")
+        draw.text((width - 340, 12), f"{len(record.raw_packet_offsets)} packet · {beam_count} beam × {range_count} range", fill="#ffcf72")
         self._show_image(canvas, image)
 
     def _draw_overview(self) -> None:
@@ -805,7 +939,9 @@ def print_summary(paths: List[Path]) -> None:
         if log.error:
             print(f"{path.name}: ERROR {log.error}")
             continue
-        print(f"{path.name}: {len(log.pings)} ping, {log.total_points} punti, {format_duration(log.duration_s)}, {log.first_time} -> {log.last_time}")
+        channel_pings = sum(1 for ping in log.pings if ping.has_channel_data)
+        channel_status = "CHANNEL DATA: AVAILABLE" if channel_pings else "CHANNEL DATA: not available"
+        print(f"{path.name}: {len(log.pings)} ping, {log.total_points} punti, {format_duration(log.duration_s)}, {log.first_time} -> {log.last_time}, {channel_status} ({channel_pings})")
 
 
 def main() -> int:
