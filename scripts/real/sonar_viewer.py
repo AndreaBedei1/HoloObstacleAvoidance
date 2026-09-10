@@ -521,7 +521,17 @@ class CameraWorker(threading.Thread):
         self.capture = None
         self.container = None
         self.packet_callback = None
+        self._callback_lock = threading.Lock()
         self.backend = "PENDING"
+
+    def set_packet_callback(self, callback):
+        """Atomically replace the session callback used by the ingest thread."""
+        with self._callback_lock:
+            self.packet_callback = callback
+
+    def _get_packet_callback(self):
+        with self._callback_lock:
+            return self.packet_callback
 
     @staticmethod
     def _stream_metadata(stream, source, backend, recording_mode, reason=None):
@@ -545,6 +555,8 @@ class CameraWorker(threading.Thread):
             "nominal_fps": nominal_fps,
             "time_base": {"num": tb_num, "den": tb_den},
             "video_pts": "AVAILABLE" if tb_num is not None and tb_den is not None else "UNAVAILABLE",
+            "input_status": "PYAV INPUT: OK" if backend == "PyAV" else "PYAV INPUT: FAILED / OPENCV FALLBACK",
+            "remux_status": "READY" if backend == "PyAV" else "FAILED",
         }
         if reason:
             result["reason"] = str(reason)
@@ -583,12 +595,16 @@ class CameraWorker(threading.Thread):
     def _run_pyav(self):
         if av is None:
             raise RuntimeError("PyAV non installato")
-        self.container = av.open(self.source, mode="r", options={"fflags": "nobuffer", "flags": "low_delay"})
+        source_text = str(self.source)
+        open_kwargs = {}
+        if source_text.lower().startswith(("udp://", "rtp://")):
+            open_kwargs["options"] = {"fflags": "nobuffer", "flags": "low_delay"}
+        self.container = av.open(self.source, mode="r", **open_kwargs)
         streams = [stream for stream in self.container.streams if getattr(stream, "type", None) == "video"]
         if not streams:
             raise RuntimeError("la sorgente non contiene uno stream video")
         stream = streams[0]
-        metadata = self._stream_metadata(stream, self.source, "PyAV", "REMUX H264")
+        metadata = self._stream_metadata(stream, self.source, "PyAV", "READY")
         metadata["port"] = self.port
         self._emit_backend(metadata)
         self.events.put(("camera_connected", metadata))
@@ -606,8 +622,9 @@ class CameraWorker(threading.Thread):
             except Exception as exc:
                 frames = []
                 self.events.put(("camera_decode_warning", str(exc)))
-            if self.packet_callback is not None:
-                self.packet_callback(packet, stream, packet_index, host_mono, host_utc)
+            callback = self._get_packet_callback()
+            if callback is not None:
+                callback(packet, stream, packet_index, host_mono, host_utc)
             if not frames:
                 packet_index += 1
                 continue
@@ -644,6 +661,8 @@ class CameraWorker(threading.Thread):
             "video_pts": "UNAVAILABLE",
             "reason": str(reason),
             "port": self.port,
+            "input_status": "PYAV INPUT: FAILED / OPENCV FALLBACK",
+            "remux_status": "FAILED",
         }
         self._emit_backend(metadata)
         self.events.put(("camera_connected", metadata))
@@ -692,6 +711,7 @@ class CameraWorker(threading.Thread):
             if not self.stop_event.is_set():
                 self.events.put(("camera_error", str(exc)))
         finally:
+            self.set_packet_callback(None)
             if self.capture is not None:
                 self.capture.release()
             if self.container is not None:
@@ -703,6 +723,7 @@ class CameraWorker(threading.Thread):
 
     def stop(self):
         self.stop_event.set()
+        self.set_packet_callback(None)
         if self.capture is not None:
             try:
                 self.capture.release()
@@ -760,6 +781,7 @@ class SessionRecorder:
         self.camera_frame_index = 0
         self.camera_backend = "PENDING"
         self.camera_recording_mode = "PENDING"
+        self.remux_failed = False
         self.camera_metadata = {
             "backend": "PENDING",
             "recording_mode": "PENDING",
@@ -770,6 +792,8 @@ class SessionRecorder:
             "nominal_fps": None,
             "time_base": {"num": None, "den": None},
             "video_pts": "UNAVAILABLE",
+            "input_status": "PENDING",
+            "remux_status": "NOT STARTED",
         }
         self.session_metadata = {
             "session_id": self.session_id,
@@ -861,11 +885,21 @@ class SessionRecorder:
                 self.files["events"].write(json.dumps({"timestamp": utc_iso(), "session_id": self.session_id, "session_start_utc_ns": self.session_start_utc_ns, "session_start_monotonic_ns": self.session_start_monotonic_ns, "kind": kind, "data": data}, ensure_ascii=False) + "\n")
                 self.files["events"].flush()
 
-    def _set_camera_recording_mode(self, mode, reason=None):
-        self.camera_recording_mode = str(mode)
+    def _set_camera_recording_mode(self, mode, reason=None, remux_status=None):
+        new_mode = str(mode)
+        new_remux_status = str(remux_status) if remux_status is not None else self.camera_metadata.get("remux_status")
+        old_reason = self.camera_metadata.get("recording_reason")
+        changed = self.camera_recording_mode != new_mode or self.camera_metadata.get("remux_status") != new_remux_status
+        if reason is not None and str(reason) != old_reason:
+            changed = True
+        self.camera_recording_mode = new_mode
         self.camera_metadata["recording_mode"] = self.camera_recording_mode
+        if remux_status is not None:
+            self.camera_metadata["remux_status"] = new_remux_status
         if reason:
             self.camera_metadata["recording_reason"] = str(reason)
+        if not changed:
+            return
         self.session_metadata["camera"] = dict(self.camera_metadata)
         self.session_metadata["camera"]["port"] = self.camera_port
         self._write_session(self.session_metadata)
@@ -874,6 +908,8 @@ class SessionRecorder:
         """Remux one encoded packet into MKV without decoding/re-encoding."""
         with self.lock:
             if self.closed or av is None:
+                return False
+            if self.remux_failed:
                 return False
             if self.camera_container is None:
                 try:
@@ -888,43 +924,56 @@ class SessionRecorder:
                         if codec_context is not None:
                             self.camera_stream.codec_context.extradata = getattr(codec_context, "extradata", None)
                     backend = self.camera_backend if self.camera_backend != "PENDING" else "PyAV"
-                    metadata = CameraWorker._stream_metadata(stream, self.camera_source, backend, "REMUX H264")
+                    metadata = CameraWorker._stream_metadata(stream, self.camera_source, backend, "READY")
+                    metadata["port"] = self.camera_port
                     self.camera_metadata.update(metadata)
                     self.camera_backend = metadata.get("backend", "PyAV")
-                    self._set_camera_recording_mode("REMUX H264")
+                    self._set_camera_recording_mode("READY", remux_status="READY")
                 except Exception as exc:
+                    if self.camera_container is not None:
+                        try:
+                            self.camera_container.close()
+                        except Exception:
+                            pass
                     self.camera_container = None
                     self.camera_stream = None
-                    self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc)
+                    self.remux_failed = True
+                    self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc, remux_status="FAILED")
                     return False
             try:
                 original_stream = getattr(packet, "stream", None)
                 packet.stream = self.camera_stream
                 self.camera_container.mux(packet)
                 packet.stream = original_stream
+                self._set_camera_recording_mode("REMUX H264", remux_status="ACTIVE")
                 return True
             except Exception as exc:
                 try:
                     packet.stream = original_stream
                 except Exception:
                     pass
-                self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc)
+                self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", exc, remux_status="FAILED")
                 try:
                     self.camera_container.close()
                 except Exception:
                     pass
                 self.camera_container = None
                 self.camera_stream = None
+                self.remux_failed = True
                 return False
 
     def write_camera_frame(self, frame, frame_metadata):
         """Record decoded frames only for the explicit fallback path."""
-        if cv2 is None:
-            return
         with self.lock:
             if self.closed:
                 return
+            item = dict(frame_metadata or {})
+            host_mono = int(item.get("host_monotonic_ns") or time.monotonic_ns())
+            item["session_time_s"] = (host_mono - self.session_start_monotonic_ns) / 1_000_000_000.0
+            self._write_camera_timestamp(item)
             if self.camera_recording_mode == "REMUX H264":
+                return
+            if cv2 is None:
                 return
             height, width = frame.shape[:2]
             if self.camera_writer is None:
@@ -937,10 +986,6 @@ class SessionRecorder:
                 self._set_camera_recording_mode("DECODED/REENCODED FALLBACK", self.camera_metadata.get("recording_reason"))
             if self.camera_writer is not None and self.camera_writer.isOpened():
                 self.camera_writer.write(frame)
-            item = dict(frame_metadata or {})
-            host_mono = int(item.get("host_monotonic_ns") or time.monotonic_ns())
-            item["session_time_s"] = (host_mono - self.session_start_monotonic_ns) / 1_000_000_000.0
-            self._write_camera_timestamp(item)
 
     def _write_camera_timestamp(self, item):
         values = [
@@ -1106,7 +1151,13 @@ class SonarViewer(tk.Tk):
         self.latest_ping_profile = None
         self.latest_camera = None
         self.latest_camera_pil = None
-        self.camera_metadata = {"backend": "PENDING", "recording_mode": "PENDING", "video_pts": "UNAVAILABLE"}
+        self.camera_metadata = {
+            "backend": "PENDING",
+            "recording_mode": "PENDING",
+            "video_pts": "UNAVAILABLE",
+            "input_status": "PENDING",
+            "remux_status": "NOT STARTED",
+        }
         self.camera_frame_count = 0
         self.surveyor_ping_count = 0
         self.ping1d_sample_count = 0
@@ -1227,6 +1278,16 @@ class SonarViewer(tk.Tk):
         badge["state"].set(text)
         badge["label"].configure(foreground="#087f23" if online else "#b00020")
 
+    def _attach_camera_session(self):
+        """Connect the active session to an existing or newly-created camera."""
+        if self.camera_worker is not None and self.session is not None:
+            self.camera_worker.set_packet_callback(self.session.write_camera_packet)
+
+    def _detach_camera_session(self):
+        """Detach before closing a session; CameraWorker makes this thread-safe."""
+        if self.camera_worker is not None:
+            self.camera_worker.set_packet_callback(None)
+
     def connect_all(self):
         if self.offline:
             if self.replay_path is not None and self.surveyor_worker is None:
@@ -1257,6 +1318,7 @@ class SonarViewer(tk.Tk):
         if self.camera_worker is None:
             source = self.camera_sdp.get().strip() or None
             self.camera_worker = CameraWorker(self.camera_port.get(), source, self.events)
+            self._attach_camera_session()
             self.camera_worker.start()
         mode = "REPLAY" if self.replay_path is not None else ("SKIPPED" if self.skip_surveyor else ("TX: LOCKED / DRY MODE" if not self.wet_authorized else "LIVE"))
         self.status_text.set("Connessioni avviate — SURVEYOR %s" % mode)
@@ -1271,6 +1333,7 @@ class SonarViewer(tk.Tk):
             messagebox.showerror("Surveyor", str(exc))
 
     def disconnect_all(self):
+        self._detach_camera_session()
         if self.surveyor_worker is not None:
             self.surveyor_worker.disconnect()
         if self.ping_worker is not None:
@@ -1290,6 +1353,7 @@ class SonarViewer(tk.Tk):
             self.surveyor_ping_count = 0
             self.ping1d_sample_count = 0
             self.session = SessionRecorder(SESSION_ROOT, self.camera_port.get(), self.camera_sdp.get().strip() or None, surveyor_mode, self.replay_path)
+            self._attach_camera_session()
             if self.surveyor_worker is not None:
                 self.surveyor_worker.raw_callback = self.session.write_surveyor_packet
             self.session.update_camera_metadata(self.camera_metadata)
@@ -1302,11 +1366,12 @@ class SonarViewer(tk.Tk):
         if self.session is None:
             return
         session = self.session
-        self.session = None
+        self._detach_camera_session()
         if self.surveyor_worker is not None:
             self.surveyor_worker.raw_callback = None
         session.write_event("session_stopped")
         session.close()
+        self.session = None
         self.status_text.set("Sessione salvata: %s" % session.directory)
 
     def _poll_events(self):
@@ -1321,7 +1386,7 @@ class SonarViewer(tk.Tk):
                 if kind == "blueos":
                     self._set_badge(self.blueos_badge, data)
                 elif kind == "camera_connected":
-                    self._set_badge(self.camera_badge, True, "UDP %s" % data.get("port"))
+                    self._set_badge(self.camera_badge, True, "%s · UDP %s" % (data.get("backend", "camera"), data.get("port", "?")))
                 elif kind == "camera_backend":
                     self.camera_metadata = dict(data or {})
                     self._set_badge(self.camera_badge, True, self.camera_metadata.get("backend", "UNKNOWN"))
@@ -1332,10 +1397,13 @@ class SonarViewer(tk.Tk):
                     self.latest_camera = frame
                     if self.session is not None:
                         self.session.write_camera_frame(frame, frame_metadata)
+                        self.camera_metadata.update(self.session.camera_metadata)
                     self._update_camera(frame)
                 elif kind == "camera_error":
                     self._set_badge(self.camera_badge, False, data)
                 elif kind == "camera_closed":
+                    if self.camera_worker is not None:
+                        self.camera_worker.set_packet_callback(None)
                     self.camera_worker = None
                     self._set_badge(self.camera_badge, False)
                 elif kind == "surveyor_connected":
@@ -1391,9 +1459,11 @@ class SonarViewer(tk.Tk):
             self.camera_label.configure(image=self.photos["camera"], text="")
             backend = self.camera_metadata.get("backend", "PENDING")
             recording = self.camera_metadata.get("recording_mode", "PENDING")
+            remux = self.camera_metadata.get("remux_status", "NOT STARTED")
+            input_status = self.camera_metadata.get("input_status", backend)
             pts = self.camera_metadata.get("video_pts", "UNAVAILABLE")
             self.camera_frame_count += 1
-            self.camera_stats.set("%d×%d · %s · %s · Video PTS: %s" % (frame.shape[1], frame.shape[0], backend, recording, pts))
+            self.camera_stats.set("%d×%d · %s · %s · %s · REMUX: %s · Video PTS: %s" % (frame.shape[1], frame.shape[0], backend, input_status, recording, remux, pts))
         except Exception:
             pass
 

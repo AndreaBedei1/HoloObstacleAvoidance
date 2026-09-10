@@ -68,11 +68,22 @@ usa contemporaneamente per:
 Sono supportati UDP 5600, UDP 5602, file SDP locale e URL SDP quando il backend
 FFmpeg di PyAV lo consente. L'app non crea automaticamente file SDP né cambia
 BlueOS. Se PyAV non riesce ad aprire la sorgente, viene mostrato l'errore e si
-prova OpenCV solo come fallback preview/registrazione decodificata. In quel
-caso la GUI e i metadata mostrano chiaramente:
+prova OpenCV solo come fallback preview/registrazione decodificata. La GUI e
+`session.json` distinguono sempre input e stato del remux:
+
+```text
+PyAV input: PYAV INPUT: OK
+Remux: READY
+```
+
+Il remux diventa `ACTIVE` solo dopo la creazione del container MKV, dello
+stream e il primo packet encoded muxato correttamente. Se una di queste fasi
+fallisce, lo stato diventa `FAILED` e l'app passa al fallback:
 
 ```text
 Camera backend: OpenCV fallback
+PyAV input: PYAV INPUT: FAILED / OPENCV FALLBACK
+Remux: FAILED
 Camera record: DECODED/REENCODED FALLBACK
 Video PTS: UNAVAILABLE
 ```
@@ -137,6 +148,8 @@ records/real_sessions/<session_id>/
 ```text
 camera.backend
 camera.recording_mode
+camera.input_status
+camera.remux_status = NOT STARTED | READY | ACTIVE | FAILED
 camera.source
 camera.codec
 camera.width / camera.height
@@ -145,6 +158,13 @@ camera.time_base
 surveyor.mode = live | replay | skipped
 surveyor.replay_source, se presente
 ```
+
+Il callback dei packet camera viene collegato alla sessione sia se si preme
+prima **Connect all** sia se si preme prima **START SESSION**. Viene scollegato
+prima di chiudere la sessione, così un packet già in coda non può scrivere in
+un recorder chiuso. Anche in modalità `REMUX H264`, ogni frame decodificato
+aggiunge la propria riga a `camera_timestamps.csv`; il frame non viene però
+ricodificato.
 
 Con `--skip-surveyor` non viene creato un falso `surveyor_raw.svlog`.
 Con `--replay-surveyor` il raw è una copia locale del file replayato e il file

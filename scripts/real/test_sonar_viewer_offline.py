@@ -12,6 +12,7 @@ import unittest
 import csv
 from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -165,6 +166,194 @@ class SonarViewerOfflineTests(unittest.TestCase):
         self.assertEqual(worker.port, 5602)
         self.assertEqual(worker.source, "C:/synthetic/test.sdp")
         self.assertIsNone(worker.packet_callback)
+
+    def test_camera_session_callback_wiring_both_lifecycles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous_root = viewer.SESSION_ROOT
+            viewer.SESSION_ROOT = root
+            try:
+                try:
+                    first_app = viewer.SonarViewer(offline=True)
+                except Exception as exc:
+                    self.skipTest("Tk GUI non disponibile in questo ambiente: %s" % exc)
+                first_worker = viewer.CameraWorker(5600, "synthetic.sdp", queue.Queue())
+                first_app.camera_worker = first_worker
+                first_app.start_session()
+                self.assertIs(first_worker.packet_callback.__self__, first_app.session)
+                first_app.stop_session()
+                first_app.destroy()
+
+                second_app = viewer.SonarViewer(offline=True)
+                second_app.start_session()
+                second_worker = viewer.CameraWorker(5602, "synthetic.sdp", queue.Queue())
+                second_app.camera_worker = second_worker
+                second_app._attach_camera_session()
+                self.assertIs(second_worker.packet_callback.__self__, second_app.session)
+                second_app.stop_session()
+                second_app.destroy()
+            finally:
+                viewer.SESSION_ROOT = previous_root
+
+    def test_stop_session_detaches_camera_before_recorder_close(self):
+        order = []
+
+        class OrderedWorker(object):
+            def __init__(self):
+                self.packet_callback = object()
+
+            def set_packet_callback(self, callback):
+                order.append(("callback", callback))
+                self.packet_callback = callback
+
+        class OrderedSession(object):
+            def __init__(self):
+                self.closed = False
+                self.directory = Path("offline-session")
+
+            def write_event(self, kind, data=None):
+                order.append(("event", kind))
+
+            def close(self):
+                order.append(("close", self.closed))
+                self.closed = True
+
+        class Status(object):
+            def set(self, value):
+                self.value = value
+
+        app = viewer.SonarViewer.__new__(viewer.SonarViewer)
+        app.session = OrderedSession()
+        app.camera_worker = OrderedWorker()
+        app.surveyor_worker = None
+        app.status_text = Status()
+        app.stop_session()
+        self.assertEqual(order[0][0:2], ("callback", None))
+        self.assertEqual(order[-1], ("close", False))
+        self.assertIsNone(app.camera_worker.packet_callback)
+
+    def test_remux_frame_still_writes_exactly_one_timestamp(self):
+        class FakeFrame(object):
+            shape = (2, 3, 3)
+
+        with tempfile.TemporaryDirectory() as directory:
+            session = viewer.SessionRecorder(Path(directory))
+            session.camera_recording_mode = "REMUX H264"
+            session.camera_metadata["recording_mode"] = "REMUX H264"
+            session.camera_metadata["remux_status"] = "ACTIVE"
+            session.write_camera_frame(FakeFrame(), {
+                "frame_index": 4, "packet_index": 9, "pts": 40, "dts": 39,
+                "time_base_num": 1, "time_base_den": 100,
+                "pts_seconds": 0.4, "dts_seconds": 0.39,
+                "host_monotonic_ns": session.session_start_monotonic_ns + 400_000_000,
+                "host_utc_ns": session.session_start_utc_ns + 400_000_000,
+                "key_frame": False, "packet_size": 321,
+            })
+            with (session.directory / "camera_timestamps.csv").open(newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["frame_index"], "4")
+            self.assertEqual(rows[0]["packet_index"], "9")
+            self.assertEqual(rows[0]["pts"], "40")
+            self.assertEqual(rows[0]["time_base_den"], "100")
+            self.assertEqual(rows[0]["pts_seconds"], "0.4")
+            session.close()
+
+    def test_remux_failure_is_explicit_fallback(self):
+        if viewer.av is None:
+            self.skipTest("PyAV non installato")
+
+        class FailingContainer(object):
+            def mux(self, packet):
+                raise RuntimeError("synthetic mux failure")
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            session = viewer.SessionRecorder(Path(directory))
+            session.camera_backend = "PyAV"
+            session.camera_container = FailingContainer()
+            session.camera_stream = object()
+            packet = SimpleNamespace(stream=None)
+            stream = SimpleNamespace(
+                time_base=Fraction(1, 1000),
+                average_rate=5,
+                codec_context=SimpleNamespace(name="h264", width=8, height=8),
+            )
+            self.assertFalse(session.write_camera_packet(packet, stream, 0, 1, 2))
+            self.assertEqual(session.camera_metadata["remux_status"], "FAILED")
+            self.assertEqual(session.camera_metadata["recording_mode"], "DECODED/REENCODED FALLBACK")
+            session.close()
+
+    def test_pyav_runtime_fixture_single_ingest_and_remux(self):
+        if viewer.av is None:
+            self.skipTest("PyAV non installato")
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("numpy non installato per il fixture video")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.mkv"
+            try:
+                output = viewer.av.open(str(source), mode="w", format="matroska")
+                stream = output.add_stream("libx264", rate=5)
+                stream.width = 64
+                stream.height = 48
+                stream.pix_fmt = "yuv420p"
+                for index in range(3):
+                    image = np.full((48, 64, 3), index * 60, dtype=np.uint8)
+                    frame = viewer.av.VideoFrame.from_ndarray(image, format="rgb24")
+                    frame.pts = index
+                    frame.time_base = Fraction(1, 5)
+                    for packet in stream.encode(frame):
+                        output.mux(packet)
+                for packet in stream.encode():
+                    output.mux(packet)
+                output.close()
+            except Exception as exc:
+                try:
+                    output.close()
+                except Exception:
+                    pass
+                self.skipTest("fixture H264 non disponibile: %s" % exc)
+
+            events = queue.Queue()
+            session = viewer.SessionRecorder(root / "session", camera_source=str(source))
+            worker = viewer.CameraWorker(5600, str(source), events)
+            worker.set_packet_callback(session.write_camera_packet)
+            worker.start()
+            worker.join(timeout=10.0)
+            if worker.is_alive():
+                worker.stop()
+                worker.join(timeout=2.0)
+                self.fail("CameraWorker PyAV non termina sul fixture offline")
+
+            frames = []
+            while not events.empty():
+                kind, data = events.get()
+                if kind == "camera_frame":
+                    frames.append(data)
+            for frame, metadata in frames:
+                session.write_camera_frame(frame, metadata)
+            worker.set_packet_callback(None)
+            session.close()
+
+            recorded = session.directory / "camera_rgb.mkv"
+            self.assertTrue(recorded.exists())
+            self.assertGreater(recorded.stat().st_size, 0)
+            reader = viewer.av.open(str(recorded), mode="r")
+            try:
+                self.assertTrue(any(getattr(item, "type", None) == "video" for item in reader.streams))
+            finally:
+                reader.close()
+            with (session.directory / "camera_timestamps.csv").open(newline="") as csv_stream:
+                rows = list(csv.DictReader(csv_stream))
+            self.assertGreater(len(rows), 0)
+            self.assertTrue(any(row["pts"] for row in rows))
+            self.assertTrue(any(row["time_base_num"] and row["time_base_den"] for row in rows))
 
     def test_skip_surveyor_and_replay_precedence_are_offline_only(self):
         try:
