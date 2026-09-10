@@ -21,7 +21,8 @@ network:
   topside_ip: 192.168.2.1
   vehicle_ip: 192.168.2.2
   ping_rtt_ms: 4
-  imaging_sonar_ip: 192.168.2.86   # Cerulean Omniscan-class. PROHIBITED DEVICE.
+  imaging_sonar_ip: 192.168.2.86   # Cerulean Surveyor 240-16.
+  imaging_sonar_tcp_port: 62312
 
 telemetry:
   transport: mavlink2rest + UDP MAVLink
@@ -51,8 +52,8 @@ position_locator:
 
 sonar:
   imaging_side_scan:
-    model_class: cerulean_omniscan_450_ss
-    status: PROHIBITED_NEVER_USE
+    model_class: cerulean_surveyor_240_16
+    status: TX_LOCKED_DRY_MODE
     blueos_extension: "SonarView 1.14.4 (untouched)"
   ping1d:
     present: true
@@ -69,7 +70,7 @@ onboard_camera:
   height: 1080
   fps: 30
   stream_endpoint: "udp://192.168.2.1:5600"
-  secondary_stream: "udp://192.168.2.1:5601 (redirect, 'Prova1')"
+  secondary_stream: "udp://192.168.2.1:5602 (optional, only if manually configured in BlueOS)"
   tilt_servo: 16
   tilt_at_inventory_us: 1500
   intrinsics: TODO_CALIBRATE

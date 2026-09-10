@@ -218,7 +218,8 @@ Legend: `[x]` done+tested · `[~]` in progress · `[ ]` open · `[B]` blocked (s
 
 - Real vehicle: READ-ONLY until explicit in-water authorization. No arming, no
   motor/RC/velocity/actuator commands, no parameter writes, no reboots.
-- Imaging/side-scan sonar (Cerulean Omniscan-class): NEVER used, in or out of water.
+- Cerulean Surveyor 240-16 imaging sonar: TX locked while dry; use only
+  passive/replay decoding until explicit in-water authorization.
 - Ping1D: untouched until explicit in-water authorization; not a dependency of the
   first paper.
 - External RealSense ground truth must never feed YOLO, the tracker, the planner,

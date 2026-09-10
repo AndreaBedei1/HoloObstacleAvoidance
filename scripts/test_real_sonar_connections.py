@@ -2,10 +2,10 @@
 
 Checks:
   1. BlueOS reachability on HTTP and/or mavlink2rest port 6040.
-  2. TCP connect/close to Omniscan 450 at 192.168.2.86:51200.
+  2. TCP connect/close to Cerulean Surveyor 240-16 at 192.168.2.86:62312.
   3. Ping1D UDP PingProxy initialization at 192.168.2.2:9090.
 
-This script never sends an Omniscan os_ping_params enable=1 command.
+This script never sends a Surveyor ping-parameter command.
 It does not change BlueOS, sonar, serial, or network configuration.
 """
 
@@ -18,8 +18,8 @@ import time
 
 
 DEFAULT_BLUEOS = "192.168.2.2"
-DEFAULT_OMNI = "192.168.2.86"
-DEFAULT_OMNI_PORT = 51200
+DEFAULT_SURVEYOR = "192.168.2.86"
+DEFAULT_SURVEYOR_PORT = 62312
 DEFAULT_PING_PORT = 9090
 
 
@@ -43,7 +43,7 @@ def ping1d_probe(host, port):
         device = Ping1D()
         device.connect_udp(host, port)
         ok = bool(device.initialize())
-        return ok, "initialize()=%s; nessun avvio Omniscan" % ok
+        return ok, "initialize()=%s; nessun avvio Surveyor" % ok
     except Exception as exc:
         return False, str(exc)
     finally:
@@ -59,8 +59,8 @@ def ping1d_probe(host, port):
 def main():
     parser = argparse.ArgumentParser(description="Read-only BlueROV2 sonar connection diagnostics")
     parser.add_argument("--blueos", default=DEFAULT_BLUEOS)
-    parser.add_argument("--omniscan", default=DEFAULT_OMNI)
-    parser.add_argument("--omniscan-port", type=int, default=DEFAULT_OMNI_PORT)
+    parser.add_argument("--surveyor", default=DEFAULT_SURVEYOR)
+    parser.add_argument("--surveyor-port", type=int, default=DEFAULT_SURVEYOR_PORT)
     parser.add_argument("--ping1d-port", type=int, default=DEFAULT_PING_PORT)
     args = parser.parse_args()
 
@@ -83,11 +83,11 @@ def main():
     if not rest_ok:
         print("  REST detail: %s" % rest_detail)
 
-    omni_ok, omni_ms, omni_detail = tcp_probe(args.omniscan, args.omniscan_port, 2.0)
-    print("Omniscan     %s  %s:%d (%.0f ms)" % (
-        "ONLINE" if omni_ok else "OFFLINE", args.omniscan, args.omniscan_port, omni_ms
+    surveyor_ok, surveyor_ms, surveyor_detail = tcp_probe(args.surveyor, args.surveyor_port, 2.0)
+    print("Surveyor240  %s  %s:%d (%.0f ms)" % (
+        "ONLINE" if surveyor_ok else "OFFLINE", args.surveyor, args.surveyor_port, surveyor_ms
     ))
-    print("  %s; no enable=1 command sent" % omni_detail)
+    print("  %s; no ping command sent" % surveyor_detail)
 
     ping_ok, ping_detail = ping1d_probe(args.blueos, args.ping1d_port)
     print("Ping1D       %s  %s:%d" % (
@@ -95,7 +95,7 @@ def main():
     ))
     print("  %s" % ping_detail)
 
-    return 0 if blueos_ok and omni_ok and ping_ok else 1
+    return 0 if blueos_ok and surveyor_ok and ping_ok else 1
 
 
 if __name__ == "__main__":

@@ -25,9 +25,24 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from PIL import Image, ImageDraw, ImageTk
+
+try:
+    from surveyor_processing import (
+        CHANNEL_DATA_HEADER as COMMON_CHANNEL_DATA_HEADER,
+        beamform_surveyor_channels,
+        parse_channel_data_header as common_parse_channel_data_header,
+        validate_channel_payloads,
+    )
+except ImportError:
+    from .surveyor_processing import (
+        CHANNEL_DATA_HEADER as COMMON_CHANNEL_DATA_HEADER,
+        beamform_surveyor_channels,
+        parse_channel_data_header as common_parse_channel_data_header,
+        validate_channel_payloads,
+    )
 
 
 PACKET_HEADER = struct.Struct("<BBHHBB")
@@ -36,7 +51,8 @@ ATOF_HEADER = struct.Struct("<IQffIIfIHH")
 # Cerulean/SonarView ChPairGoertzelData (message 3009).  The first 20 bytes
 # are protocol fields; signal_cs_ch1/ch2 are Float32 IQ pairs immediately
 # afterwards.  The official parser reads 4 * results_per_channel floats.
-CHANNEL_DATA_HEADER = struct.Struct("<IfBxHiBBH")
+# Kept as a public compatibility alias for existing offline tools/tests.
+CHANNEL_DATA_HEADER = COMMON_CHANNEL_DATA_HEADER
 
 MSG_JSON = 10
 MSG_ATTITUDE = 504
@@ -165,24 +181,9 @@ def parse_atof(payload: bytes, record: PingRecord) -> None:
         record.points.append((float(angle), range_m))
 
 
-def parse_channel_data_header(payload: bytes) -> Optional[Dict[str, int | float]]:
+def parse_channel_data_header(payload: bytes) -> Optional[Dict[str, Union[int, float]]]:
     """Read the confirmed SonarView 3009 ChPairGoertzelData header."""
-    if len(payload) < CHANNEL_DATA_HEADER.size:
-        return None
-    try:
-        ping_number, analog_gain, device_number, device_index, adc_pp_signal, ch1, ch2, results = CHANNEL_DATA_HEADER.unpack_from(payload)
-    except struct.error:
-        return None
-    return {
-        "ping_number": int(ping_number),
-        "analog_gain": float(analog_gain),
-        "device_number": int(device_number),
-        "device_index_unused": int(device_index),
-        "adc_pp_signal": int(adc_pp_signal),
-        "ch1": int(ch1),
-        "ch2": int(ch2),
-        "results_per_channel": int(results),
-    }
+    return common_parse_channel_data_header(payload)
 
 
 def validate_channel_data(log: SonarLog, record: PingRecord) -> None:
@@ -341,94 +342,32 @@ def cross_track_depth(record: PingRecord) -> List[Tuple[float, float, float]]:
     return result
 
 
-def load_raw_intensity(log: SonarLog, record: PingRecord) -> Optional[Tuple[List[List[float]], float, float]]:
-    """Beamform one validated Surveyor ping into angle x range power.
+def load_raw_intensity(
+    log: SonarLog,
+    record: PingRecord,
+    threshold_percent: float = 0.0,
+) -> Optional[Tuple[List[List[float]], float, float]]:
+    """Beamform one validated ping using the shared Surveyor processor.
 
-    SonarView calls message 3009 ``ChPairGoertzelData``.  Its confirmed
-    payload is a 20-byte header followed by Float32 little-endian IQ pairs:
-    ``[I,Q]`` for channel 1, then ``[I,Q]`` for channel 2, each with
-    ``results_per_channel`` range steps.  The official Surveyor processor
-    uses the 16-element aperture and a 240 kHz acoustic frequency to
-    beamform 1-degree beams from -40 to +40 degrees.  Any bytes after the
-    protocol-defined sample area are intentionally ignored; they are not
-    reinterpreted as pixels.
-
-    The operation is lazy: only the selected ping is read from disk.
+    ``threshold_percent=0`` preserves the full acoustic background.  The
+    optional threshold is only a display filter and never changes the log.
     """
     if not record.channel_data_valid or not record.raw_packet_offsets:
         return None
     try:
         with log.path.open("rb") as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
-            channel_signals: Dict[int, List[float]] = {}
-            rows = int(record.bins or 200)
-            for payload_offset, payload_len in record.raw_packet_offsets:
-                payload = bytes(data[payload_offset : payload_offset + payload_len])
-                header = parse_channel_data_header(payload)
-                if header is None:
-                    return None
-                ch1, ch2 = int(header["ch1"]), int(header["ch2"])
-                n = int(header["results_per_channel"])
-                expected = CHANNEL_DATA_HEADER.size + 4 * n * 4
-                if n != rows or payload_len < expected:
-                    return None
-                values = struct.unpack_from(f"<{4 * n}f", payload, CHANNEL_DATA_HEADER.size)
-                channel_signals[ch1] = list(values[: 2 * n])
-                channel_signals[ch2] = list(values[2 * n : 4 * n])
-            if set(channel_signals) != set(range(16)):
-                return None
-            sos = float(record.sos_mps or 1500.0)
-            acoustic_hz = 240_000.0
-            channel_spacing_m = 0.136 * 0.0254
-            channel_positions = [index * channel_spacing_m - 0.5 * 15 * channel_spacing_m for index in range(16)]
-            beam_angles = [math.radians(angle) for angle in range(-40, 41)]
-            wavelength_m = sos / acoustic_hz
-            delays = []
-            for angle in beam_angles:
-                row = []
-                for position in channel_positions:
-                    phase = math.sin(angle) / wavelength_m * 2.0 * math.pi * position
-                    row.append((math.cos(phase), math.sin(phase)))
-                delays.append(row)
-
-            # This is the same range compensation used by SonarView's
-            # Surveyor detector.  It changes relative display power only.
-            end_m = max(record.range_end_m, record.range_start_m + 1e-6)
-            if end_m <= 8.0:
-                exponent = 0.0
-            elif end_m >= 20.0:
-                exponent = 2.0
-            else:
-                exponent = (end_m - 8.0) / 12.0 * 2.0
-            ratio = max(0.0, min(1.0, record.range_start_m / end_m))
-            compensated = [[0.0] * (2 * rows) for _ in range(16)]
-            for channel in range(16):
-                source = channel_signals[channel]
-                for range_index in range(rows):
-                    factor = (ratio + (1.0 - ratio) * range_index / max(1, rows - 1)) ** exponent
-                    compensated[channel][2 * range_index] = source[2 * range_index] * factor
-                    compensated[channel][2 * range_index + 1] = source[2 * range_index + 1] * factor
-
-            average_by_range = []
-            for range_index in range(rows):
-                average_by_range.append(sum(
-                    compensated[channel][2 * range_index] ** 2 + compensated[channel][2 * range_index + 1] ** 2
-                    for channel in range(16)
-                ))
-            mean_power = sum(average_by_range) / max(1, rows)
-            matrix = [[0.0] * rows for _ in beam_angles]
-            for range_index, range_power in enumerate(average_by_range):
-                if range_power < mean_power:
-                    continue
-                for beam_index, beam_delays in enumerate(delays):
-                    real_sum = 0.0
-                    imag_sum = 0.0
-                    for channel, (cos_phase, sin_phase) in enumerate(beam_delays):
-                        real = compensated[channel][2 * range_index]
-                        imag = compensated[channel][2 * range_index + 1]
-                        real_sum += real * cos_phase - imag * sin_phase
-                        imag_sum += imag * cos_phase + real * sin_phase
-                    matrix[beam_index][range_index] = real_sum * real_sum + imag_sum * imag_sum
-            return matrix, float(record.range_start_m), float(record.range_end_m)
+            payloads = [bytes(data[offset : offset + length]) for offset, length in record.raw_packet_offsets]
+        valid, _note, channel_signals, bins = validate_channel_payloads(payloads, record.number)
+        if not valid or bins != int(record.bins or bins):
+            return None
+        matrix = beamform_surveyor_channels(
+            channel_signals,
+            record.range_start_m,
+            record.range_end_m,
+            record.sos_mps,
+            threshold_percent=threshold_percent,
+        )
+        return matrix, float(record.range_start_m), float(record.range_end_m)
     except (OSError, ValueError, struct.error):
         return None
 

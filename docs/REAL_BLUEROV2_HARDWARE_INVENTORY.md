@@ -29,7 +29,7 @@ Sanitization: no credentials, tokens, or MAC addresses are recorded here.
 |------|---------|-------|
 | Topside PC (this machine) | 192.168.2.1/24 ("Ethernet 2") | experiment computer |
 | BlueOS / vehicle | 192.168.2.2 (eth0); also WiFi AP 192.168.42.1, USB 192.168.3.1 | ping RTT ≈ 4 ms |
-| Third device | 192.168.2.86, STMicroelectronics OUI, no HTTP | matches **Cerulean Omniscan 450 SS default IP** → the prohibited imaging/side-scan sonar. Identified passively (ARP + one refused HTTP probe); never queried again |
+| Third device | 192.168.2.86, STMicroelectronics OUI, TCP `62312` | **Cerulean Surveyor 240-16**, used only through the dry-mode locked/replay viewer; no acoustic transmission while out of water |
 
 ## MAVLink telemetry actually streaming (31 message types)
 
@@ -56,10 +56,11 @@ IMU live.
   EKF status. Telemetry rates are requestable higher via `SR0_*`/message
   intervals — **not changed during this inventory** (would be a parameter write).
 
-## Sonar devices (PROHIBITED / RESTRICTED)
+## Sonar devices (RESTRICTED / DRY MODE)
 
-- **Imaging/side-scan sonar**: Cerulean Omniscan-class at 192.168.2.86 +
-  SonarView extension. **Never used, in or out of water. No role in this project.**
+- **Multibeam imaging sonar**: Cerulean Surveyor 240-16 at `192.168.2.86:62312`
+  + SonarView extension. **TX locked while dry**; only passive/replay decoding
+  is permitted until explicit in-water authorization.
 - **Ping1D 1-D echosounder**: Ping service reports a `Ping1D` device_id 1,
   firmware 1.0.0 on `/dev/ttyAMA3`, UDP driver port 9090, `mavlink_driver_enabled:
   true`. Configuration inspected only; no ping/range request issued. Not a

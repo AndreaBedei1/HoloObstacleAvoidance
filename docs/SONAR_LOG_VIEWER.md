@@ -93,6 +93,9 @@ channels exactly once, a consistent range-step count, and a complete Float32
 IQ region. Logs with only ATOF detections remain usable in POLAR FAN but do
 not claim to contain a fan image.
 
+The shared beamformer leaves background power visible by default. Any
+thresholding is a display choice only and never rewrites the original `.svlog`.
+
 An ATOF-only recording contains detections but no validated message-3009
 channel set. For that file the fan-image view reports that channel data is not
 available and POLAR FAN remains the correct representation.
